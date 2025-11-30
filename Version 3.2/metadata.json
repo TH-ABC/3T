@@ -1,0 +1,5 @@
+{
+  "name": "OMS Google Sheets",
+  "description": "Hệ thống quản lý đơn hàng với giao diện Dashboard hiện đại, kết nối giả lập Google Sheets và tích hợp AI phân tích.",
+  "requestFramePermissions": []
+}
