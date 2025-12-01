@@ -534,6 +534,32 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
           }
       );
   };
+
+  const handleToggleCheckbox = async (order: Order) => {
+      if (updatingOrderIds.has(order.id)) return; // Prevent double click
+      if (!currentFileId) return;
+
+      const newValue = !order.isChecked;
+      setUpdatingOrderIds(prev => new Set(prev).add(order.id));
+      if (onProcessStart) onProcessStart(); // Block navigation
+
+      try {
+          // Gửi lệnh lên Google Sheet
+          await sheetService.updateOrder(currentFileId, order.id, 'isChecked', newValue ? "TRUE" : "FALSE");
+
+          // Update local state on success
+          setOrders(prev => prev.map(o => o.id === order.id ? { ...o, isChecked: newValue } : o));
+      } catch (error) {
+          showMessage('Lỗi', 'Không thể cập nhật trạng thái.', 'error');
+      } finally {
+          setUpdatingOrderIds(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(order.id);
+              return newSet;
+          });
+          if (onProcessEnd) onProcessEnd(); // Unblock navigation
+      }
+  };
   
   // --- OPEN MODAL HANDLERS ---
   const openAddModal = () => {
@@ -1030,7 +1056,18 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
                             </td>
                             
                             <td className="px-1 py-1 border-r text-center align-middle">
-                                {order.isChecked ? <CheckSquare size={18} className="text-green-600 inline" /> : <Square size={18} className="text-gray-300 inline" />}
+                                {updatingOrderIds.has(order.id) ? (
+                                    <div className="flex justify-center items-center h-full">
+                                        <Loader2 size={16} className="animate-spin text-orange-500" />
+                                    </div>
+                                ) : (
+                                    <button 
+                                        onClick={() => handleToggleCheckbox(order)}
+                                        className="p-1 hover:bg-gray-100 rounded focus:outline-none transition-colors"
+                                    >
+                                        {order.isChecked ? <CheckSquare size={18} className="text-green-600" /> : <Square size={18} className="text-gray-300" />}
+                                    </button>
+                                )}
                             </td>
 
                             <td className="px-1 py-1 border-r text-center relative group">
@@ -1224,8 +1261,8 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
                                             <th className="px-3 py-2 w-10 text-center">#</th>
                                             <th className="px-3 py-2 w-28">Type</th>
                                             <th className="px-3 py-2 w-48">Product Name</th>
-                                            <th className="px-3 py-2 w-32">SKU Sản Phẩm <span className="text-red-500">*</span></th>
                                             <th className="px-3 py-2 w-32">Item SKU</th>
+                                            <th className="px-3 py-2 w-32">SKU Sản Phẩm <span className="text-red-500">*</span></th>
                                             <th className="px-3 py-2 w-48">URL Mockup</th>
                                             <th className="px-3 py-2 w-40">Loại Mockup</th>
                                             <th className="px-3 py-2 w-16 text-center">SL</th>
@@ -1262,18 +1299,18 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
                                                     <input 
                                                         type="text" 
                                                         className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs font-mono focus:ring-1 focus:ring-orange-500 outline-none" 
-                                                        placeholder="SKU..." 
-                                                        value={item.sku}
-                                                        onChange={(e) => handleItemChange(index, 'sku', e.target.value)}
+                                                        placeholder="Item SKU..." 
+                                                        value={item.itemSku || ''}
+                                                        onChange={(e) => handleItemChange(index, 'itemSku', e.target.value)}
                                                     />
                                                 </td>
                                                 <td className="px-2 py-2">
                                                     <input 
                                                         type="text" 
                                                         className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs font-mono focus:ring-1 focus:ring-orange-500 outline-none" 
-                                                        placeholder="Item SKU..." 
-                                                        value={item.itemSku || ''}
-                                                        onChange={(e) => handleItemChange(index, 'itemSku', e.target.value)}
+                                                        placeholder="SKU..." 
+                                                        value={item.sku}
+                                                        onChange={(e) => handleItemChange(index, 'sku', e.target.value)}
                                                     />
                                                 </td>
                                                 <td className="px-2 py-2">
