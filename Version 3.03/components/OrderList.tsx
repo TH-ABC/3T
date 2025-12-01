@@ -751,6 +751,9 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
 
     if (isEditMode) {
         const itemToUpdate = validItems[0];
+        // Parse shipping info in Edit Mode as well
+        const shipInfo = getShippingInfoFromRaw();
+
         const updateData = {
             type: itemToUpdate.type,
             sku: itemToUpdate.sku,
@@ -765,7 +768,18 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
             productName: itemToUpdate.productName,
             itemSku: itemToUpdate.itemSku,
             urlMockup: itemToUpdate.urlMockup,
-            mockupType: itemToUpdate.mockupType
+            mockupType: itemToUpdate.mockupType,
+            // Include Shipping Info
+            shippingName: shipInfo.name,
+            shippingFirstName: shipInfo.firstName,
+            shippingLastName: shipInfo.lastName,
+            shippingAddress1: shipInfo.address1,
+            shippingAddress2: shipInfo.address2,
+            shippingCity: shipInfo.city,
+            shippingProvince: shipInfo.province,
+            shippingZip: shipInfo.zip,
+            shippingCountry: shipInfo.country,
+            shippingPhone: shipInfo.phone,
         };
         const orderIdToUpdate = editingOrderId!;
 
@@ -1448,28 +1462,26 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
                         </div>
 
                          {/* 4. THÔNG TIN GIAO HÀNG (SHIPPING - RAW PASTE) */}
-                         {!isEditMode && (
-                             <div className="bg-slate-700 p-4 rounded-lg border border-gray-600">
-                                <h4 className="text-white text-xs font-bold uppercase mb-3 flex items-center gap-2">
-                                    <MapPin size={14} />
-                                    Thông tin giao hàng (Shipping)
-                                </h4>
-                                <div className="space-y-3">
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-400 mb-1">Dán địa chỉ (Tự động phân tích)</label>
-                                        <textarea
-                                            className={`${darkInputClass} h-24 resize-none font-mono text-xs`}
-                                            placeholder={`First_name: Sharon\nLast_name: Zwick\nShipping_address1: 124 Tallwood Dr\nShipping_address2: --\nShipping_city: Vernon\nShipping_zip: 06066-5926\nShipping_province: CT\nShipping_country: United States\nShipping_phone: --`}
-                                            value={rawAddress}
-                                            onChange={(e) => setRawAddress(e.target.value)}
-                                        />
-                                        <p className="text-gray-400 text-[10px] mt-1 italic">
-                                            * Hệ thống sẽ tự động phân tích định dạng Key: Value và lưu vào các cột Shipping khi bạn bấm "Tạo Đơn Hàng".
-                                        </p>
-                                    </div>
+                         <div className="bg-slate-700 p-4 rounded-lg border border-gray-600">
+                            <h4 className="text-white text-xs font-bold uppercase mb-3 flex items-center gap-2">
+                                <MapPin size={14} />
+                                Thông tin giao hàng (Shipping)
+                            </h4>
+                            <div className="space-y-3">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-400 mb-1">Dán địa chỉ (Tự động phân tích)</label>
+                                    <textarea
+                                        className={`${darkInputClass} h-24 resize-none font-mono text-xs`}
+                                        placeholder={`First_name: Sharon\nLast_name: Zwick\nShipping_address1: 124 Tallwood Dr\nShipping_address2: --\nShipping_city: Vernon\nShipping_zip: 06066-5926\nShipping_province: CT\nShipping_country: United States\nShipping_phone: --`}
+                                        value={rawAddress}
+                                        onChange={(e) => setRawAddress(e.target.value)}
+                                    />
+                                    <p className="text-gray-400 text-[10px] mt-1 italic">
+                                        * Hệ thống sẽ tự động phân tích định dạng Key: Value và lưu vào các cột Shipping khi bạn bấm "{isEditMode ? 'Lưu Thay Đổi' : 'Tạo Đơn Hàng'}".
+                                    </p>
                                 </div>
-                             </div>
-                         )}
+                            </div>
+                         </div>
                     </div>
 
                     <div className="p-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
