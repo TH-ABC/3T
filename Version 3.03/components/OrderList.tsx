@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Plus, RefreshCw, Copy, ArrowUp, ArrowDown, Save, ExternalLink, Calendar, FileSpreadsheet, ChevronLeft, ChevronRight, UserCircle, CheckSquare, Square, Trash2, Edit, Loader2, FolderPlus, AlertTriangle, Info, X, Filter, ArrowDownAZ, ArrowUpAZ, Check } from 'lucide-react';
+import { Search, Plus, RefreshCw, Copy, ArrowDown, Save, ExternalLink, Calendar, FileSpreadsheet, ChevronLeft, ChevronRight, UserCircle, CheckSquare, Square, Trash2, Edit, Loader2, FolderPlus, AlertTriangle, Info, Filter, ArrowDownAZ, ArrowUpAZ, MapPin, Truck, Lock } from 'lucide-react';
 import { sheetService } from '../services/sheetService';
 import { Order, Store, User, OrderItem } from '../types';
 
@@ -10,6 +10,18 @@ const getCurrentLocalMonth = () => {
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     return `${year}-${month}`;
+};
+
+const formatDateDisplay = (dateStr: string) => {
+    if (!dateStr) return '';
+    try {
+        const parts = dateStr.split('-');
+        if (parts.length === 3) {
+            const [y, m, d] = parts;
+            return `${d}/${m}/${y}`;
+        }
+        return dateStr;
+    } catch (e) { return dateStr; }
 };
 
 // --- HIERARCHY CONFIGURATION ---
@@ -60,7 +72,7 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
   // Quản lý Popup Filter
   const [activeFilterColumn, setActiveFilterColumn] = useState<string | null>(null);
   const [filterSearchTerm, setFilterSearchTerm] = useState(''); // Tìm kiếm nội bộ trong popup filter
-  const [filterPopupPos, setFilterPopupPos] = useState<{ top: number, left: number } | null>(null); // Toạ độ popup
+  const [filterPopupPos, setFilterPopupPos] = useState<{ top: number, left: number, alignRight: boolean } | null>(null);
   const filterPopupRef = useRef<HTMLDivElement>(null);
 
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentLocalMonth());
@@ -93,11 +105,19 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
       link: '',
       status: 'Pending',
       actionRole: '',
-      isChecked: false
+      isChecked: false,
+      isFulfilled: false
   });
 
+  // SHIPPING STATE (Hidden on UI, but saved)
+  const [rawAddress, setRawAddress] = useState('');
+
   const [formItems, setFormItems] = useState<OrderItem[]>([
-    { sku: '', type: 'Printway', quantity: 1, note: '' }
+    { 
+        sku: '', type: 'Printway', quantity: 1, note: '', 
+        productName: '', itemSku: '', 
+        urlMockup: '', mockupType: 'Mockup để tham khảo' 
+    }
   ]);
 
   const currentYear = new Date().getFullYear();
@@ -171,14 +191,16 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
   };
 
   // 1. Lấy danh sách giá trị duy nhất cho 1 cột (để hiển thị trong checkbox list)
-  const getUniqueValues = (key: keyof Order | 'storeName'): string[] => {
+  const getUniqueValues = (key: keyof Order | 'storeName' | 'isFulfilled'): string[] => {
       const values = new Set<string>();
       orders.forEach(order => {
           let val = '';
           if (key === 'storeName') {
               val = getStoreName(order.storeId);
+          } else if (key === 'isFulfilled') {
+              val = order.isFulfilled ? "Fulfilled" : "Chưa";
           } else {
-              val = String(order[key] || '');
+              val = String(order[key as keyof Order] || '');
           }
           if (val) values.add(val);
       });
@@ -233,7 +255,8 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
     if (!matchesSearch) return false;
 
     // B. Column Filters
-    for (const [key, selectedValues] of Object.entries(columnFilters)) {
+    for (const [key, val] of Object.entries(columnFilters)) {
+        const selectedValues = val as string[];
         // Nếu selectedValues là undefined hoặc null (đã reset) -> bỏ qua
         if (!selectedValues) continue;
         
@@ -243,6 +266,8 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
         let cellValue = '';
         if (key === 'storeName') {
             cellValue = getStoreName(o.storeId);
+        } else if (key === 'isFulfilled') {
+            cellValue = o.isFulfilled ? "Fulfilled" : "Chưa";
         } else {
             // @ts-ignore
             cellValue = String(o[key] || '');
@@ -291,7 +316,7 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
       if (!activeFilterColumn || !filterPopupPos) return null;
       
       const columnKey = activeFilterColumn;
-      const uniqueValues = getUniqueValues(columnKey === 'storeName' ? 'storeName' : columnKey as keyof Order);
+      const uniqueValues = getUniqueValues(columnKey === 'storeName' ? 'storeName' : columnKey === 'isFulfilled' ? 'isFulfilled' : columnKey as keyof Order);
       const displayValues = uniqueValues.filter(v => v.toLowerCase().includes(filterSearchTerm.toLowerCase()));
       const currentSelected = columnFilters[columnKey];
       
@@ -306,7 +331,8 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
             className="fixed bg-white rounded-lg shadow-2xl border border-gray-200 z-[100] flex flex-col text-left animate-fade-in text-gray-800 font-normal cursor-default w-72"
             style={{ 
                 top: filterPopupPos.top, 
-                left: filterPopupPos.left 
+                left: filterPopupPos.alignRight ? 'auto' : filterPopupPos.left,
+                right: filterPopupPos.alignRight ? (window.innerWidth - filterPopupPos.left) : 'auto'
             }}
             onClick={(e) => e.stopPropagation()}
         >
@@ -392,17 +418,25 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
           setActiveFilterColumn(null);
           setFilterPopupPos(null);
       } else {
-          // Tính toán vị trí fixed
           const rect = e.currentTarget.getBoundingClientRect();
           let top = rect.bottom + 5;
           let left = rect.left;
           
-          // Kiểm tra nếu popup bị tràn bên phải
-          if (left + 288 > window.innerWidth) { // 288px = w-72
-              left = window.innerWidth - 298; // Margin phải 10px
+          const POPUP_WIDTH = 288;
+          const viewportWidth = window.innerWidth;
+          let alignRight = false;
+
+          if (left + POPUP_WIDTH > viewportWidth - 10) {
+              left = rect.right; 
+              alignRight = true;
           }
 
-          setFilterPopupPos({ top, left });
+          if (alignRight && (left - POPUP_WIDTH < 10)) {
+               alignRight = false;
+               left = 10;
+          }
+
+          setFilterPopupPos({ top, left, alignRight });
           setActiveFilterColumn(columnKey);
           setFilterSearchTerm('');
       }
@@ -448,7 +482,11 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
 
   // --- Handlers cho Items trong Modal ---
   const handleAddItemRow = () => {
-    setFormItems([...formItems, { sku: '', type: 'Printway', quantity: 1, note: '' }]);
+    setFormItems([...formItems, { 
+        sku: '', type: 'Printway', quantity: 1, note: '', 
+        productName: '', itemSku: '',
+        urlMockup: '', mockupType: 'Mockup để tham khảo'
+    }]);
   };
 
   const handleRemoveItemRow = (index: number) => {
@@ -511,9 +549,15 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
           link: '',
           status: 'Pending',
           actionRole: '',
-          isChecked: false
+          isChecked: false,
+          isFulfilled: false
       });
-      setFormItems([{ sku: '', type: 'Printway', quantity: 1, note: '' }]);
+      setFormItems([{ 
+          sku: '', type: 'Printway', quantity: 1, note: '', 
+          productName: '', itemSku: '',
+          urlMockup: '', mockupType: 'Mockup để tham khảo'
+      }]);
+      setRawAddress('');
       setIsModalOpen(true);
   };
 
@@ -527,15 +571,146 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
           link: order.link || '',
           status: order.status || 'Pending',
           actionRole: order.actionRole || '',
-          isChecked: order.isChecked || false
+          isChecked: order.isChecked || false,
+          isFulfilled: order.isFulfilled || false
       });
       setFormItems([{
           sku: order.sku,
           type: order.type || '',
           quantity: order.quantity || 1,
-          note: order.note || ''
+          note: order.note || '',
+          productName: order.productName || '',
+          itemSku: order.itemSku || '',
+          urlMockup: order.urlMockup || '',
+          mockupType: order.mockupType || 'Mockup để tham khảo'
       }]);
+      // Attempt to populate raw address for display if available in hidden fields? 
+      // For now we keep it empty or try to reconstruct it if fields exist
+      if (order.shippingFirstName || order.shippingAddress1) {
+          const constructed = `First_name: ${order.shippingFirstName}\nLast_name: ${order.shippingLastName}\nShipping_address1: ${order.shippingAddress1}\nShipping_address2: ${order.shippingAddress2}\nShipping_city: ${order.shippingCity}\nShipping_zip: ${order.shippingZip}\nShipping_province: ${order.shippingProvince}\nShipping_country: ${order.shippingCountry}\nShipping_phone: ${order.shippingPhone}`;
+          setRawAddress(constructed);
+      } else {
+          setRawAddress('');
+      }
       setIsModalOpen(true);
+  };
+
+  const getShippingInfoFromRaw = () => {
+        let shipInfo = {
+            name: '', firstName: '', lastName: '',
+            address1: '', address2: '',
+            city: '', province: '', zip: '', country: '', phone: ''
+        };
+
+        if (rawAddress.trim()) {
+            const lines = rawAddress.split('\n');
+            lines.forEach(line => {
+                const parts = line.split(':');
+                if (parts.length < 2) return;
+
+                const key = parts[0].trim().toLowerCase();
+                let value = parts.slice(1).join(':').trim(); 
+                if (value === '--') value = '';
+
+                if (key === 'first_name') shipInfo.firstName = value;
+                else if (key === 'last_name') shipInfo.lastName = value;
+                else if (key === 'shipping_address1') shipInfo.address1 = value;
+                else if (key === 'shipping_address2') shipInfo.address2 = value;
+                else if (key === 'shipping_city') shipInfo.city = value;
+                else if (key === 'shipping_zip') shipInfo.zip = value;
+                else if (key === 'shipping_province') shipInfo.province = value;
+                else if (key === 'shipping_country') shipInfo.country = value;
+                else if (key === 'shipping_phone') shipInfo.phone = value;
+            });
+            shipInfo.name = `${shipInfo.firstName} ${shipInfo.lastName}`.trim();
+        }
+        return shipInfo;
+  };
+
+  const handleFulfillOrder = async () => {
+        if (!formDataCommon.id || !formDataCommon.storeId) return showMessage('Thiếu thông tin', 'Vui lòng nhập ID và chọn Store.', 'error');
+        if (!currentFileId) return showMessage('Lỗi', 'Không tìm thấy file dữ liệu của tháng này.', 'error');
+
+        const validItems = formItems.filter(item => item.sku.trim() !== '');
+        if (validItems.length === 0) return showMessage('Thiếu sản phẩm', "Vui lòng nhập ít nhất 1 sản phẩm (SKU).", 'error');
+
+        showMessage(
+            'Xác nhận Fulfill',
+            'Bạn có chắc chắn muốn gửi dữ liệu đơn hàng này sang sheet Fulfillment không?',
+            'confirm',
+            async () => {
+                // OPTIMISTIC UI: Close Modal Immediately
+                setIsModalOpen(false);
+                
+                const orderId = formDataCommon.id.trim();
+                
+                // Add to updating list to show spinner on row
+                setUpdatingOrderIds(prev => new Set(prev).add(orderId));
+                if (onProcessStart) onProcessStart();
+
+                // Optimistically update local state to show "Fulfilled" icon
+                setOrders(prev => prev.map(o => 
+                    o.id === orderId ? { ...o, isFulfilled: true } : o
+                ));
+                
+                const shipInfo = getShippingInfoFromRaw();
+                const selectedStore = stores.find(s => s.id === formDataCommon.storeId);
+                const storeValue = selectedStore ? selectedStore.name : formDataCommon.storeId;
+
+                const ordersToFulfill: Order[] = validItems.map(item => ({
+                    id: orderId,
+                    date: formDataCommon.date,
+                    storeId: storeValue,
+                    handler: user?.username || 'Unknown',
+                    sku: item.sku,
+                    type: item.type,
+                    quantity: item.quantity,
+                    note: item.note,
+                    status: formDataExtra.status,
+                    tracking: formDataExtra.tracking,
+                    link: formDataExtra.link,
+                    isChecked: formDataExtra.isChecked,
+                    actionRole: formDataExtra.actionRole,
+                    
+                    shippingName: shipInfo.name,
+                    shippingFirstName: shipInfo.firstName,
+                    shippingLastName: shipInfo.lastName,
+                    shippingAddress1: shipInfo.address1,
+                    shippingAddress2: shipInfo.address2,
+                    shippingCity: shipInfo.city,
+                    shippingProvince: shipInfo.province,
+                    shippingZip: shipInfo.zip,
+                    shippingCountry: shipInfo.country,
+                    shippingPhone: shipInfo.phone,
+                    
+                    rawShipping: '',
+                    productName: item.productName,
+                    itemSku: item.itemSku,
+                    urlMockup: item.urlMockup,
+                    mockupType: item.mockupType
+                }));
+
+                try {
+                    // Send all items to fulfillment sheet in background
+                    await Promise.all(ordersToFulfill.map(order => sheetService.fulfillOrder(currentFileId!, order)));
+                    // Success (Silent) or Toast
+                    // console.log("Fulfill success in background");
+                } catch (error: any) {
+                    // Revert state on error
+                    setOrders(prev => prev.map(o => 
+                        o.id === orderId ? { ...o, isFulfilled: false } : o
+                    ));
+                    showMessage('Lỗi Fulfill', error.message || "Có lỗi xảy ra khi gửi yêu cầu.", 'error');
+                } finally {
+                    setUpdatingOrderIds(prev => {
+                        const newSet = new Set(prev);
+                        newSet.delete(orderId);
+                        return newSet;
+                    });
+                    if (onProcessEnd) onProcessEnd();
+                }
+            }
+        );
   };
 
   const handleSubmitOrder = async (e: React.FormEvent) => {
@@ -559,7 +734,12 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
             link: formDataExtra.link,
             status: formDataExtra.status,
             actionRole: formDataExtra.actionRole,
-            isChecked: formDataExtra.isChecked
+            isChecked: formDataExtra.isChecked,
+            // Include new fields for update
+            productName: itemToUpdate.productName,
+            itemSku: itemToUpdate.itemSku,
+            urlMockup: itemToUpdate.urlMockup,
+            mockupType: itemToUpdate.mockupType
         };
         const orderIdToUpdate = editingOrderId!;
 
@@ -589,6 +769,8 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
         const orderMonth = formDataCommon.date.substring(0, 7);
         const needsFileCreation = !currentFileId || (orderMonth !== selectedMonth);
 
+        const shipInfo = getShippingInfoFromRaw();
+
         const ordersToCreate: Order[] = validItems.map(item => ({
             id: orderIdToAdd,
             date: formDataCommon.date,
@@ -602,7 +784,26 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
             tracking: formDataExtra.tracking,
             link: formDataExtra.link,
             isChecked: formDataExtra.isChecked,
-            actionRole: formDataExtra.actionRole
+            actionRole: formDataExtra.actionRole,
+            
+            shippingName: shipInfo.name,
+            shippingFirstName: shipInfo.firstName,
+            shippingLastName: shipInfo.lastName,
+            shippingAddress1: shipInfo.address1,
+            shippingAddress2: shipInfo.address2,
+            shippingCity: shipInfo.city,
+            shippingProvince: shipInfo.province,
+            shippingZip: shipInfo.zip,
+            shippingCountry: shipInfo.country,
+            shippingPhone: shipInfo.phone,
+            
+            rawShipping: '',
+            // Map item specific fields
+            productName: item.productName,
+            itemSku: item.itemSku,
+            urlMockup: item.urlMockup,
+            mockupType: item.mockupType,
+            isFulfilled: false
         }));
 
         if (needsFileCreation) {
@@ -687,15 +888,6 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
     return 'text-gray-700 bg-gray-50 border-gray-200';
   };
 
-  const formatDateDisplay = (dateStr: string) => {
-    if (!dateStr) return '';
-    try {
-        const [y, m, d] = dateStr.split('-');
-        if (y && m && d) return `${d}/${m}/${y}`;
-        return dateStr;
-    } catch (e) { return dateStr; }
-  };
-
   const handleMonthChange = (step: number) => {
     try {
         const [year, month] = selectedMonth.split('-').map(Number);
@@ -718,10 +910,10 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
   return (
     <div className="p-4 bg-gray-100 min-h-screen">
       <div className="bg-white shadow-sm overflow-hidden rounded-lg flex flex-col h-full relative">
-        {/* POPUP FILTER (RENDERED OUTSIDE TABLE FOR OVERFLOW FIX) */}
+        {/* POPUP FILTER */}
         {renderFilterPopup()}
 
-        {/* Header */}
+        {/* Header - No changes here ... */}
         <div className="p-4 border-b border-gray-200 flex flex-col xl:flex-row justify-between items-center gap-4 bg-white z-20">
           <div className="flex flex-col md:flex-row items-center gap-4 w-full xl:w-auto">
             <h2 className="text-xl font-bold text-gray-800 whitespace-nowrap flex items-center gap-2">
@@ -784,7 +976,7 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
           </div>
         </div>
 
-        {/* Table Container - Fixed Height for Sticky Header */}
+        {/* Table Container */}
         <div className="overflow-auto max-h-[calc(100vh-200px)] custom-scrollbar">
           <table className="w-full text-left border-collapse text-sm relative">
             <thead className="text-white font-bold text-center uppercase text-xs tracking-wider sticky top-0 z-20 shadow-md">
@@ -802,14 +994,15 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
                 {renderTh("Note", "note", "min-w-[150px]", "bg-yellow-400 text-black border-l", true)}
                 {renderTh("Người xử lý", "handler", "w-32", "bg-[#1a4019] border-l")}
                 {renderTh("Action Role", "actionRole", "w-36", "bg-[#1a4019] border-l")}
+                {renderTh("Fulfill", "isFulfilled", "w-20", "bg-[#1a4019] border-l")}
                 <th className="px-3 py-3 border-l border-gray-600 w-16 sticky top-0 bg-[#1a4019] z-20 text-center">Edit</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {loading && orders.length === 0 ? 
-                <tr><td colSpan={14} className="text-center py-12 text-gray-500">Đang tải dữ liệu tháng {selectedMonth}...</td></tr> : 
+                <tr><td colSpan={15} className="text-center py-12 text-gray-500">Đang tải dữ liệu tháng {selectedMonth}...</td></tr> : 
                 (sortedOrders.length === 0 ? 
-                    <tr><td colSpan={14} className="text-center py-12 text-gray-500">Tháng {selectedMonth} chưa có đơn hàng nào hoặc không tìm thấy kết quả.</td></tr> :
+                    <tr><td colSpan={15} className="text-center py-12 text-gray-500">Tháng {selectedMonth} chưa có đơn hàng nào hoặc không tìm thấy kết quả.</td></tr> :
                     sortedOrders.map((order, idx) => (
                         <tr key={order.id + idx} className="hover:bg-gray-50 border-b border-gray-200 text-gray-800 transition-colors">
                             <td className="px-2 py-3 border-r text-center whitespace-nowrap text-gray-600">{formatDateDisplay(order.date)}</td>
@@ -866,11 +1059,23 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
                                 {order.actionRole || '-'}
                             </td>
 
+                            <td className="px-1 py-1 border-l text-center">
+                                {order.isFulfilled ? (
+                                    <Truck size={18} className="text-indigo-600 inline" title="Đã Fulfill" />
+                                ) : (
+                                    <span className="text-gray-300">-</span>
+                                )}
+                            </td>
+
                             {/* EDIT BUTTON or LOADING SPINNER */}
                             <td className="px-1 py-1 border-l text-center">
                                 {updatingOrderIds.has(order.id) ? (
                                     <div className="flex justify-center items-center h-full">
                                         <Loader2 size={16} className="animate-spin text-orange-500" />
+                                    </div>
+                                ) : order.isFulfilled ? (
+                                    <div className="flex justify-center items-center h-full text-gray-300 cursor-not-allowed" title="Đã Fulfill (Không thể sửa)">
+                                        <Lock size={14} />
                                     </div>
                                 ) : (
                                     <button 
@@ -933,7 +1138,7 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
       {/* --- MODAL TẠO / SỬA ĐƠN HÀNG (DARK MODE & MULTI SKU) --- */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl w-full max-w-4xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="bg-white rounded-xl w-full max-w-[95%] xl:max-w-7xl shadow-2xl overflow-hidden max-h-[95vh] flex flex-col">
                 <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-[#1e293b]">
                     <h3 className="font-bold text-lg text-white flex items-center gap-2">
                         {isEditMode ? <Edit className="text-orange-500" size={24} /> : <Plus className="text-orange-500" size={24} />}
@@ -1012,15 +1217,19 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
                                 </div>
                             )}
 
-                            <div className="bg-gray-50 border border-gray-200 rounded-lg overflow-hidden">
-                                <table className="w-full text-left text-sm">
+                            <div className="bg-gray-50 border border-gray-200 rounded-lg overflow-hidden overflow-x-auto">
+                                <table className="w-full text-left text-sm min-w-[1000px]">
                                     <thead className="bg-gray-100 text-gray-600 text-xs uppercase font-semibold">
                                         <tr>
-                                            <th className="px-3 py-2 w-12 text-center">#</th>
-                                            <th className="px-3 py-2 w-32">Đơn vị (Type)</th>
-                                            <th className="px-3 py-2">SKU Sản Phẩm <span className="text-red-500">*</span></th>
-                                            <th className="px-3 py-2 w-20 text-center">SL</th>
-                                            <th className="px-3 py-2">Ghi chú</th>
+                                            <th className="px-3 py-2 w-10 text-center">#</th>
+                                            <th className="px-3 py-2 w-28">Type</th>
+                                            <th className="px-3 py-2 w-48">Product Name</th>
+                                            <th className="px-3 py-2 w-32">SKU Sản Phẩm <span className="text-red-500">*</span></th>
+                                            <th className="px-3 py-2 w-32">Item SKU</th>
+                                            <th className="px-3 py-2 w-48">URL Mockup</th>
+                                            <th className="px-3 py-2 w-40">Loại Mockup</th>
+                                            <th className="px-3 py-2 w-16 text-center">SL</th>
+                                            <th className="px-3 py-2 w-32">Ghi chú</th>
                                             <th className="px-3 py-2 w-10"></th>
                                         </tr>
                                     </thead>
@@ -1030,7 +1239,7 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
                                                 <td className="px-3 py-2 text-center text-gray-400 font-mono text-xs">{index + 1}</td>
                                                 <td className="px-2 py-2">
                                                     <select 
-                                                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-1 focus:ring-orange-500 outline-none"
+                                                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-orange-500 outline-none"
                                                         value={item.type}
                                                         onChange={(e) => handleItemChange(index, 'type', e.target.value)}
                                                     >
@@ -1043,7 +1252,16 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
                                                 <td className="px-2 py-2">
                                                     <input 
                                                         type="text" 
-                                                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm font-mono focus:ring-1 focus:ring-orange-500 outline-none" 
+                                                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-orange-500 outline-none" 
+                                                        placeholder="Tên sản phẩm..." 
+                                                        value={item.productName || ''}
+                                                        onChange={(e) => handleItemChange(index, 'productName', e.target.value)}
+                                                    />
+                                                </td>
+                                                <td className="px-2 py-2">
+                                                    <input 
+                                                        type="text" 
+                                                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs font-mono focus:ring-1 focus:ring-orange-500 outline-none" 
                                                         placeholder="SKU..." 
                                                         value={item.sku}
                                                         onChange={(e) => handleItemChange(index, 'sku', e.target.value)}
@@ -1051,8 +1269,37 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
                                                 </td>
                                                 <td className="px-2 py-2">
                                                     <input 
+                                                        type="text" 
+                                                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs font-mono focus:ring-1 focus:ring-orange-500 outline-none" 
+                                                        placeholder="Item SKU..." 
+                                                        value={item.itemSku || ''}
+                                                        onChange={(e) => handleItemChange(index, 'itemSku', e.target.value)}
+                                                    />
+                                                </td>
+                                                <td className="px-2 py-2">
+                                                    <input 
+                                                        type="text" 
+                                                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs text-blue-600 focus:ring-1 focus:ring-orange-500 outline-none" 
+                                                        placeholder="URL..." 
+                                                        value={item.urlMockup || ''}
+                                                        onChange={(e) => handleItemChange(index, 'urlMockup', e.target.value)}
+                                                    />
+                                                </td>
+                                                <td className="px-2 py-2">
+                                                    <select 
+                                                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-orange-500 outline-none"
+                                                        value={item.mockupType || 'Mockup để tham khảo'}
+                                                        onChange={(e) => handleItemChange(index, 'mockupType', e.target.value)}
+                                                    >
+                                                        <option value="Mockup để tham khảo">Mockup để tham khảo</option>
+                                                        <option value="Mockup để tham khảo 1">Mockup để tham khảo 1</option>
+                                                        <option value="Mockup để tham khảo 2">Mockup để tham khảo 2</option>
+                                                    </select>
+                                                </td>
+                                                <td className="px-2 py-2">
+                                                    <input 
                                                         type="number" 
-                                                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-center font-bold focus:ring-1 focus:ring-orange-500 outline-none" 
+                                                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs text-center font-bold focus:ring-1 focus:ring-orange-500 outline-none" 
                                                         value={item.quantity}
                                                         onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
                                                         min="1"
@@ -1061,7 +1308,7 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
                                                 <td className="px-2 py-2">
                                                     <input 
                                                         type="text" 
-                                                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-1 focus:ring-orange-500 outline-none" 
+                                                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-orange-500 outline-none" 
                                                         placeholder="..." 
                                                         value={item.note}
                                                         onChange={(e) => handleItemChange(index, 'note', e.target.value)}
@@ -1162,9 +1409,38 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
                                  </div>
                              </div>
                         </div>
+
+                         {/* 4. THÔNG TIN GIAO HÀNG (SHIPPING - RAW PASTE) */}
+                         {!isEditMode && (
+                             <div className="bg-slate-700 p-4 rounded-lg border border-gray-600">
+                                <h4 className="text-white text-xs font-bold uppercase mb-3 flex items-center gap-2">
+                                    <MapPin size={14} />
+                                    Thông tin giao hàng (Shipping)
+                                </h4>
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-400 mb-1">Dán địa chỉ (Tự động phân tích)</label>
+                                        <textarea
+                                            className={`${darkInputClass} h-24 resize-none font-mono text-xs`}
+                                            placeholder={`First_name: Sharon\nLast_name: Zwick\nShipping_address1: 124 Tallwood Dr\nShipping_address2: --\nShipping_city: Vernon\nShipping_zip: 06066-5926\nShipping_province: CT\nShipping_country: United States\nShipping_phone: --`}
+                                            value={rawAddress}
+                                            onChange={(e) => setRawAddress(e.target.value)}
+                                        />
+                                        <p className="text-gray-400 text-[10px] mt-1 italic">
+                                            * Hệ thống sẽ tự động phân tích định dạng Key: Value và lưu vào các cột Shipping khi bạn bấm "Tạo Đơn Hàng".
+                                        </p>
+                                    </div>
+                                </div>
+                             </div>
+                         )}
                     </div>
 
                     <div className="p-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
+                        <button type="button" disabled={isSubmitting} onClick={handleFulfillOrder} className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-sm transition-colors flex items-center gap-2 disabled:opacity-70">
+                            {isSubmitting ? <Loader2 className="animate-spin" size={20}/> : <Truck size={20} />}
+                            Fulfill
+                        </button>
+                        <div className="flex-1"></div>
                         <button type="button" disabled={isSubmitting} onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors shadow-sm">Hủy bỏ</button>
                         <button type="submit" disabled={isSubmitting} className="px-6 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-70">
                             {isSubmitting ? <Loader2 className="animate-spin" size={20}/> : <Save size={20} />}

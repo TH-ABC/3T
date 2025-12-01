@@ -1,3 +1,4 @@
+
 import { Order, OrderStatus, DailyRevenue, Store, User, AuthResponse, DailyStat, StoreHistoryItem, Role } from '../types';
 
 // ============================================================================
@@ -138,7 +139,26 @@ export const sheetService = {
         status: item.status || 'Pending',                 
         note: item.note || '',                            
         handler: item.handler || item.user || '',         
-        actionRole: item.actionRole || ''                 
+        actionRole: item.actionRole || '',
+        // Shipping info mapping (nếu có từ sheet)
+        shippingName: item.shippingName || '',
+        shippingFirstName: item.shippingFirstName || '',
+        shippingLastName: item.shippingLastName || '',
+        shippingAddress1: item.shippingAddress1 || '',
+        shippingAddress2: item.shippingAddress2 || '',
+        shippingCity: item.shippingCity || '',
+        shippingProvince: item.shippingProvince || '',
+        shippingZip: item.shippingZip || '',
+        shippingCountry: item.shippingCountry || '',
+        shippingPhone: item.shippingPhone || '',
+        // Product Info
+        productName: item.productName || '',
+        itemSku: item.itemSku || '',
+        // Mockup Info (New Columns)
+        urlMockup: item.urlMockup || '',
+        mockupType: item.mockupType || 'Mockup để tham khảo',
+        // Fulfilled Status
+        isFulfilled: item.isFulfilled === true || item.isFulfilled === "TRUE"
     });
 
     // Xử lý dữ liệu trả về
@@ -178,6 +198,11 @@ export const sheetService = {
     return order;
   },
 
+  // Parse Raw Shipping Address via App Script
+  parseAddress: async (rawText: string): Promise<{ success: boolean, data?: any, error?: string }> => {
+    return await callAPI('parseAddress', 'POST', { rawText }, { keepalive: false });
+  },
+
   // Update a specific field of an order directly to Google Sheet
   updateOrder: async (fileId: string, orderId: string, field: string, value: any): Promise<any> => {
     return await callAPI('updateOrder', 'POST', { fileId, orderId, field, value });
@@ -186,6 +211,12 @@ export const sheetService = {
   // Update multiple fields for a single order (BATCH UPDATE - Single Request)
   updateOrderBatch: async (fileId: string, orderId: string, data: Partial<Order>): Promise<any> => {
     return await callAPI('updateOrderRow', 'POST', { fileId, orderId, data });
+  },
+
+  // EXPORT ORDER TO FULFILLMENT SHEET
+  // Use keepalive: true to ensure execution even if tab closes
+  fulfillOrder: async (fileId: string, orderData: Order): Promise<any> => {
+    return await callAPI('fulfillOrder', 'POST', { fileId, ...orderData }, { keepalive: true });
   },
 
   // Manual trigger to create a month file

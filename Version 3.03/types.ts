@@ -12,6 +12,10 @@ export interface OrderItem {
   type: string;
   quantity: string | number;
   note: string;
+  productName?: string;
+  itemSku?: string;
+  urlMockup?: string;
+  mockupType?: string;
 }
 
 export interface Order {
@@ -29,6 +33,26 @@ export interface Order {
   isChecked?: boolean; // New Checkbox
   actionRole?: string; // New Role Action
   items?: OrderItem[]; // Support multiple items per order
+  isFulfilled?: boolean; // New Fulfilled Status
+
+  // --- SHIPPING INFO (Hidden on UI, saved to Sheet) ---
+  rawShipping?: string; // Raw text to be parsed by backend
+  shippingName?: string;
+  shippingFirstName?: string;
+  shippingLastName?: string;
+  shippingAddress1?: string;
+  shippingAddress2?: string;
+  shippingCity?: string;
+  shippingProvince?: string;
+  shippingZip?: string;
+  shippingCountry?: string;
+  shippingPhone?: string;
+
+  // --- PRODUCT INFO ---
+  productName?: string;
+  itemSku?: string;
+  urlMockup?: string;
+  mockupType?: string;
 }
 
 export interface Store {
