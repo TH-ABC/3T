@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Search, Plus, RefreshCw, Copy, ArrowDown, Save, ExternalLink, Calendar, FileSpreadsheet, ChevronLeft, ChevronRight, UserCircle, CheckSquare, Square, Trash2, Edit, Loader2, FolderPlus, AlertTriangle, Info, Filter, ArrowDownAZ, ArrowUpAZ, MapPin, Truck, Lock, Link as LinkIcon, Package, CheckCircle, Tag, ChevronDown, ChevronUp, LayoutGrid, BarChart3, Clock, Settings2, Eye, EyeOff } from 'lucide-react';
 import { sheetService } from '../services/sheetService';
@@ -1138,7 +1137,7 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
                                         <Loader2 size={16} className="animate-spin text-orange-500 mx-auto" />
                                     ) : (
                                         <div className="flex items-center justify-center gap-2">
-                                            <button onClick={() => openEditModal(order)} className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded" title="Sửa"><Edit size={16} /></button>
+                                            <button onClick={() => openEditModal(order)} className={`p-1.5 rounded transition-colors ${order.isFulfilled ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:text-blue-600 hover:bg-blue-50'}`} title={order.isFulfilled ? "Đã khóa do Fulfill" : "Sửa"} disabled={order.isFulfilled}>{order.isFulfilled ? <Lock size={16} /> : <Edit size={16} />}</button>
                                             <button onClick={() => openDuplicateModal(order)} className="p-1.5 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded" title="Nhân bản"><Copy size={16} /></button>
                                         </div>
                                     )}
