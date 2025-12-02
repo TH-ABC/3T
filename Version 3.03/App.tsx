@@ -1,12 +1,13 @@
+
 import React, { useState, useEffect } from 'react';
 import { Menu } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
-import OrderList from './components/OrderList';
+import { OrderList } from './components/OrderList';
 import Login from './components/Login';
 import UserManagement from './components/UserManagement';
 import StoreDetail from './components/StoreDetail';
-import DesignerOnlineList from './components/DesignerOnlineList';
+import { DesignerOnlineList } from './components/DesignerOnlineList';
 import ChangePasswordModal from './components/ChangePasswordModal';
 import { User, Store } from './types';
 
@@ -117,7 +118,11 @@ function App() {
             onProcessEnd={handleProcessEnd} 
         />;
       case 'designer_online':
-        return <DesignerOnlineList user={user} />;
+        return <DesignerOnlineList 
+            user={user}
+            onProcessStart={handleProcessStart}
+            onProcessEnd={handleProcessEnd}
+        />;
       case 'users':
         return user.role === 'admin' ? <UserManagement /> : <div className="p-6">Bạn không có quyền truy cập.</div>;
       default:

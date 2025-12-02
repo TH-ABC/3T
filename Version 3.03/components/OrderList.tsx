@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { Search, Plus, RefreshCw, Copy, ArrowDown, Save, ExternalLink, Calendar, FileSpreadsheet, ChevronLeft, ChevronRight, UserCircle, CheckSquare, Square, Trash2, Edit, Loader2, FolderPlus, AlertTriangle, Info, Filter, ArrowDownAZ, ArrowUpAZ, MapPin, Truck, Lock, Link as LinkIcon, Package } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Search, Plus, RefreshCw, Copy, ArrowDown, Save, ExternalLink, Calendar, FileSpreadsheet, ChevronLeft, ChevronRight, UserCircle, CheckSquare, Square, Trash2, Edit, Loader2, FolderPlus, AlertTriangle, Info, Filter, ArrowDownAZ, ArrowUpAZ, MapPin, Truck, Lock, Link as LinkIcon, Package, CheckCircle, Tag, ChevronDown, ChevronUp, LayoutGrid, BarChart3, Clock, Settings2, Eye, EyeOff } from 'lucide-react';
 import { sheetService } from '../services/sheetService';
 import { Order, Store, User, OrderItem } from '../types';
 
@@ -18,16 +18,15 @@ const formatDateDisplay = (dateStr: string) => {
     // Manual parsing chuỗi để giữ nguyên giá trị Server gửi về
     const parts = dateStr.split(/[-T :]/); 
     
-    if (parts.length >= 3) {
+    if (parts.length >= 5) { 
         const y = parts[0];
         const m = parts[1];
         const d = parts[2];
         const hh = parts[3] || '00';
         const mm = parts[4] || '00';
-        const ss = parts[5] && parts[5].length >= 2 ? parts[5].substring(0, 2) : '00';
         
         if (y.length === 4) {
-             return `${d}/${m}/${y} ${hh}:${mm}:${ss}`;
+             return `${d}/${m}/${y} ${hh}:${mm}`;
         }
     }
 
@@ -40,9 +39,28 @@ const formatDateDisplay = (dateStr: string) => {
         const y = date.getFullYear();
         const hh = String(date.getHours()).padStart(2, '0');
         const mm = String(date.getMinutes()).padStart(2, '0');
-        const ss = String(date.getSeconds()).padStart(2, '0');
         
-        return `${d}/${m}/${y} ${hh}:${mm}:${ss}`;
+        return `${d}/${m}/${y} ${hh}:${mm}`;
+    } catch (e) { return dateStr; }
+};
+
+// Helper: Chỉ hiển thị Ngày (DD/MM/YYYY) cho cột Date Order
+const formatDateOnly = (dateStr: string) => {
+    if (!dateStr) return '';
+    const parts = dateStr.split(/[-T :]/); 
+    if (parts.length >= 3) {
+        const y = parts[0];
+        const m = parts[1];
+        const d = parts[2];
+        if (y.length === 4) return `${d}/${m}/${y}`;
+    }
+    try {
+        const date = new Date(dateStr);
+        if (isNaN(date.getTime())) return dateStr;
+        const d = String(date.getDate()).padStart(2, '0');
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const y = date.getFullYear();
+        return `${d}/${m}/${y}`;
     } catch (e) { return dateStr; }
 };
 
@@ -57,7 +75,6 @@ const toDatetimeLocal = (dateStr: string) => {
     } catch (e) { return ''; }
 };
 
-// --- HIERARCHY CONFIGURATION ---
 const ROLE_HIERARCHY: Record<string, number> = {
     'admin': 1,
     'leader': 2,
@@ -68,7 +85,42 @@ const ROLE_HIERARCHY: Record<string, number> = {
 };
 
 const getRoleLevel = (role: string): number => {
-    return ROLE_HIERARCHY[(role || '').toLowerCase().trim()] || 99; // 99 = Unknown/Lowest
+    return ROLE_HIERARCHY[(role || '').toLowerCase().trim()] || 99;
+};
+
+// --- HELPER FOR STORE COLORS ---
+const getStoreBadgeStyle = (storeName: string) => {
+    const colors = [
+        'bg-blue-100 text-blue-800 border-blue-200',
+        'bg-green-100 text-green-800 border-green-200',
+        'bg-purple-100 text-purple-800 border-purple-200',
+        'bg-pink-100 text-pink-800 border-pink-200',
+        'bg-indigo-100 text-indigo-800 border-indigo-200',
+        'bg-teal-100 text-teal-800 border-teal-200',
+        'bg-orange-100 text-orange-800 border-orange-200',
+        'bg-cyan-100 text-cyan-800 border-cyan-200',
+    ];
+    let hash = 0;
+    for (let i = 0; i < storeName.length; i++) {
+        hash = storeName.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const index = Math.abs(hash % colors.length);
+    return colors[index];
+};
+
+// --- HELPER FOR ROLE STYLES ---
+const getRoleBadgeStyle = (role: string) => {
+    const r = (role || '').toLowerCase().trim();
+    if (r === 'admin') {
+        // Special flashing Red-Green style for Admin
+        return 'font-extrabold bg-gradient-to-r from-red-600 via-green-500 to-red-600 bg-[length:200%_auto] text-transparent bg-clip-text animate-pulse border-2 border-red-200 bg-red-50';
+    }
+    if (r.includes('leader')) return 'bg-amber-100 text-amber-800 border-amber-200 font-bold';
+    if (r.includes('support')) return 'bg-sky-100 text-sky-800 border-sky-200';
+    if (r.includes('designer')) return 'bg-fuchsia-100 text-fuchsia-800 border-fuchsia-200';
+    if (r.includes('idea')) return 'bg-lime-100 text-lime-800 border-lime-200';
+    
+    return 'bg-gray-100 text-gray-600 border-gray-200';
 };
 
 interface OrderListProps {
@@ -77,7 +129,6 @@ interface OrderListProps {
     onProcessEnd?: () => void;
 }
 
-// --- SYSTEM MESSAGE MODAL INTERFACE ---
 interface SystemModalState {
     isOpen: boolean;
     type: 'success' | 'error' | 'confirm' | 'alert';
@@ -86,55 +137,109 @@ interface SystemModalState {
     onConfirm?: () => void;
 }
 
-const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEnd }) => {
+export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEnd }) => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [units, setUnits] = useState<string[]>([]); 
   const [allUsers, setAllUsers] = useState<User[]>([]); 
   const [loading, setLoading] = useState(true);
+  const [dataError, setDataError] = useState<{ message: string, detail?: string, fileId?: string } | null>(null);
   
-  // GLOBAL SEARCH
   const [searchTerm, setSearchTerm] = useState('');
-  
-  // SORT & FILTER STATES
   const [sortConfig, setSortConfig] = useState<{ key: keyof Order; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
-  
-  // Lưu trữ bộ lọc theo từng cột: Key = column key, Value = Mảng các giá trị được chọn (nếu null/empty là không lọc)
   const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>({});
   
-  // Quản lý Popup Filter
   const [activeFilterColumn, setActiveFilterColumn] = useState<string | null>(null);
-  const [filterSearchTerm, setFilterSearchTerm] = useState(''); // Tìm kiếm nội bộ trong popup filter
+  const [filterSearchTerm, setFilterSearchTerm] = useState(''); 
   const [filterPopupPos, setFilterPopupPos] = useState<{ top: number, left: number, alignRight: boolean } | null>(null);
   const filterPopupRef = useRef<HTMLDivElement>(null);
 
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentLocalMonth());
+  const selectedMonthRef = useRef<string>(selectedMonth);
+  
   const [currentFileId, setCurrentFileId] = useState<string | null>(null);
   
-  // --- TRACKING BACKGROUND UPDATES ---
   const [updatingOrderIds, setUpdatingOrderIds] = useState<Set<string>>(new Set());
-
-  // --- MODAL STATE ---
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
-
-  // --- SYSTEM MODAL STATE ---
   const [sysModal, setSysModal] = useState<SystemModalState>({ isOpen: false, type: 'alert', title: '', message: '' });
 
-  // --- FORM STATE ---
   const [isAddingUnit, setIsAddingUnit] = useState(false);
   const [newUnitName, setNewUnitName] = useState('');
   
+  // --- COLUMN VISIBILITY STATE ---
+  const [showColumnSelector, setShowColumnSelector] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(() => {
+      try {
+          const saved = localStorage.getItem('oms_visible_columns');
+          return saved ? JSON.parse(saved) : {
+              lastModified: true, // Date List
+              date: true,         // Date Order
+              id: true,
+              storeName: true,
+              type: true,
+              sku: true,
+              quantity: true,
+              tracking: true,
+              checkbox: true,
+              link: true,
+              status: true,
+              note: true,
+              handler: true,
+              actionRole: true,
+              isFulfilled: true,
+              action: true
+          };
+      } catch {
+          return {
+              lastModified: true, date: true, id: true, storeName: true, type: true, sku: true, 
+              quantity: true, tracking: true, checkbox: true, link: true, status: true, note: true, 
+              handler: true, actionRole: true, isFulfilled: true, action: true
+          };
+      }
+  });
+
+  // Save column preference
+  useEffect(() => {
+      localStorage.setItem('oms_visible_columns', JSON.stringify(visibleColumns));
+  }, [visibleColumns]);
+
+  const toggleColumn = (key: string) => {
+      setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const columnLabels: Record<string, string> = {
+      lastModified: 'Date List',
+      date: 'Date Order',
+      id: 'ID Order',
+      storeName: 'Store',
+      type: 'Loại',
+      sku: 'SKU',
+      quantity: 'Qty',
+      tracking: 'Tracking',
+      checkbox: 'Checkbox',
+      link: 'Link',
+      status: 'Trạng Thái',
+      note: 'Note',
+      handler: 'Handler',
+      actionRole: 'Role',
+      isFulfilled: 'Fulfill',
+      action: 'Action'
+  };
+
+  // --- SUMMARY STATS STATE ---
+  const [showSummary, setShowSummary] = useState(false);
+  const [summaryDateRange, setSummaryDateRange] = useState<{start: string, end: string}>({
+      start: new Date().toISOString().slice(0, 10),
+      end: new Date().toISOString().slice(0, 10)
+  });
+
   const [formDataCommon, setFormDataCommon] = useState({
     id: '', 
-    // Khởi tạo ngày giờ hiện tại cho form
-    date: (() => {
-        const now = new Date();
-        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-        return now.toISOString().slice(0, 16);
-    })(),
+    // DATE LIST: No default value for create mode
+    date: '', 
     storeId: ''
   });
 
@@ -147,9 +252,7 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
       isFulfilled: false
   });
 
-  // SHIPPING STATE (Hidden on UI, but saved)
   const [rawAddress, setRawAddress] = useState('');
-
   const [formItems, setFormItems] = useState<OrderItem[]>([
     { 
         sku: '', type: 'Printway', quantity: 1, note: '', 
@@ -163,7 +266,6 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
   const yearsList = Array.from({ length: 11 }, (_, i) => currentYear - 5 + i);
   const monthsList = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
 
-  // Initialize Metadata Once
   useEffect(() => {
       const fetchMetadata = async () => {
           try {
@@ -180,25 +282,90 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
       fetchMetadata();
   }, []);
 
-  // Optimized loadData
-  const loadData = async () => {
-    if (orders.length === 0) setLoading(true);
+  // Define getStoreName before useMemo
+  const getStoreName = (id: string) => {
+      const store = stores.find(s => String(s.id) === String(id) || s.name === id);
+      return store ? store.name : id;
+  };
+
+  const loadData = async (monthToFetch: string) => {
+    setLoading(true);
+    setOrders([]); 
+    setDataError(null);
+    setCurrentFileId(null);
+
     try {
-      const orderResult = await sheetService.getOrders(selectedMonth);
-      setOrders(orderResult.orders);
-      setCurrentFileId(orderResult.fileId); 
+      const orderResult = await sheetService.getOrders(monthToFetch);
+      
+      if (selectedMonthRef.current !== monthToFetch) {
+          return;
+      }
+
+      const rawOrders = orderResult.orders || [];
+      const validOrders = rawOrders.filter(o => {
+          if (!o.date) return false;
+          const dateStr = String(o.date).trim();
+          return dateStr.startsWith(monthToFetch);
+      });
+
+      if (rawOrders.length > 0 && validOrders.length === 0) {
+          const sampleDate = rawOrders[0].date;
+          const actualMonth = sampleDate ? sampleDate.substring(0, 7) : 'Không xác định';
+          
+          setDataError({
+              message: `Cảnh báo: Bạn đang chọn Tháng ${monthToFetch} nhưng dữ liệu tải về thuộc Tháng ${actualMonth}.`,
+              detail: `Hệ thống vẫn hiển thị dữ liệu bên dưới để bạn kiểm tra. Vui lòng kiểm tra nội dung File Sheet nguồn.`,
+              fileId: orderResult.fileId
+          });
+          setOrders(rawOrders);
+          setCurrentFileId(orderResult.fileId); 
+      } else {
+          setOrders(validOrders);
+          setCurrentFileId(orderResult.fileId); 
+      }
+      
     } catch (e) {
-      console.error(e);
-      setOrders([]);
-      setCurrentFileId(null);
+      if (selectedMonthRef.current === monthToFetch) {
+        console.error(e);
+        setOrders([]);
+        setCurrentFileId(null);
+      }
     } finally {
-      setLoading(false);
+      if (selectedMonthRef.current === monthToFetch) {
+        setLoading(false);
+      }
     }
   };
 
-  useEffect(() => { loadData(); }, [selectedMonth]);
+  useEffect(() => { 
+      selectedMonthRef.current = selectedMonth;
+      loadData(selectedMonth); 
+  }, [selectedMonth]);
 
-  // Click outside to close filter popup
+  // --- SUMMARY CALCULATION ---
+  const summaryStats = useMemo(() => {
+      const stats: Record<string, number> = {};
+      let total = 0;
+      
+      const start = new Date(summaryDateRange.start);
+      start.setHours(0,0,0,0);
+      const end = new Date(summaryDateRange.end);
+      end.setHours(23,59,59,999);
+
+      orders.forEach(o => {
+          const d = new Date(o.date);
+          if (d >= start && d <= end) {
+              const sName = getStoreName(o.storeId);
+              stats[sName] = (stats[sName] || 0) + 1;
+              total++;
+          }
+      });
+
+      return { stats, total };
+  }, [orders, summaryDateRange, stores]);
+
+
+  // ... (Filter logic omitted for brevity, keeping existing)
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
         if (filterPopupRef.current && !filterPopupRef.current.contains(event.target as Node)) {
@@ -208,28 +375,18 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
         }
     };
     document.addEventListener('mousedown', handleClickOutside);
-    // Handle scroll to close popup
     window.addEventListener('scroll', () => {
         if (activeFilterColumn) {
              setActiveFilterColumn(null);
              setFilterPopupPos(null);
         }
     }, true);
-
     return () => {
         document.removeEventListener('mousedown', handleClickOutside);
         window.removeEventListener('scroll', () => {}, true);
     };
   }, [activeFilterColumn]);
 
-  // --- FILTER & SORT LOGIC ---
-
-  const getStoreName = (id: string) => {
-      const store = stores.find(s => String(s.id) === String(id) || s.name === id);
-      return store ? store.name : id;
-  };
-
-  // 1. Lấy danh sách giá trị duy nhất cho 1 cột (để hiển thị trong checkbox list)
   const getUniqueValues = (key: keyof Order | 'storeName' | 'isFulfilled'): string[] => {
       const values = new Set<string>();
       orders.forEach(order => {
@@ -239,30 +396,27 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
           } else if (key === 'isFulfilled') {
               val = order.isFulfilled ? "Fulfilled" : "Chưa";
           } else {
-              val = String(order[key as keyof Order] || '');
+              // @ts-ignore
+              val = String(order[key] || '');
           }
           if (val) values.add(val);
       });
       return Array.from(values).sort();
   };
 
-  // 2. Xử lý sắp xếp cột
   const handleColumnSort = (key: keyof Order, direction: 'asc' | 'desc') => {
       setSortConfig({ key, direction });
-      setActiveFilterColumn(null); // Đóng popup sau khi sort
+      setActiveFilterColumn(null);
   };
 
-  // 3. Xử lý chọn/bỏ chọn giá trị trong filter
   const handleFilterValueChange = (columnKey: string, value: string) => {
       const currentFilters = columnFilters[columnKey] || [];
       let newFilters: string[];
-      
       if (currentFilters.includes(value)) {
           newFilters = currentFilters.filter(v => v !== value);
       } else {
           newFilters = [...currentFilters, value];
       }
-      
       setColumnFilters({ ...columnFilters, [columnKey]: newFilters });
   };
 
@@ -280,9 +434,7 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
        setColumnFilters(newFilters);
   };
 
-  // 4. Logic lọc dữ liệu chính
   const filteredOrders = orders.filter(o => {
-    // A. Global Search
     const matchesSearch = (
         (o.id ? String(o.id).toLowerCase() : '').includes(searchTerm.toLowerCase()) || 
         (o.sku ? String(o.sku).toLowerCase() : '').includes(searchTerm.toLowerCase()) ||
@@ -293,13 +445,9 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
 
     if (!matchesSearch) return false;
 
-    // B. Column Filters
     for (const [key, val] of Object.entries(columnFilters)) {
         const selectedValues = val as string[];
-        // Nếu selectedValues là undefined hoặc null (đã reset) -> bỏ qua
         if (!selectedValues) continue;
-        
-        // Nếu mảng rỗng -> Có filter nhưng không chọn giá trị nào -> Ẩn hết row
         if (selectedValues.length === 0) return false;
 
         let cellValue = '';
@@ -311,10 +459,8 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
             // @ts-ignore
             cellValue = String(o[key] || '');
         }
-
         if (!selectedValues.includes(cellValue)) return false;
     }
-
     return true;
   });
 
@@ -327,38 +473,28 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
         // @ts-ignore
         const valB = b.item[key];
 
-        // Xử lý Date riêng
         if (key === 'date') {
             const dateA = new Date(String(valA || '')).getTime();
             const dateB = new Date(String(valB || '')).getTime();
-            const validA = !isNaN(dateA);
-            const validB = !isNaN(dateB);
-            if (!validA && !validB) return 0;
-            if (!validA) return 1;
-            if (!validB) return -1;
-            if (dateA !== dateB) {
+            if (!isNaN(dateA) && !isNaN(dateB) && dateA !== dateB) {
                 return sortConfig.direction === 'asc' ? dateA - dateB : dateB - dateA;
             }
         } 
-        // Xử lý String/Number
         else {
             if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
             if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
         }
-
         return a.index - b.index;
     })
     .map(x => x.item);
 
-  // --- RENDER FILTER POPUP ---
+  // ... (renderFilterPopup, renderTh, showMessage, closeMessage logic maintained)
   const renderFilterPopup = () => {
       if (!activeFilterColumn || !filterPopupPos) return null;
-      
       const columnKey = activeFilterColumn;
       const uniqueValues = getUniqueValues(columnKey === 'storeName' ? 'storeName' : columnKey === 'isFulfilled' ? 'isFulfilled' : columnKey as keyof Order);
       const displayValues = uniqueValues.filter(v => v.toLowerCase().includes(filterSearchTerm.toLowerCase()));
       const currentSelected = columnFilters[columnKey];
-      
       const isChecked = (val: string) => {
           if (currentSelected === undefined) return true;
           return currentSelected.includes(val);
@@ -367,7 +503,7 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
       return (
         <div 
             ref={filterPopupRef} 
-            className="fixed bg-white rounded-lg shadow-2xl border border-gray-200 z-[100] flex flex-col text-left animate-fade-in text-gray-800 font-normal cursor-default w-72"
+            className="fixed bg-white rounded-lg shadow-xl border border-gray-200 z-[100] flex flex-col text-left animate-fade-in text-gray-800 font-normal cursor-default w-72"
             style={{ 
                 top: filterPopupPos.top, 
                 left: filterPopupPos.alignRight ? 'auto' : filterPopupPos.left,
@@ -375,77 +511,28 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
             }}
             onClick={(e) => e.stopPropagation()}
         >
-            {/* Sort Actions */}
             <div className="p-2 border-b border-gray-100 space-y-1">
-                <button 
-                    onClick={() => handleColumnSort(columnKey as keyof Order, 'asc')}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 rounded text-gray-700 font-medium"
-                >
-                    <ArrowDownAZ size={16} /> Sắp xếp A - Z
-                </button>
-                <button 
-                    onClick={() => handleColumnSort(columnKey as keyof Order, 'desc')}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 rounded text-gray-700 font-medium"
-                >
-                    <ArrowUpAZ size={16} /> Sắp xếp Z - A
-                </button>
+                <button onClick={() => handleColumnSort(columnKey as keyof Order, 'asc')} className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 rounded text-gray-700 font-medium"><ArrowDownAZ size={16} /> Sắp xếp A - Z</button>
+                <button onClick={() => handleColumnSort(columnKey as keyof Order, 'desc')} className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 rounded text-gray-700 font-medium"><ArrowUpAZ size={16} /> Sắp xếp Z - A</button>
             </div>
-
-            {/* Filter Search */}
             <div className="p-2 border-b border-gray-100 bg-gray-50">
-                <div className="relative">
-                    <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400"/>
-                    <input 
-                        type="text" 
-                        placeholder="Tìm trong danh sách..." 
-                        className="w-full pl-8 pr-2 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-orange-500 outline-none bg-white"
-                        value={filterSearchTerm}
-                        onChange={(e) => setFilterSearchTerm(e.target.value)}
-                        autoFocus
-                    />
-                </div>
+                <div className="relative"><Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400"/><input type="text" placeholder="Tìm trong danh sách..." className="w-full pl-8 pr-2 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-orange-500 outline-none bg-white" value={filterSearchTerm} onChange={(e) => setFilterSearchTerm(e.target.value)} autoFocus /></div>
             </div>
-
-            {/* Checkbox List */}
             <div className="flex-1 overflow-y-auto max-h-60 p-2 space-y-1 custom-scrollbar">
                 {displayValues.length === 0 && <div className="text-xs text-center text-gray-400 py-2">Không tìm thấy</div>}
                 {displayValues.map((val, idx) => (
                     <label key={idx} className="flex items-center gap-2 px-2 py-1.5 hover:bg-orange-50 rounded cursor-pointer text-sm select-none">
-                        <input 
-                            type="checkbox" 
-                            className="rounded border-gray-300 text-orange-600 focus:ring-orange-500 w-4 h-4"
-                            checked={isChecked(val)}
-                            onChange={() => handleFilterValueChange(columnKey, val)}
-                        />
+                        <input type="checkbox" className="rounded border-gray-300 text-orange-600 focus:ring-orange-500 w-4 h-4" checked={isChecked(val)} onChange={() => handleFilterValueChange(columnKey, val)} />
                         <span className="truncate flex-1">{val || '(Trống)'}</span>
                     </label>
                 ))}
             </div>
-
-            {/* Actions Footer */}
             <div className="p-3 border-t border-gray-100 flex justify-between bg-gray-50 rounded-b-lg">
                 <div className="flex gap-2">
-                    <button 
-                        onClick={() => handleSelectAllFilter(columnKey, uniqueValues)}
-                        className="text-xs text-blue-600 hover:text-blue-800 font-bold px-2 py-1 hover:bg-blue-50 rounded"
-                    >
-                        Chọn tất cả
-                    </button>
-                    <button 
-                        onClick={() => handleClearFilter(columnKey)}
-                        className="text-xs text-blue-600 hover:text-blue-800 font-bold px-2 py-1 hover:bg-blue-50 rounded"
-                    >
-                        Bỏ chọn
-                    </button>
+                    <button onClick={() => handleSelectAllFilter(columnKey, uniqueValues)} className="text-xs text-blue-600 hover:text-blue-800 font-bold px-2 py-1 hover:bg-blue-50 rounded">Chọn tất cả</button>
+                    <button onClick={() => handleClearFilter(columnKey)} className="text-xs text-blue-600 hover:text-blue-800 font-bold px-2 py-1 hover:bg-blue-50 rounded">Bỏ chọn</button>
                 </div>
-                {columnFilters[columnKey] !== undefined && (
-                     <button 
-                        onClick={() => handleResetFilterColumn(columnKey)}
-                        className="text-xs text-red-500 hover:text-red-700 font-bold px-2 py-1 hover:bg-red-50 rounded"
-                     >
-                        Hủy lọc
-                     </button>
-                )}
+                {columnFilters[columnKey] !== undefined && (<button onClick={() => handleResetFilterColumn(columnKey)} className="text-xs text-red-500 hover:text-red-700 font-bold px-2 py-1 hover:bg-red-50 rounded">Hủy lọc</button>)}
             </div>
         </div>
       );
@@ -453,653 +540,361 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
 
   const handleFilterClick = (e: React.MouseEvent, columnKey: string) => {
       e.stopPropagation();
-      if (activeFilterColumn === columnKey) {
-          setActiveFilterColumn(null);
-          setFilterPopupPos(null);
-      } else {
+      if (activeFilterColumn === columnKey) { setActiveFilterColumn(null); setFilterPopupPos(null); } 
+      else {
           const rect = e.currentTarget.getBoundingClientRect();
           let top = rect.bottom + 5;
           let left = rect.left;
-          
           const POPUP_WIDTH = 288;
           const viewportWidth = window.innerWidth;
           let alignRight = false;
-
-          if (left + POPUP_WIDTH > viewportWidth - 10) {
-              left = rect.right; 
-              alignRight = true;
-          }
-
-          if (alignRight && (left - POPUP_WIDTH < 10)) {
-               alignRight = false;
-               left = 10;
-          }
-
+          if (left + POPUP_WIDTH > viewportWidth - 10) { left = rect.right; alignRight = true; }
+          if (alignRight && (left - POPUP_WIDTH < 10)) { alignRight = false; left = 10; }
           setFilterPopupPos({ top, left, alignRight });
           setActiveFilterColumn(columnKey);
           setFilterSearchTerm('');
       }
   };
 
-  // --- RENDER TH WITH FILTER ---
-  const renderTh = (label: string, columnKey: string, widthClass?: string, className?: string, isRightBorder: boolean = true) => {
+  const renderTh = (label: string, columnKey: string, widthClass?: string, className?: string) => {
+      // Check visibility
+      if (columnKey !== 'action' && visibleColumns[columnKey] === false) return null;
+
       const isFilterActive = columnFilters[columnKey] !== undefined;
       const isSorted = sortConfig.key === columnKey;
-      
       return (
-        <th className={`px-3 py-3 sticky top-0 bg-[#1a4019] z-20 ${widthClass || ''} ${className || ''} ${isRightBorder ? 'border-r border-gray-600' : ''}`}>
+        <th className={`px-3 py-3 sticky top-0 bg-gray-100 text-gray-600 border-b border-gray-200 z-20 ${widthClass || ''} ${className || ''}`}>
             <div className="flex items-center justify-between gap-1 group">
-                <span 
-                    className="truncate cursor-pointer flex-1"
-                    onClick={() => handleColumnSort(columnKey as keyof Order, sortConfig.direction === 'asc' ? 'desc' : 'asc')}
-                >
-                    {label}
-                </span>
-                
+                <span className="truncate cursor-pointer flex-1 font-bold text-xs uppercase" onClick={() => handleColumnSort(columnKey as keyof Order, sortConfig.direction === 'asc' ? 'desc' : 'asc')}>{label}</span>
                 <div className="relative">
-                    <button 
-                        onClick={(e) => handleFilterClick(e, columnKey)}
-                        className={`p-1 rounded hover:bg-white/20 transition-colors ${isFilterActive || isSorted || activeFilterColumn === columnKey ? 'opacity-100 bg-white/20' : 'opacity-0 group-hover:opacity-100'}`}
-                    >
-                        <Filter size={14} className={isFilterActive ? "text-orange-400 fill-orange-400" : "text-gray-300"} />
+                    <button onClick={(e) => handleFilterClick(e, columnKey)} className={`p-1 rounded hover:bg-gray-200 transition-colors ${isFilterActive || isSorted || activeFilterColumn === columnKey ? 'opacity-100 bg-gray-200' : 'opacity-0 group-hover:opacity-100'}`}>
+                        <Filter size={14} className={isFilterActive ? "text-orange-600 fill-orange-600" : "text-gray-400"} />
                     </button>
                 </div>
             </div>
-            {/* Sort Indicator Small */}
-            {isSorted && (
-                <div className="absolute bottom-0 left-0 w-full h-0.5 bg-orange-500"></div>
-            )}
+            {isSorted && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-orange-500"></div>}
         </th>
       );
   };
 
-  // Helper show modal
   const showMessage = (title: string, message: string, type: SystemModalState['type'] = 'alert', onConfirm?: () => void) => {
       setSysModal({ isOpen: true, title, message, type, onConfirm });
   };
   const closeMessage = () => setSysModal(prev => ({ ...prev, isOpen: false }));
 
-  // --- Handlers cho Items trong Modal ---
-  const handleAddItemRow = () => {
-    setFormItems([...formItems, { 
-        sku: '', type: 'Printway', quantity: 1, note: '', 
-        productName: '', itemSku: '',
-        urlMockup: '', mockupType: 'Mockup để tham khảo',
-        urlArtworkFront: '', urlArtworkBack: ''
-    }]);
-  };
+  // ... Handlers ...
+  const handleAddItemRow = () => { setFormItems([...formItems, { sku: '', type: 'Printway', quantity: 1, note: '', productName: '', itemSku: '', urlMockup: '', mockupType: 'Mockup để tham khảo', urlArtworkFront: '', urlArtworkBack: '' }]); };
+  const handleDuplicateItemRow = (index: number) => { setFormItems([...formItems, { ...formItems[index] }]); };
+  const handleRemoveItemRow = (index: number) => { if (formItems.length === 1 && !isEditMode) { setFormItems([{ sku: '', type: 'Printway', quantity: 1, note: '', productName: '', itemSku: '', urlMockup: '', mockupType: 'Mockup để tham khảo', urlArtworkFront: '', urlArtworkBack: '' }]); return; } setFormItems(formItems.filter((_, i) => i !== index)); };
+  const handleItemChange = (index: number, field: keyof OrderItem, value: any) => { const updatedItems = [...formItems]; updatedItems[index] = { ...updatedItems[index], [field]: value }; setFormItems(updatedItems); };
+  
+  const handleIdBlur = () => { if (!isEditMode && formDataCommon.id) { const isDuplicate = orders.some(o => String(o.id).toLowerCase() === formDataCommon.id.trim().toLowerCase()); if (isDuplicate) showMessage('Cảnh báo trùng lặp', `Mã đơn hàng "${formDataCommon.id}" đã tồn tại!`, 'error'); } };
+  
+  const handleCreateFile = async () => { showMessage('Xác nhận tạo file', `Bạn có chắc chắn muốn tạo file dữ liệu cho Tháng ${selectedMonth}?`, 'confirm', async () => { if (onProcessStart) onProcessStart(); try { const result = await sheetService.createMonthFile(selectedMonth); if (result && result.success) { showMessage('Thành công', `Đã tạo file cho tháng ${selectedMonth} thành công!`, 'success'); loadData(selectedMonth); } else { showMessage('Lỗi', `Không thể tạo file: ${result?.error || "Lỗi không xác định."}`, 'error'); } } catch (e) { showMessage('Lỗi kết nối', 'Không thể kết nối đến server.', 'error'); } finally { if (onProcessEnd) onProcessEnd(); } }); };
 
-  const handleDuplicateItemRow = (index: number) => {
-      const itemToCopy = formItems[index];
-      const newItem = { ...itemToCopy };
-      setFormItems([...formItems, newItem]);
-  };
-
-  const handleRemoveItemRow = (index: number) => {
-    if (formItems.length === 1 && !isEditMode) {
-        setFormItems([{ 
-            sku: '', type: 'Printway', quantity: 1, note: '', 
-            productName: '', itemSku: '',
-            urlMockup: '', mockupType: 'Mockup để tham khảo',
-            urlArtworkFront: '', urlArtworkBack: ''
-        }]);
-        return;
-    }
-    const updatedItems = formItems.filter((_, i) => i !== index);
-    setFormItems(updatedItems);
-  };
-
-  const handleItemChange = (index: number, field: keyof OrderItem, value: any) => {
-    const updatedItems = [...formItems];
-    updatedItems[index] = { ...updatedItems[index], [field]: value };
-    setFormItems(updatedItems);
+  const handleToggleCheckbox = async (order: Order) => { if (updatingOrderIds.has(order.id)) return; if (!currentFileId) return; const newValue = !order.isChecked; setUpdatingOrderIds(prev => new Set(prev).add(order.id)); if (onProcessStart) onProcessStart(); try { await sheetService.updateOrder(currentFileId, order.id, 'isChecked', newValue ? "TRUE" : "FALSE"); setOrders(prev => prev.map(o => o.id === order.id ? { ...o, isChecked: newValue } : o)); } catch (error) { showMessage('Lỗi', 'Không thể cập nhật trạng thái.', 'error'); } finally { setUpdatingOrderIds(prev => { const newSet = new Set(prev); newSet.delete(order.id); return newSet; }); if (onProcessEnd) onProcessEnd(); } };
+  
+  const openAddModal = () => { 
+      setIsEditMode(false); 
+      setEditingOrderId(null); 
+      // Initialize with empty date for user selection
+      setFormDataCommon({ id: '', date: '', storeId: '' }); 
+      setFormDataExtra({ tracking: '', link: '', status: 'Pending', actionRole: '', isChecked: false, isFulfilled: false }); 
+      setFormItems([{ sku: '', type: 'Printway', quantity: 1, note: '', productName: '', itemSku: '', urlMockup: '', mockupType: 'Mockup để tham khảo', urlArtworkFront: '', urlArtworkBack: '' }]); 
+      setRawAddress(''); 
+      setIsModalOpen(true); 
   };
   
-  const handleIdBlur = () => {
-      if (!isEditMode && formDataCommon.id) {
-          const isDuplicate = orders.some(o => o.id.toLowerCase() === formDataCommon.id.trim().toLowerCase());
-          if (isDuplicate) {
-              showMessage('Cảnh báo trùng lặp', `Mã đơn hàng "${formDataCommon.id}" đã tồn tại trong danh sách!`, 'error');
-          }
-      }
-  };
-  
-  const handleCreateFile = async () => {
-      showMessage(
-          'Xác nhận tạo file', 
-          `Bạn có chắc chắn muốn tạo file dữ liệu cho Tháng ${selectedMonth}?`, 
-          'confirm',
-          async () => {
-              if (onProcessStart) onProcessStart();
-              try {
-                  const result = await sheetService.createMonthFile(selectedMonth);
-                  if (result && result.success) {
-                      showMessage('Thành công', `Đã tạo file cho tháng ${selectedMonth} thành công!`, 'success');
-                      loadData();
-                  } else {
-                      const errorMsg = result?.error || "Lỗi không xác định. Vui lòng kiểm tra lại Deployment.";
-                      showMessage('Lỗi', `Không thể tạo file: ${errorMsg}`, 'error');
-                  }
-              } catch (e) {
-                  showMessage('Lỗi kết nối', 'Không thể kết nối đến server.', 'error');
-              } finally {
-                  if (onProcessEnd) onProcessEnd();
-              }
-          }
-      );
-  };
-
-  const handleToggleCheckbox = async (order: Order) => {
-      if (updatingOrderIds.has(order.id)) return; // Prevent double click
-      if (!currentFileId) return;
-
-      const newValue = !order.isChecked;
-      setUpdatingOrderIds(prev => new Set(prev).add(order.id));
-      if (onProcessStart) onProcessStart(); // Block navigation
-
-      try {
-          // Gửi lệnh lên Google Sheet
-          await sheetService.updateOrder(currentFileId, order.id, 'isChecked', newValue ? "TRUE" : "FALSE");
-
-          // Update local state on success
-          setOrders(prev => prev.map(o => o.id === order.id ? { ...o, isChecked: newValue } : o));
-      } catch (error) {
-          showMessage('Lỗi', 'Không thể cập nhật trạng thái.', 'error');
-      } finally {
-          setUpdatingOrderIds(prev => {
-              const newSet = new Set(prev);
-              newSet.delete(order.id);
-              return newSet;
-          });
-          if (onProcessEnd) onProcessEnd(); // Unblock navigation
-      }
-  };
-  
-  // --- OPEN MODAL HANDLERS ---
-  const openAddModal = () => {
-      setIsEditMode(false);
-      setEditingOrderId(null);
-      // Reset về thời gian hiện tại
-      const now = new Date();
-      now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-      
-      setFormDataCommon({ 
-          id: '', 
-          date: now.toISOString().slice(0, 16), 
-          storeId: '' 
-      });
-      setFormDataExtra({
-          tracking: '',
-          link: '',
-          status: 'Pending',
-          actionRole: '',
-          isChecked: false,
-          isFulfilled: false
-      });
-      setFormItems([{ 
-          sku: '', type: 'Printway', quantity: 1, note: '', 
-          productName: '', itemSku: '',
-          urlMockup: '', mockupType: 'Mockup để tham khảo',
-          urlArtworkFront: '', urlArtworkBack: ''
-      }]);
-      setRawAddress('');
-      setIsModalOpen(true);
-  };
-
-  const openDuplicateModal = (order: Order) => {
-      setIsEditMode(false);
-      setEditingOrderId(null);
-      // Use current time for new order, but allow override
-      const now = new Date();
-      now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-
-      // Copy basic info
-      setFormDataCommon({ 
-          id: '', // Reset ID so user can enter new one
-          date: now.toISOString().slice(0, 16), 
-          storeId: order.storeId 
-      });
-
-      // Copy extra info but reset status/tracking/link/checked/fulfilled
-      setFormDataExtra({
-          tracking: '',
-          link: '',
-          status: 'Pending',
-          actionRole: order.actionRole || '',
-          isChecked: false,
-          isFulfilled: false
-      });
-
-      // Copy products
-      setFormItems([{
-          sku: order.sku,
-          type: order.type || '',
-          quantity: order.quantity || 1,
-          note: order.note || '',
-          productName: order.productName || '',
-          itemSku: order.itemSku || '',
-          urlMockup: order.urlMockup || '',
-          mockupType: order.mockupType || 'Mockup để tham khảo',
-          urlArtworkFront: order.urlArtworkFront || '',
-          urlArtworkBack: order.urlArtworkBack || ''
-      }]);
-
-      // Copy Shipping info to Raw Address field for display/parsing
-      if (order.shippingFirstName || order.shippingAddress1) {
-          const constructed = `First_name: ${order.shippingFirstName}\nLast_name: ${order.shippingLastName}\nShipping_address1: ${order.shippingAddress1}\nShipping_address2: ${order.shippingAddress2}\nShipping_city: ${order.shippingCity}\nShipping_zip: ${order.shippingZip}\nShipping_province: ${order.shippingProvince}\nShipping_country: ${order.shippingCountry}\nShipping_phone: ${order.shippingPhone}`;
-          setRawAddress(constructed);
-      } else {
-          setRawAddress('');
-      }
-
-      setIsModalOpen(true);
-  };
-
-  const openEditModal = (order: Order) => {
-      if (updatingOrderIds.has(order.id)) return;
-      setIsEditMode(true);
-      setEditingOrderId(order.id);
-      
-      // Convert date string to datetime-local compatible format
+  const openDuplicateModal = (order: Order) => { 
+      setIsEditMode(false); 
+      setEditingOrderId(null); 
+      // Keep original order date for duplication convenience, or clear it if strict policy
+      // Here we keep it but user can change
       const dateVal = toDatetimeLocal(order.date);
-      
-      setFormDataCommon({ id: order.id, date: dateVal || order.date, storeId: order.storeId });
-      setFormDataExtra({ tracking: order.tracking || '', link: order.link || '', status: order.status || 'Pending', actionRole: order.actionRole || '', isChecked: order.isChecked || false, isFulfilled: order.isFulfilled || false });
-      
-      setFormItems([{
-          sku: order.sku,
-          type: order.type || '',
-          quantity: order.quantity || 1,
-          note: order.note || '',
-          productName: order.productName || '',
-          itemSku: order.itemSku || '',
-          urlMockup: order.urlMockup || '',
-          mockupType: order.mockupType || 'Mockup để tham khảo',
-          urlArtworkFront: order.urlArtworkFront || '',
-          urlArtworkBack: order.urlArtworkBack || ''
-      }]);
-      // Attempt to populate raw address for display if available in hidden fields? 
-      // For now we keep it empty or try to reconstruct it if fields exist
-      if (order.shippingFirstName || order.shippingAddress1) {
-          const constructed = `First_name: ${order.shippingFirstName}\nLast_name: ${order.shippingLastName}\nShipping_address1: ${order.shippingAddress1}\nShipping_address2: ${order.shippingAddress2}\nShipping_city: ${order.shippingCity}\nShipping_zip: ${order.shippingZip}\nShipping_province: ${order.shippingProvince}\nShipping_country: ${order.shippingCountry}\nShipping_phone: ${order.shippingPhone}`;
-          setRawAddress(constructed);
-      } else {
-          setRawAddress('');
-      }
-      setIsModalOpen(true);
+      setFormDataCommon({ id: '', date: dateVal, storeId: order.storeId }); 
+      setFormDataExtra({ tracking: '', link: '', status: 'Pending', actionRole: order.actionRole || '', isChecked: false, isFulfilled: false }); 
+      setFormItems([{ sku: String(order.sku || ''), type: order.type || '', quantity: order.quantity || 1, note: order.note || '', productName: order.productName || '', itemSku: order.itemSku || '', urlMockup: order.urlMockup || '', mockupType: order.mockupType || 'Mockup để tham khảo', urlArtworkFront: order.urlArtworkFront || '', urlArtworkBack: order.urlArtworkBack || '' }]); 
+      setIsModalOpen(true); 
   };
 
-  const getShippingInfoFromRaw = () => {
-        let shipInfo = {
-            name: '', firstName: '', lastName: '',
-            address1: '', address2: '',
-            city: '', province: '', zip: '', country: '', phone: ''
-        };
-
-        if (rawAddress.trim()) {
-            const lines = rawAddress.split('\n');
-            lines.forEach(line => {
-                const parts = line.split(':');
-                if (parts.length < 2) return;
-
-                const key = parts[0].trim().toLowerCase();
-                let value = parts.slice(1).join(':').trim(); 
-                if (value === '--') value = '';
-
-                if (key === 'first_name') shipInfo.firstName = value;
-                else if (key === 'last_name') shipInfo.lastName = value;
-                else if (key === 'shipping_address1') shipInfo.address1 = value;
-                else if (key === 'shipping_address2') shipInfo.address2 = value;
-                else if (key === 'shipping_city') shipInfo.city = value;
-                else if (key === 'shipping_zip') shipInfo.zip = value;
-                else if (key === 'shipping_province') shipInfo.province = value;
-                else if (key === 'shipping_country') shipInfo.country = value;
-                else if (key === 'shipping_phone') shipInfo.phone = value;
-            });
-            shipInfo.name = `${shipInfo.firstName} ${shipInfo.lastName}`.trim();
-        }
-        return shipInfo;
+  const openEditModal = (order: Order) => { 
+      if (updatingOrderIds.has(order.id)) return; 
+      setIsEditMode(true); 
+      setEditingOrderId(order.id); 
+      const dateVal = toDatetimeLocal(order.date); 
+      setFormDataCommon({ id: order.id, date: dateVal || order.date, storeId: order.storeId }); 
+      setFormDataExtra({ tracking: order.tracking || '', link: order.link || '', status: order.status || 'Pending', actionRole: order.actionRole || '', isChecked: order.isChecked || false, isFulfilled: order.isFulfilled || false }); 
+      setFormItems([{ sku: String(order.sku || ''), type: order.type || '', quantity: order.quantity || 1, note: order.note || (order.note || ''), productName: order.productName || '', itemSku: order.itemSku || '', urlMockup: order.urlMockup || '', mockupType: order.mockupType || 'Mockup để tham khảo', urlArtworkFront: order.urlArtworkFront || '', urlArtworkBack: order.urlArtworkBack || '' }]); 
+      if (order.shippingFirstName || order.shippingAddress1) { const constructed = `First_name: ${order.shippingFirstName}\nLast_name: ${order.shippingLastName}\nShipping_address1: ${order.shippingAddress1}\nShipping_address2: ${order.shippingAddress2}\nShipping_city: ${order.shippingCity}\nShipping_zip: ${order.shippingZip}\nShipping_province: ${order.shippingProvince}\nShipping_country: ${order.shippingCountry}\nShipping_phone: ${order.shippingPhone}`; setRawAddress(constructed); } else { setRawAddress(''); } 
+      setIsModalOpen(true); 
   };
 
-  const handleFulfillOrder = async () => {
+  const getShippingInfoFromRaw = () => { let shipInfo = { name: '', firstName: '', lastName: '', address1: '', address2: '', city: '', province: '', zip: '', country: '', phone: '' }; if (rawAddress.trim()) { const lines = rawAddress.split('\n'); lines.forEach(line => { const parts = line.split(':'); if (parts.length < 2) return; const key = parts[0].trim().toLowerCase(); let value = parts.slice(1).join(':').trim(); if (value === '--') value = ''; if (key === 'first_name') shipInfo.firstName = value; else if (key === 'last_name') shipInfo.lastName = value; else if (key === 'shipping_address1') shipInfo.address1 = value; else if (key === 'shipping_address2') shipInfo.address2 = value; else if (key === 'shipping_city') shipInfo.city = value; else if (key === 'shipping_zip') shipInfo.zip = value; else if (key === 'shipping_province') shipInfo.province = value; else if (key === 'shipping_country') shipInfo.country = value; else if (key === 'shipping_phone') shipInfo.phone = value; }); shipInfo.name = `${shipInfo.firstName} ${shipInfo.lastName}`.trim(); } return shipInfo; };
+
+  // --- UPDATED FULFILL HANDLER ---
+  const handleFulfillFromModal = async () => {
         if (!formDataCommon.id || !formDataCommon.storeId) return showMessage('Thiếu thông tin', 'Vui lòng nhập ID và chọn Store.', 'error');
+        const validItems = formItems.filter(item => String(item.sku || '').trim() !== '');
+        if (validItems.length === 0) return showMessage('Thiếu sản phẩm', "Vui lòng nhập ít nhất 1 sản phẩm (SKU).", 'error');
         if (!currentFileId) return showMessage('Lỗi', 'Không tìm thấy file dữ liệu của tháng này.', 'error');
 
-        const validItems = formItems.filter(item => item.sku.trim() !== '');
-        if (validItems.length === 0) return showMessage('Thiếu sản phẩm', "Vui lòng nhập ít nhất 1 sản phẩm (SKU).", 'error');
+        showMessage('Xác nhận Fulfill', `Bạn có muốn gửi ${validItems.length} sản phẩm này sang sheet Fulfillment Export?`, 'confirm', async () => {
+            setIsModalOpen(false); // Close Modal Immediately
+            const orderId = formDataCommon.id;
+            setUpdatingOrderIds(prev => new Set(prev).add(orderId)); // Show Loading on Row
 
-        showMessage(
-            'Xác nhận Fulfill',
-            'Bạn có chắc chắn muốn gửi dữ liệu đơn hàng này sang sheet Fulfillment không?',
-            'confirm',
-            async () => {
-                // OPTIMISTIC UI: Close Modal Immediately
-                setIsModalOpen(false);
-                
-                const orderId = formDataCommon.id.trim();
-                
-                // Add to updating list to show spinner on row
-                setUpdatingOrderIds(prev => new Set(prev).add(orderId));
-                if (onProcessStart) onProcessStart();
-
-                // Optimistically update local state to show "Fulfilled" icon
-                setOrders(prev => prev.map(o => 
-                    o.id === orderId ? { ...o, isFulfilled: true } : o
-                ));
-                
-                const shipInfo = getShippingInfoFromRaw();
-                const selectedStore = stores.find(s => s.id === formDataCommon.storeId);
-                const storeValue = selectedStore ? selectedStore.name : formDataCommon.storeId;
-
-                const ordersToFulfill: Order[] = validItems.map(item => ({
-                    id: orderId,
-                    date: formDataCommon.date,
-                    storeId: storeValue,
-                    handler: user?.username || 'Unknown',
-                    sku: item.sku,
-                    type: item.type,
-                    quantity: item.quantity,
-                    note: item.note,
-                    status: formDataExtra.status,
-                    tracking: formDataExtra.tracking,
-                    link: formDataExtra.link,
-                    isChecked: formDataExtra.isChecked,
-                    actionRole: formDataExtra.actionRole,
-                    
-                    shippingName: shipInfo.name,
-                    shippingFirstName: shipInfo.firstName,
-                    shippingLastName: shipInfo.lastName,
-                    shippingAddress1: shipInfo.address1,
-                    shippingAddress2: shipInfo.address2,
-                    shippingCity: shipInfo.city,
-                    shippingProvince: shipInfo.province,
-                    shippingZip: shipInfo.zip,
-                    shippingCountry: shipInfo.country,
-                    shippingPhone: shipInfo.phone,
-                    
-                    rawShipping: '',
-                    productName: item.productName,
-                    itemSku: item.itemSku,
-                    urlMockup: item.urlMockup,
-                    mockupType: item.mockupType,
-                    // Pass artwork info
-                    urlArtworkFront: item.urlArtworkFront,
-                    urlArtworkBack: item.urlArtworkBack
-                }));
-
-                try {
-                    // Send all items to fulfillment sheet in background
-                    await Promise.all(ordersToFulfill.map(order => sheetService.fulfillOrder(currentFileId!, order)));
-                    // Success (Silent) or Toast
-                    // console.log("Fulfill success in background");
-                } catch (error: any) {
-                    // Revert state on error
-                    setOrders(prev => prev.map(o => 
-                        o.id === orderId ? { ...o, isFulfilled: false } : o
-                    ));
-                    showMessage('Lỗi Fulfill', error.message || "Có lỗi xảy ra khi gửi yêu cầu.", 'error');
-                } finally {
-                    setUpdatingOrderIds(prev => {
-                        const newSet = new Set(prev);
-                        newSet.delete(orderId);
-                        return newSet;
-                    });
-                    if (onProcessEnd) onProcessEnd();
-                }
-            }
-        );
-  };
-
-  const handleSubmitOrder = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formDataCommon.id || !formDataCommon.storeId) return showMessage('Thiếu thông tin', 'Vui lòng nhập ID và chọn Store.', 'error');
-
-    const validItems = formItems.filter(item => item.sku.trim() !== '');
-    if (validItems.length === 0) return showMessage('Thiếu sản phẩm', "Vui lòng nhập ít nhất 1 sản phẩm (SKU).", 'error');
-
-    const selectedStore = stores.find(s => s.id === formDataCommon.storeId);
-    const storeValue = selectedStore ? selectedStore.name : formDataCommon.storeId;
-
-    if (isEditMode) {
-        const itemToUpdate = validItems[0];
-        // Parse shipping info in Edit Mode as well
-        const shipInfo = getShippingInfoFromRaw();
-
-        const updateData = {
-            type: itemToUpdate.type,
-            sku: itemToUpdate.sku,
-            quantity: itemToUpdate.quantity,
-            note: itemToUpdate.note,
-            tracking: formDataExtra.tracking,
-            link: formDataExtra.link,
-            status: formDataExtra.status,
-            actionRole: formDataExtra.actionRole,
-            isChecked: formDataExtra.isChecked,
-            // Include new fields for update
-            productName: itemToUpdate.productName,
-            itemSku: itemToUpdate.itemSku,
-            urlMockup: itemToUpdate.urlMockup,
-            mockupType: itemToUpdate.mockupType,
-            // Include Artwork Info
-            urlArtworkFront: itemToUpdate.urlArtworkFront,
-            urlArtworkBack: itemToUpdate.urlArtworkBack,
-            // Include Shipping Info
-            shippingName: shipInfo.name,
-            shippingFirstName: shipInfo.firstName,
-            shippingLastName: shipInfo.lastName,
-            shippingAddress1: shipInfo.address1,
-            shippingAddress2: shipInfo.address2,
-            shippingCity: shipInfo.city,
-            shippingProvince: shipInfo.province,
-            shippingZip: shipInfo.zip,
-            shippingCountry: shipInfo.country,
-            shippingPhone: shipInfo.phone,
-        };
-        const orderIdToUpdate = editingOrderId!;
-
-        setIsModalOpen(false);
-        setUpdatingOrderIds(prev => new Set(prev).add(orderIdToUpdate));
-        if (onProcessStart) onProcessStart();
-
-        try {
-            if (currentFileId) {
-                await sheetService.updateOrderBatch(currentFileId, orderIdToUpdate, updateData);
-                await loadData();
-            }
-        } catch (error) {
-            console.error("Update failed", error);
-            showMessage('Lỗi cập nhật', `Không thể cập nhật đơn ${orderIdToUpdate}.`, 'error');
-        } finally {
-            setUpdatingOrderIds(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(orderIdToUpdate);
-                return newSet;
-            });
-            if (onProcessEnd) onProcessEnd();
-        }
-
-    } else {
-        const orderIdToAdd = formDataCommon.id.trim();
-        const orderMonth = formDataCommon.date.substring(0, 7);
-        const needsFileCreation = !currentFileId || (orderMonth !== selectedMonth);
-
-        const shipInfo = getShippingInfoFromRaw();
-
-        const ordersToCreate: Order[] = validItems.map(item => ({
-            id: orderIdToAdd,
-            date: formDataCommon.date,
-            storeId: storeValue,
-            handler: user?.username || 'Unknown',
-            sku: item.sku,
-            type: item.type,
-            quantity: item.quantity,
-            note: item.note,
-            status: formDataExtra.status,
-            tracking: formDataExtra.tracking,
-            link: formDataExtra.link,
-            isChecked: formDataExtra.isChecked,
-            actionRole: formDataExtra.actionRole,
-            
-            shippingName: shipInfo.name,
-            shippingFirstName: shipInfo.firstName,
-            shippingLastName: shipInfo.lastName,
-            shippingAddress1: shipInfo.address1,
-            shippingAddress2: shipInfo.address2,
-            shippingCity: shipInfo.city,
-            shippingProvince: shipInfo.province,
-            shippingZip: shipInfo.zip,
-            shippingCountry: shipInfo.country,
-            shippingPhone: shipInfo.phone,
-            
-            rawShipping: '',
-            // Map item specific fields
-            productName: item.productName,
-            itemSku: item.itemSku,
-            urlMockup: item.urlMockup,
-            mockupType: item.mockupType,
-            // Include Artwork Info
-            urlArtworkFront: item.urlArtworkFront,
-            urlArtworkBack: item.urlArtworkBack,
-            isFulfilled: false
-        }));
-
-        if (needsFileCreation) {
-             setIsSubmitting(true);
-             if (onProcessStart) onProcessStart();
-             try {
-                 await sheetService.addOrder(ordersToCreate[0]);
-                 if (ordersToCreate.length > 1) {
-                     const remainingOrders = ordersToCreate.slice(1);
-                     await Promise.all(remainingOrders.map(o => sheetService.addOrder(o)));
-                 }
-                 setIsModalOpen(false);
-                 setIsSubmitting(false);
-                 showMessage('Thành công', `Đã tạo đơn ${orderIdToAdd} (${ordersToCreate.length} SKU) và file dữ liệu mới.`, 'success');
-                 if (orderMonth === selectedMonth) {
-                     await loadData();
-                 }
-             } catch (error: any) {
-                 setIsSubmitting(false);
-                 let msg = error.message || "Không thể tạo file mới.";
-                 if (msg.includes("Document") && (msg.includes("is missing") || msg.includes("deleted"))) {
-                     msg = "File Google Sheet của tháng này đã bị xóa trên Drive. Vui lòng thử lại, hệ thống sẽ tự động tạo file mới.";
-                 }
-                 showMessage('Lỗi tạo đơn', msg, 'error');
-             } finally {
-                 if (onProcessEnd) onProcessEnd();
-             }
-
-        } else {
-            if (orders.some(o => o.id.toLowerCase() === orderIdToAdd.toLowerCase())) {
-                showMessage('Trùng lặp', `Mã đơn hàng ${orderIdToAdd} đã tồn tại!`, 'error');
-                return;
-            }
-            setIsModalOpen(false);
-            setOrders(prev => [...ordersToCreate, ...prev]);
-            setUpdatingOrderIds(prev => new Set(prev).add(orderIdToAdd));
             if (onProcessStart) onProcessStart();
 
-            Promise.all(ordersToCreate.map(order => sheetService.addOrder(order)))
-                .then(() => { console.log(`Đã đồng bộ ${ordersToCreate.length} dòng.`); })
-                .catch((error) => {
-                    let msg = error.message || "Không thể đồng bộ đơn hàng.";
-                    if (msg.includes("Document") && (msg.includes("is missing") || msg.includes("deleted"))) {
-                         msg = "File dữ liệu tháng này đã bị xóa. Vui lòng thử lại để hệ thống tự tạo mới.";
-                    }
-                    showMessage('Lỗi lưu đơn', `${msg} Đã hoàn tác trên giao diện.`, 'error');
-                    setOrders(prev => prev.filter(o => o.id !== orderIdToAdd));
-                })
-                .finally(() => {
-                    setUpdatingOrderIds(prev => {
-                        const newSet = new Set(prev);
-                        newSet.delete(orderIdToAdd);
-                        return newSet;
-                    });
-                    if (onProcessEnd) onProcessEnd();
+            try {
+                const selectedStore = stores.find(s => s.id === formDataCommon.storeId);
+                const storeValue = selectedStore ? selectedStore.name : formDataCommon.storeId;
+                const shipInfo = getShippingInfoFromRaw();
+                const systemTime = new Date().toISOString(); // System timestamp for fulfillment action
+                
+                for (const item of validItems) {
+                    const orderToFulfill: Order = {
+                        id: orderId,
+                        date: formDataCommon.date,
+                        lastModified: systemTime, // Track timestamp
+                        storeId: storeValue,
+                        handler: user?.username || 'Unknown',
+                        sku: String(item.sku),
+                        type: item.type,
+                        quantity: item.quantity,
+                        note: item.note,
+                        status: formDataExtra.status,
+                        tracking: formDataExtra.tracking,
+                        link: formDataExtra.link,
+                        isChecked: formDataExtra.isChecked,
+                        actionRole: formDataExtra.actionRole,
+                        shippingName: shipInfo.name,
+                        shippingFirstName: shipInfo.firstName,
+                        shippingLastName: shipInfo.lastName,
+                        shippingAddress1: shipInfo.address1,
+                        shippingAddress2: shipInfo.address2,
+                        shippingCity: shipInfo.city,
+                        shippingProvince: shipInfo.province,
+                        shippingZip: shipInfo.zip,
+                        shippingCountry: shipInfo.country,
+                        shippingPhone: shipInfo.phone,
+                        productName: item.productName,
+                        itemSku: item.itemSku,
+                        urlMockup: item.urlMockup,
+                        mockupType: item.mockupType,
+                        urlArtworkFront: item.urlArtworkFront,
+                        urlArtworkBack: item.urlArtworkBack,
+                        isFulfilled: true
+                    };
+                    await sheetService.fulfillOrder(currentFileId!, orderToFulfill);
+                }
+
+                // Update UI state silently without success popup
+                setOrders(prev => prev.map(o => o.id === orderId ? { ...o, isFulfilled: true } : o));
+                if (isEditMode) {
+                     await sheetService.updateOrder(currentFileId!, orderId, 'isFulfilled', "TRUE");
+                }
+            } catch (error: any) {
+                showMessage('Lỗi Fulfill', error.message || "Không thể gửi dữ liệu.", 'error');
+            } finally {
+                setUpdatingOrderIds(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(orderId);
+                    return newSet;
                 });
-        }
-    }
+                if (onProcessEnd) onProcessEnd();
+            }
+        });
   };
 
-  const handleAddUnit = async () => {
-    if (!newUnitName.trim()) return;
-    try {
-      await sheetService.addUnit(newUnitName.trim());
-      const updatedUnits = await sheetService.getUnits();
-      setUnits(updatedUnits);
-      if (formItems.length > 0) handleItemChange(0, 'type', newUnitName.trim());
-      setIsAddingUnit(false);
-      setNewUnitName('');
-    } catch (error) {
-      showMessage('Lỗi', "Lỗi khi thêm Đơn vị", 'error');
-    }
+  const handleSubmitOrder = async (e: React.FormEvent) => { 
+      e.preventDefault(); 
+      if (!formDataCommon.id || !formDataCommon.storeId) return showMessage('Thiếu thông tin', 'Vui lòng nhập ID và chọn Store.', 'error'); 
+      if (!formDataCommon.date) return showMessage('Thiếu thông tin', 'Vui lòng chọn Ngày Đặt.', 'error');
+      
+      const validItems = formItems.filter(item => String(item.sku || '').trim() !== ''); 
+      if (validItems.length === 0) return showMessage('Thiếu sản phẩm', "Vui lòng nhập ít nhất 1 sản phẩm (SKU).", 'error'); 
+      
+      const selectedStore = stores.find(s => s.id === formDataCommon.storeId); 
+      const storeValue = selectedStore ? selectedStore.name : formDataCommon.storeId; 
+      const shipInfo = getShippingInfoFromRaw(); 
+      
+      // AUTO GENERATE SYSTEM TIMESTAMP (Last Modified / Created At)
+      const systemTime = new Date().toISOString();
+
+      if (isEditMode) { 
+          const itemToUpdate = validItems[0]; 
+          const updateData = { 
+              // Basic fields
+              type: itemToUpdate.type, 
+              sku: itemToUpdate.sku, 
+              quantity: itemToUpdate.quantity, 
+              note: itemToUpdate.note, 
+              tracking: formDataExtra.tracking, 
+              link: formDataExtra.link, 
+              status: formDataExtra.status, 
+              actionRole: formDataExtra.actionRole, 
+              isChecked: formDataExtra.isChecked, 
+              
+              // Product details
+              productName: itemToUpdate.productName, 
+              itemSku: itemToUpdate.itemSku, 
+              urlMockup: itemToUpdate.urlMockup, 
+              mockupType: itemToUpdate.mockupType, 
+              urlArtworkFront: itemToUpdate.urlArtworkFront, 
+              urlArtworkBack: itemToUpdate.urlArtworkBack, 
+              
+              // Shipping
+              shippingName: shipInfo.name, 
+              shippingFirstName: shipInfo.firstName, 
+              shippingLastName: shipInfo.lastName, 
+              shippingAddress1: shipInfo.address1, 
+              shippingAddress2: shipInfo.address2, 
+              shippingCity: shipInfo.city, 
+              shippingProvince: shipInfo.province, 
+              shippingZip: shipInfo.zip, 
+              shippingCountry: shipInfo.country, 
+              shippingPhone: shipInfo.phone, 
+              
+              // NEW: Update system timestamp
+              lastModified: systemTime
+          }; 
+          
+          const orderIdToUpdate = editingOrderId!; 
+          setIsModalOpen(false); 
+          setUpdatingOrderIds(prev => new Set(prev).add(orderIdToUpdate)); 
+          
+          if (onProcessStart) onProcessStart(); 
+          try { 
+              if (currentFileId) { 
+                  await sheetService.updateOrderBatch(currentFileId, orderIdToUpdate, updateData); 
+                  // Update local state immediately including system timestamp
+                  setOrders(prev => prev.map(o => o.id === orderIdToUpdate ? { ...o, ...updateData, date: formDataCommon.date } : o));
+              } 
+          } catch (error) { 
+              showMessage('Lỗi cập nhật', `Không thể cập nhật đơn ${orderIdToUpdate}.`, 'error'); 
+          } finally { 
+              setUpdatingOrderIds(prev => { const newSet = new Set(prev); newSet.delete(orderIdToUpdate); return newSet; }); 
+              if (onProcessEnd) onProcessEnd(); 
+          } 
+      } else { 
+          const orderIdToAdd = formDataCommon.id.trim(); 
+          const orderMonth = formDataCommon.date.substring(0, 7); 
+          const needsFileCreation = !currentFileId || (orderMonth !== selectedMonth); 
+          
+          const ordersToCreate: Order[] = validItems.map(item => ({ 
+              id: orderIdToAdd, 
+              date: formDataCommon.date, 
+              lastModified: systemTime, // New Order Timestamp
+              storeId: storeValue, 
+              handler: user?.username || 'Unknown', 
+              sku: item.sku, 
+              type: item.type, 
+              quantity: item.quantity, 
+              note: item.note, 
+              status: formDataExtra.status, 
+              tracking: formDataExtra.tracking, 
+              link: formDataExtra.link, 
+              isChecked: formDataExtra.isChecked, 
+              actionRole: formDataExtra.actionRole, 
+              shippingName: shipInfo.name, 
+              shippingFirstName: shipInfo.firstName, 
+              shippingLastName: shipInfo.lastName, 
+              shippingAddress1: shipInfo.address1, 
+              shippingAddress2: shipInfo.address2, 
+              shippingCity: shipInfo.city, 
+              shippingProvince: shipInfo.province, 
+              shippingZip: shipInfo.zip, 
+              shippingCountry: shipInfo.country, 
+              shippingPhone: shipInfo.phone, 
+              rawShipping: '', 
+              productName: item.productName, 
+              itemSku: item.itemSku, 
+              urlMockup: item.urlMockup, 
+              mockupType: item.mockupType, 
+              urlArtworkFront: item.urlArtworkFront, 
+              urlArtworkBack: item.urlArtworkBack, 
+              isFulfilled: false 
+          })); 
+          
+          const targetFileId = (orderMonth === selectedMonth) ? currentFileId : undefined; 
+          
+          if (needsFileCreation && !targetFileId) { 
+              setIsSubmitting(true); 
+              if (onProcessStart) onProcessStart(); 
+              try { 
+                  await sheetService.addOrder(ordersToCreate[0]); 
+                  if (ordersToCreate.length > 1) { 
+                      await Promise.all(ordersToCreate.slice(1).map(o => sheetService.addOrder(o))); 
+                  } 
+                  setIsModalOpen(false); 
+                  setIsSubmitting(false); 
+                  showMessage('Thành công', `Đã tạo đơn ${orderIdToAdd} và file dữ liệu mới.`, 'success'); 
+                  if (orderMonth === selectedMonth) await loadData(selectedMonth); 
+              } catch (error: any) { 
+                  setIsSubmitting(false); 
+                  showMessage('Lỗi tạo đơn', error.message || "Không thể tạo file mới.", 'error'); 
+              } finally { 
+                  if (onProcessEnd) onProcessEnd(); 
+              } 
+          } else { 
+              if (orders.some(o => String(o.id).toLowerCase() === orderIdToAdd.toLowerCase())) { 
+                  showMessage('Trùng lặp', `Mã đơn hàng ${orderIdToAdd} đã tồn tại!`, 'error'); 
+                  return; 
+              } 
+              setIsModalOpen(false); 
+              setOrders(prev => [...ordersToCreate, ...prev]); 
+              setUpdatingOrderIds(prev => new Set(prev).add(orderIdToAdd)); 
+              if (onProcessStart) onProcessStart(); 
+              Promise.all(ordersToCreate.map(order => sheetService.addOrder(order, targetFileId || undefined)))
+                  .then(() => { })
+                  .catch((error) => { 
+                      showMessage('Lỗi lưu đơn', `${error.message || "Không thể đồng bộ."} Đã hoàn tác.`, 'error'); 
+                      setOrders(prev => prev.filter(o => o.id !== orderIdToAdd)); 
+                  })
+                  .finally(() => { 
+                      setUpdatingOrderIds(prev => { const newSet = new Set(prev); newSet.delete(orderIdToAdd); return newSet; }); 
+                      if (onProcessEnd) onProcessEnd(); 
+                  }); 
+          } 
+      } 
   };
 
-  const getStatusColorClass = (status: string) => {
-    const s = String(status).toLowerCase();
-    if (s === 'fulfilled' || s === 'completed') return 'text-green-700 bg-green-50 border-green-200';
-    if (s === 'pending' || s === 'processing') return 'text-yellow-700 bg-yellow-50 border-yellow-200';
-    if (s === 'cancelled') return 'text-red-700 bg-red-50 border-red-200';
-    if (s === 'refund') return 'text-purple-700 bg-purple-50 border-purple-200';
-    if (s === 'resend') return 'text-blue-700 bg-blue-50 border-blue-200';
-    return 'text-gray-700 bg-gray-50 border-gray-200';
-  };
+  const handleAddUnit = async () => { if (!newUnitName.trim()) return; try { await sheetService.addUnit(newUnitName.trim()); const updatedUnits = await sheetService.getUnits(); setUnits(updatedUnits); if (formItems.length > 0) handleItemChange(0, 'type', newUnitName.trim()); setIsAddingUnit(false); setNewUnitName(''); } catch (error) { showMessage('Lỗi', "Lỗi khi thêm Đơn vị", 'error'); } };
 
-  const handleMonthChange = (step: number) => {
-    try {
-        const [year, month] = selectedMonth.split('-').map(Number);
-        const date = new Date(year, month - 1 + step, 1);
-        const newYear = date.getFullYear();
-        const newMonth = String(date.getMonth() + 1).padStart(2, '0');
-        setSelectedMonth(`${newYear}-${newMonth}`);
-    } catch (e) {
-        console.error("Invalid date", e);
-    }
-  };
+  const getStatusColorClass = (status: string) => { const s = String(status).toLowerCase(); if (s === 'fulfilled' || s === 'completed') return 'text-green-700 bg-green-50 border-green-200'; if (s === 'pending' || s === 'processing') return 'text-yellow-700 bg-yellow-50 border-yellow-200'; if (s === 'cancelled') return 'text-red-700 bg-red-50 border-red-200'; if (s === 'refund') return 'text-purple-700 bg-purple-50 border-purple-200'; if (s === 'resend') return 'text-blue-700 bg-blue-50 border-blue-200'; return 'text-gray-700 bg-gray-50 border-gray-200'; };
+
+  const handleMonthChange = (step: number) => { const [year, month] = selectedMonth.split('-').map(Number); const date = new Date(year, month - 1 + step, 1); const newYear = date.getFullYear(); const newMonth = String(date.getMonth() + 1).padStart(2, '0'); setSelectedMonth(`${newYear}-${newMonth}`); };
 
   const [currentYearStr, currentMonthStr] = selectedMonth.split('-');
-  const darkInputClass = "w-full border border-gray-600 rounded-md px-3 py-2 text-white bg-slate-700 focus:outline-none focus:ring-2 focus:ring-orange-500 placeholder-gray-400 text-sm";
-  const darkSelectClass = "w-full border border-gray-600 rounded-md px-3 py-2 text-white bg-slate-700 focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm appearance-none";
-  
-  const currentUserLevel = getRoleLevel(user?.role || '');
-  const assignableUsers = allUsers.filter(u => getRoleLevel(u.role) >= currentUserLevel);
+  const inputClass = "w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 placeholder-gray-400 bg-white text-gray-900";
+  const assignableUsers = allUsers.filter(u => getRoleLevel(u.role) >= getRoleLevel(user?.role || ''));
 
   return (
     <div className="p-4 bg-gray-100 min-h-screen">
       <div className="bg-white shadow-sm overflow-hidden rounded-lg flex flex-col h-full relative">
-        {/* POPUP FILTER */}
         {renderFilterPopup()}
 
-        {/* Header - No changes here ... */}
         <div className="p-4 border-b border-gray-200 flex flex-col xl:flex-row justify-between items-center gap-4 bg-white z-20">
+          {/* Header content ... */}
           <div className="flex flex-col md:flex-row items-center gap-4 w-full xl:w-auto">
             <h2 className="text-xl font-bold text-gray-800 whitespace-nowrap flex items-center gap-2">
-                DANH SÁCH ĐƠN HÀNG
-                <button onClick={loadData} className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 transition-colors" title="Làm mới">
-                    <RefreshCw size={16} className={loading && orders.length === 0 ? "animate-spin" : ""} />
+                DANH SÁCH ĐƠN HÀNG <span className="text-orange-600 uppercase text-sm border border-orange-200 bg-orange-50 px-2 py-0.5 rounded">Tháng {currentMonthStr}/{currentYearStr}</span>
+                <button onClick={() => loadData(selectedMonth)} className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 transition-colors" title="Làm mới">
+                    <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
                 </button>
             </h2>
-            
             <div className="flex items-center gap-2 w-full md:w-auto justify-center">
                 <div className="flex items-center bg-white rounded-lg border border-gray-300 shadow-sm p-1">
-                    <button onClick={() => handleMonthChange(-1)} className="p-1.5 hover:bg-gray-100 rounded-md text-gray-500 transition-colors">
-                        <ChevronLeft size={18} />
-                    </button>
-                    <div className="flex items-center px-2 border-l border-r border-gray-100 gap-1 min-w-[160px] justify-center">
-                        <Calendar size={14} className="text-orange-500 mr-1" />
-                        <select value={currentMonthStr} onChange={(e) => setSelectedMonth(`${currentYearStr}-${e.target.value}`)} className="font-bold text-gray-700 bg-transparent cursor-pointer outline-none appearance-none hover:bg-gray-50 rounded px-1 py-1 text-center text-sm">
-                            {monthsList.map(m => (<option key={m} value={m}>Tháng {parseInt(m)}</option>))}
-                        </select>
-                        <span className="text-gray-400">/</span>
-                        <select value={currentYearStr} onChange={(e) => setSelectedMonth(`${e.target.value}-${currentMonthStr}`)} className="font-bold text-gray-700 bg-transparent cursor-pointer outline-none appearance-none hover:bg-gray-50 rounded px-1 py-1 text-sm">
-                            {yearsList.map(y => (<option key={y} value={y}>{y}</option>))}
-                        </select>
+                    <button onClick={() => handleMonthChange(-1)} className="p-1.5 hover:bg-gray-100 rounded-md text-gray-500"><ChevronLeft size={18} /></button>
+                    <div className="flex items-center px-2 gap-1 font-bold text-gray-700 min-w-[140px] justify-center">
+                        <Calendar size={14} className="text-orange-500" />
+                        <select value={currentMonthStr} onChange={(e) => setSelectedMonth(`${currentYearStr}-${e.target.value}`)} className="bg-transparent outline-none appearance-none cursor-pointer hover:text-orange-600 text-center">{monthsList.map(m => (<option key={m} value={m}>Tháng {parseInt(m)}</option>))}</select>
+                        <span>/</span>
+                        <select value={currentYearStr} onChange={(e) => setSelectedMonth(`${e.target.value}-${currentMonthStr}`)} className="bg-transparent outline-none appearance-none cursor-pointer hover:text-orange-600">{yearsList.map(y => (<option key={y} value={y}>{y}</option>))}</select>
                     </div>
-                    <button onClick={() => handleMonthChange(1)} className="p-1.5 hover:bg-gray-100 rounded-md text-gray-500 transition-colors">
-                        <ChevronRight size={18} />
-                    </button>
+                    <button onClick={() => handleMonthChange(1)} className="p-1.5 hover:bg-gray-100 rounded-md text-gray-500"><ChevronRight size={18} /></button>
                 </div>
-                
+                {/* File handling buttons */}
                 {currentFileId ? (
                     <a href={`https://docs.google.com/spreadsheets/d/${currentFileId}/edit`} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 px-3 py-2 bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors shadow-sm text-sm font-medium h-[42px]">
                         <FileSpreadsheet size={18} /> <span className="hidden sm:inline">Mở Sheet</span>
@@ -1108,164 +903,247 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
                     <div className="flex items-center gap-2">
                         <div className="h-[42px] px-3 flex items-center justify-center bg-gray-50 text-gray-400 border border-gray-200 rounded-lg text-xs italic">No File</div>
                         {user?.role === 'admin' && (
-                             <button 
-                                onClick={handleCreateFile}
-                                className="flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors shadow-sm text-sm font-medium h-[42px]"
-                                title="Admin: Tạo file cho tháng này"
-                             >
-                                <FolderPlus size={18} /> 
-                                <span className="hidden sm:inline">Tạo File</span>
-                             </button>
+                             <button onClick={handleCreateFile} className="flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors shadow-sm text-sm font-medium h-[42px]" title="Admin: Tạo file cho tháng này"><FolderPlus size={18} /> <span className="hidden sm:inline">Tạo File</span></button>
                         )}
                     </div>
                 )}
             </div>
           </div>
-
           <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto">
              <div className="relative flex-1 sm:flex-none sm:w-64">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                <input type="text" placeholder="Tìm ID, SKU, Tracking, User..." className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm w-full focus:ring-2 focus:ring-[#1a4019] focus:border-transparent outline-none shadow-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                <input type="text" placeholder="Tìm ID, SKU, Tracking, User..." className="pl-9 pr-4 py-2 border border-gray-500 rounded-lg text-sm w-full focus:ring-2 focus:ring-orange-500 outline-none shadow-sm bg-slate-700 text-white placeholder-gray-400" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
              </div>
-             <button onClick={openAddModal} className="flex items-center justify-center gap-2 bg-[#1a4019] hover:bg-[#143013] text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm hover:shadow-md whitespace-nowrap">
+             
+             {/* COLUMN VISIBILITY TOGGLE */}
+             <div className="relative">
+                <button 
+                    onClick={() => setShowColumnSelector(!showColumnSelector)}
+                    className="flex items-center justify-center gap-2 px-3 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors shadow-sm h-[42px]"
+                    title="Cấu hình cột hiển thị"
+                >
+                    <Settings2 size={18} />
+                </button>
+                
+                {showColumnSelector && (
+                    <div className="absolute right-0 top-12 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-50 p-3 animate-fade-in">
+                        <h4 className="text-xs font-bold text-gray-500 uppercase mb-3 px-1">Cột hiển thị</h4>
+                        <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
+                            {Object.entries(columnLabels).map(([key, label]) => (
+                                <label key={key} className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 rounded cursor-pointer text-sm">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={visibleColumns[key]} 
+                                        onChange={() => toggleColumn(key)}
+                                        className="rounded border-gray-300 text-orange-600 focus:ring-orange-500 w-4 h-4"
+                                    />
+                                    <span className="flex-1">{label}</span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+                )}
+             </div>
+
+             <button onClick={() => setShowSummary(!showSummary)} className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm ${showSummary ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+                <BarChart3 size={18} />
+             </button>
+             <button onClick={openAddModal} className="flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm hover:shadow-md whitespace-nowrap">
                 <Plus size={18} /> <span>Thêm Đơn</span>
              </button>
           </div>
         </div>
 
-        {/* Table Container */}
-        <div className="overflow-auto max-h-[calc(100vh-200px)] custom-scrollbar">
+        {/* ERROR WARNING BANNER */}
+        {dataError && (
+             <div className="bg-red-50 border-b border-red-200 px-4 py-3 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 animate-fade-in">
+                <div className="flex items-start gap-3 text-red-700">
+                    <AlertTriangle size={20} className="mt-0.5 flex-shrink-0" />
+                    <div>
+                        <p className="font-bold text-sm">{dataError.message}</p>
+                        <p className="text-xs mt-1 opacity-90">{dataError.detail}</p>
+                    </div>
+                </div>
+                {dataError.fileId && (
+                     <a href={`https://docs.google.com/spreadsheets/d/${dataError.fileId}/edit`} target="_blank" rel="noreferrer" className="flex-shrink-0 flex items-center gap-1.5 bg-white border border-red-200 text-red-600 px-3 py-1.5 rounded text-xs font-bold hover:bg-red-50 transition-colors shadow-sm">
+                         <FileSpreadsheet size={14} /> Kiểm tra File Gốc
+                     </a>
+                )}
+            </div>
+        )}
+
+        {/* --- SUMMARY DASHBOARD --- */}
+        {showSummary && (
+             <div className="bg-gray-50 border-b border-gray-200 p-4 animate-slide-in">
+                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
+                     <h3 className="text-sm font-bold text-indigo-800 uppercase flex items-center gap-2">
+                         <BarChart3 size={16} /> Tổng hợp theo Store
+                     </h3>
+                     <div className="flex items-center gap-2 bg-slate-700 p-1 rounded-md border border-gray-600 shadow-sm">
+                         <input type="date" className="text-xs border-none outline-none text-white font-medium bg-transparent" value={summaryDateRange.start} onChange={(e) => setSummaryDateRange({...summaryDateRange, start: e.target.value})} />
+                         <span className="text-gray-400 text-xs">→</span>
+                         <input type="date" className="text-xs border-none outline-none text-white font-medium bg-transparent" value={summaryDateRange.end} onChange={(e) => setSummaryDateRange({...summaryDateRange, end: e.target.value})} />
+                     </div>
+                 </div>
+                 
+                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+                     {stores.map(store => {
+                         const count = summaryStats.stats[store.name] || 0;
+                         if (count === 0) return null;
+                         return (
+                             <div key={store.id} className="bg-white rounded border border-indigo-100 p-3 shadow-sm flex flex-col items-center justify-center text-center">
+                                 <span className="text-xs text-gray-500 font-medium truncate w-full" title={store.name}>{store.name}</span>
+                                 <span className="text-xl font-bold text-indigo-600 mt-1">{count}</span>
+                                 <span className="text-[10px] text-gray-400">đơn hàng</span>
+                             </div>
+                         )
+                     })}
+                     <div className="bg-indigo-600 rounded border border-indigo-700 p-3 shadow-sm flex flex-col items-center justify-center text-center text-white">
+                         <span className="text-xs font-medium opacity-80">TỔNG CỘNG</span>
+                         <span className="text-xl font-bold mt-1">{summaryStats.total}</span>
+                         <span className="text-[10px] opacity-80">đơn hàng</span>
+                     </div>
+                 </div>
+             </div>
+        )}
+
+        <div className="overflow-auto max-h-[calc(100vh-200px)] custom-scrollbar" onClick={() => setShowColumnSelector(false)}>
           <table className="w-full text-left border-collapse text-sm relative">
-            <thead className="text-white font-bold text-center uppercase text-xs tracking-wider sticky top-0 z-20 shadow-md">
+            <thead className="text-gray-600 bg-gray-50 border-b border-gray-200 font-bold uppercase text-xs tracking-wider sticky top-0 z-20">
               <tr>
-                {renderTh("Date", "date", "w-40", "bg-[#1a4019]")}
-                {renderTh("ID Order Etsy", "id", "", "bg-[#1a4019]")}
-                {renderTh("STORE", "storeName", "", "bg-[#1a4019]")}
-                {renderTh("Đơn vị", "type", "w-24", "bg-[#1a4019]")}
-                {renderTh("SKU", "sku", "", "bg-[#1a4019]")}
-                {renderTh("Qty", "quantity", "w-16", "bg-[#1a4019]")}
-                {renderTh("Tracking", "tracking", "w-32", "bg-[#1a4019]")}
-                <th className="px-1 py-3 border-r border-gray-600 w-10 sticky top-0 bg-[#1a4019] z-20">Chk</th>
-                {renderTh("Link Tracking", "link", "w-32", "bg-[#1a4019]")}
-                {renderTh("Trạng Thái", "status", "w-32", "bg-[#1a4019]")}
-                {renderTh("Note", "note", "min-w-[150px]", "bg-yellow-400 text-black border-l", true)}
-                {renderTh("Người xử lý", "handler", "w-32", "bg-[#1a4019] border-l")}
-                {renderTh("Action Role", "actionRole", "w-36", "bg-[#1a4019] border-l")}
-                {renderTh("Fulfill", "isFulfilled", "w-20", "bg-[#1a4019] border-l")}
-                <th className="px-3 py-3 border-l border-gray-600 w-16 sticky top-0 bg-[#1a4019] z-20 text-center">Edit</th>
+                {/* SWAPPED & RENAMED: lastModified -> Date List */}
+                {renderTh("Date List", "lastModified", "w-32", "text-gray-400")}
+                
+                {/* SWAPPED & RENAMED: date -> Date Order */}
+                {renderTh("Date Order", "date", "w-32")}
+                
+                {renderTh("ID Order", "id")}
+                {renderTh("Store", "storeName")}
+                {renderTh("Loại", "type", "w-24")}
+                {renderTh("SKU", "sku")}
+                {renderTh("Qty", "quantity", "w-16")}
+                {renderTh("Tracking", "tracking", "w-32")}
+                {visibleColumns['checkbox'] && <th className="px-1 py-3 border-r border-gray-200 w-10 sticky top-0 bg-gray-50 z-20 text-center">Chk</th>}
+                {renderTh("Link", "link", "w-20")}
+                {renderTh("Trạng Thái", "status", "w-32")}
+                {visibleColumns['note'] && <th className="px-3 py-3 border-r border-gray-200 min-w-[150px] sticky top-0 bg-yellow-50 text-gray-700 z-20">Note</th>}
+                {renderTh("Handler", "handler", "w-32")}
+                {renderTh("Role", "actionRole", "w-32")}
+                {renderTh("Fulfill", "isFulfilled", "w-24")}
+                {visibleColumns['action'] && <th className="px-3 py-3 w-16 sticky top-0 bg-gray-50 z-20 text-center">Action</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {loading && orders.length === 0 ? 
-                <tr><td colSpan={15} className="text-center py-12 text-gray-500">Đang tải dữ liệu tháng {selectedMonth}...</td></tr> : 
+              {loading ? 
+                <tr><td colSpan={Object.keys(visibleColumns).filter(k => visibleColumns[k]).length + 2} className="text-center py-12 text-gray-500"><div className="flex justify-center items-center gap-2"><Loader2 className="animate-spin" /> Đang tải dữ liệu Tháng {currentMonthStr}...</div></td></tr> : 
                 (sortedOrders.length === 0 ? 
-                    <tr><td colSpan={15} className="text-center py-12 text-gray-500">Tháng {selectedMonth} chưa có đơn hàng nào hoặc không tìm thấy kết quả.</td></tr> :
+                    <tr><td colSpan={Object.keys(visibleColumns).filter(k => visibleColumns[k]).length + 2} className="text-center py-12 text-gray-500">
+                        {dataError ? 'Dữ liệu không khớp nhưng đã được hiển thị để kiểm tra.' : `Tháng ${selectedMonth} chưa có đơn hàng nào hoặc không tìm thấy kết quả.`}
+                    </td></tr> :
                     sortedOrders.map((order, idx) => (
-                        <tr key={order.id + idx} className="hover:bg-gray-50 border-b border-gray-200 text-gray-800 transition-colors">
-                            <td className="px-2 py-3 border-r text-center whitespace-nowrap text-gray-600 font-mono text-xs">{formatDateDisplay(order.date)}</td>
-                            <td className="px-3 py-3 border-r font-semibold text-gray-900 whitespace-nowrap">
-                                <div className="flex justify-between items-center group gap-2">
-                                    <span>{order.id}</span>
-                                    <button className="text-gray-400 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => navigator.clipboard.writeText(order.id)} title="Copy ID">
-                                        <Copy size={12} />
-                                    </button>
-                                </div>
-                            </td>
-                            <td className="px-3 py-3 border-r text-gray-700">{getStoreName(order.storeId)}</td>
+                        <tr key={order.id + idx} className={`border-b border-gray-200 transition-colors ${dataError ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50 text-gray-800'}`}>
+                            {/* System Date Column (Date List) - Has Time */}
+                            {visibleColumns['lastModified'] && (
+                                <td className="px-3 py-3 border-r text-center whitespace-nowrap text-gray-400 font-mono text-[10px]">
+                                    {order.lastModified ? formatDateDisplay(order.lastModified) : '-'}
+                                </td>
+                            )}
                             
-                            <td className="px-1 py-1 border-r text-center">
-                                {order.type}
-                            </td>
-                            <td className="px-1 py-1 border-r font-mono text-xs text-gray-600 pl-2">
-                                {order.sku}
-                            </td>
-                            <td className="px-1 py-1 border-r text-center font-bold">
-                                {order.quantity}
-                            </td>
-                            <td className="px-1 py-1 border-r text-center text-xs text-gray-600">
-                                {order.tracking || '...'}
-                            </td>
-                            
-                            <td className="px-1 py-1 border-r text-center align-middle">
-                                {updatingOrderIds.has(order.id) ? (
-                                    <div className="flex justify-center items-center h-full">
-                                        <Loader2 size={16} className="animate-spin text-orange-500" />
+                            {/* User Input Date Column (Date Order) - Date Only */}
+                            {visibleColumns['date'] && (
+                                <td className="px-3 py-3 border-r text-center whitespace-nowrap text-gray-600 font-mono text-xs font-bold">
+                                    {formatDateOnly(order.date)}
+                                </td>
+                            )}
+
+                            {visibleColumns['id'] && (
+                                <td className="px-3 py-3 border-r font-semibold text-gray-900 whitespace-nowrap">
+                                    <div className="flex justify-between items-center group gap-2">
+                                        <span>{order.id}</span>
+                                        <button className="text-gray-400 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => navigator.clipboard.writeText(order.id)} title="Copy ID">
+                                            <Copy size={12} />
+                                        </button>
                                     </div>
-                                ) : (
-                                    <button 
-                                        onClick={() => handleToggleCheckbox(order)}
-                                        className="p-1 hover:bg-gray-100 rounded focus:outline-none transition-colors"
-                                    >
-                                        {order.isChecked ? <CheckSquare size={18} className="text-green-600" /> : <Square size={18} className="text-gray-300" />}
-                                    </button>
-                                )}
-                            </td>
-
-                            <td className="px-1 py-1 border-r text-center relative group">
-                                {order.link && (
-                                    <a href={order.link} target="_blank" className="text-blue-600 hover:underline text-xs flex items-center justify-center gap-1">
-                                        Link <ExternalLink size={12} />
-                                    </a>
-                                )}
-                            </td>
-                            <td className="px-1 py-1 border-r text-center">
-                                <span className={`text-xs font-bold px-2 py-1 rounded-full ${getStatusColorClass(order.status as string).replace('bg-white', '').replace('text-gray-700', '')}`}>
-                                    {order.status}
-                                </span>
-                            </td>
-                            <td className="px-2 py-2 bg-yellow-50 border-l relative h-full text-xs text-gray-700">
-                                {order.note}
-                            </td>
-                            <td className="px-2 py-3 border-l text-center text-xs text-gray-600 font-medium whitespace-nowrap bg-gray-50/50">
-                                <div className="flex items-center justify-center gap-1.5">
-                                    <UserCircle size={14} className="text-gray-400"/>
-                                    {order.handler || user?.username}
-                                </div>
-                            </td>
+                                </td>
+                            )}
                             
-                            <td className="px-1 py-1 border-l text-center bg-gray-50/30 text-xs font-bold text-orange-600">
-                                {order.actionRole || '-'}
-                            </td>
-
-                            <td className="px-1 py-1 border-l text-center">
-                                {order.isFulfilled ? (
-                                    <span title="Đã Fulfill">
-                                        <Truck size={18} className="text-indigo-600 inline" />
+                            {visibleColumns['storeName'] && (
+                                <td className={`px-3 py-3 border-r`}>
+                                    <span className={`px-2 py-1 rounded text-xs font-bold ${getStoreBadgeStyle(getStoreName(order.storeId))}`}>
+                                        {getStoreName(order.storeId)}
                                     </span>
-                                ) : (
-                                    <span className="text-gray-300">-</span>
-                                )}
-                            </td>
-
-                            {/* EDIT BUTTON or LOADING SPINNER */}
-                            <td className="px-1 py-1 border-l text-center">
-                                {updatingOrderIds.has(order.id) ? (
-                                    <div className="flex justify-center items-center h-full">
-                                        <Loader2 size={16} className="animate-spin text-orange-500" />
-                                    </div>
-                                ) : order.isFulfilled ? (
-                                    <div className="flex justify-center items-center h-full text-gray-300 cursor-not-allowed" title="Đã Fulfill (Không thể sửa)">
-                                        <Lock size={14} />
-                                    </div>
-                                ) : (
-                                    <div className="flex items-center justify-center gap-2">
-                                        <button 
-                                            onClick={() => openEditModal(order)}
-                                            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
-                                            title="Chỉnh sửa đơn hàng"
-                                        >
-                                            <Edit size={16} />
+                                </td>
+                            )}
+                            
+                            {visibleColumns['type'] && <td className="px-3 py-3 border-r text-center">{order.type}</td>}
+                            {visibleColumns['sku'] && <td className="px-3 py-3 border-r font-mono text-xs text-gray-600">{order.sku}</td>}
+                            {visibleColumns['quantity'] && <td className="px-3 py-3 border-r text-center font-bold">{order.quantity}</td>}
+                            {visibleColumns['tracking'] && <td className="px-3 py-3 border-r text-center text-xs text-gray-600">{order.tracking || '-'}</td>}
+                            
+                            {visibleColumns['checkbox'] && (
+                                <td className="px-1 py-1 border-r text-center align-middle">
+                                    {updatingOrderIds.has(order.id) ? (
+                                        <div className="flex justify-center">
+                                            <Loader2 size={16} className="animate-spin text-orange-500" />
+                                        </div>
+                                    ) : (
+                                        <button onClick={() => handleToggleCheckbox(order)} className="p-1 hover:bg-gray-100 rounded focus:outline-none transition-colors">
+                                            {order.isChecked ? <CheckSquare size={18} className="text-green-600" /> : <Square size={18} className="text-gray-300" />}
                                         </button>
-                                        <button 
-                                            onClick={() => openDuplicateModal(order)}
-                                            className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-full transition-colors"
-                                            title="Nhân bản đơn hàng (Tạo mới từ đơn này)"
-                                        >
-                                            <Copy size={16} />
-                                        </button>
-                                    </div>
-                                )}
-                            </td>
+                                    )}
+                                </td>
+                            )}
+                            
+                            {visibleColumns['link'] && (
+                                <td className="px-3 py-3 border-r text-center">
+                                    {order.link && (
+                                        <a href={order.link} target="_blank" className="text-blue-600 hover:underline text-xs flex items-center justify-center gap-1">
+                                            <ExternalLink size={14} />
+                                        </a>
+                                    )}
+                                </td>
+                            )}
+                            
+                            {visibleColumns['status'] && (
+                                <td className="px-3 py-3 border-r text-center">
+                                    <span className={`text-xs font-bold px-2 py-1 rounded-full ${getStatusColorClass(order.status as string).replace('bg-white', '').replace('text-gray-700', '')}`}>
+                                        {order.status}
+                                    </span>
+                                </td>
+                            )}
+                            
+                            {visibleColumns['note'] && <td className="px-3 py-3 bg-yellow-50 border-r text-xs text-gray-700">{order.note}</td>}
+                            {visibleColumns['handler'] && <td className="px-3 py-3 border-r text-center text-xs font-medium text-gray-700 bg-gray-50/50">{order.handler || user?.username}</td>}
+                            
+                            {visibleColumns['actionRole'] && (
+                                <td className="px-3 py-3 border-r text-center">
+                                    {order.actionRole && (
+                                        <span className={`text-xs px-2 py-1 rounded ${getRoleBadgeStyle(order.actionRole)}`}>
+                                            {order.actionRole}
+                                        </span>
+                                    )}
+                                    {!order.actionRole && <span className="text-gray-300 text-xs">-</span>}
+                                </td>
+                            )}
+                            
+                            {visibleColumns['isFulfilled'] && (
+                                <td className="px-3 py-3 border-r text-center">
+                                    {order.isFulfilled ? <span title="Đã Fulfill"><Truck size={18} className="text-blue-600 inline" /></span> : <span className="text-gray-300">-</span>}
+                                </td>
+                            )}
+                            
+                            {visibleColumns['action'] && (
+                                <td className="px-3 py-3 text-center">
+                                    {updatingOrderIds.has(order.id) ? (
+                                        <Loader2 size={16} className="animate-spin text-orange-500 mx-auto" />
+                                    ) : (
+                                        <div className="flex items-center justify-center gap-2">
+                                            <button onClick={() => openEditModal(order)} className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded" title="Sửa"><Edit size={16} /></button>
+                                            <button onClick={() => openDuplicateModal(order)} className="p-1.5 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded" title="Nhân bản"><Copy size={16} /></button>
+                                        </div>
+                                    )}
+                                </td>
+                            )}
                         </tr>
                     ))
                 )
@@ -1273,354 +1151,134 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
             </tbody>
           </table>
         </div>
-      </div>
 
-      {/* --- SYSTEM MESSAGE MODAL --- */}
+        {/* Modal Logic ... */}
+        {isModalOpen && (
+            <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-xl w-full max-w-6xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-fade-in border border-gray-200">
+                    <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-slate-800 text-white">
+                        <h3 className="font-bold text-lg flex items-center gap-2">
+                            {isEditMode ? <Edit className="text-orange-400" size={24} /> : <Plus className="text-orange-400" size={24} />}
+                            {isEditMode ? 'CHỈNH SỬA ĐƠN HÀNG' : 'TẠO ĐƠN HÀNG MỚI'}
+                        </h3>
+                        {!isSubmitting && <button onClick={() => setIsModalOpen(false)} className="text-gray-300 hover:text-white transition-colors"><Trash2 size={24} className="rotate-45" /></button>}
+                    </div>
+                    <form onSubmit={handleSubmitOrder} className="flex-1 flex flex-col overflow-hidden bg-gray-50">
+                         <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
+                            {/* GENERAL INFO */}
+                            <div className="bg-white p-5 rounded-lg border border-gray-200 shadow-sm">
+                                <h4 className="text-orange-600 text-xs font-bold uppercase mb-4 border-b border-orange-100 pb-2 flex items-center gap-2"><Info size={16} /> Thông tin chung</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+                                    <div className="md:col-span-4">
+                                        <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Ngày Order (List) <span className="text-red-500">*</span></label>
+                                        <input 
+                                            type="datetime-local" 
+                                            step="1" 
+                                            required 
+                                            className={inputClass} 
+                                            value={formDataCommon.date} 
+                                            onChange={(e) => setFormDataCommon({...formDataCommon, date: e.target.value})} 
+                                            readOnly={isEditMode} 
+                                            placeholder="Chọn ngày..."
+                                        />
+                                        <p className="text-[10px] text-gray-500 mt-1 italic">
+                                            Thời gian hiển thị trên danh sách.
+                                        </p>
+                                    </div>
+                                    <div className="md:col-span-4">
+                                        <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Mã Đơn (ID) <span className="text-red-500">*</span></label>
+                                        <input type="text" required className={inputClass} placeholder="ORD-..." value={formDataCommon.id} onChange={(e) => setFormDataCommon({...formDataCommon, id: e.target.value})} onBlur={handleIdBlur} readOnly={isEditMode} />
+                                    </div>
+                                    <div className="md:col-span-4">
+                                        <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Cửa Hàng <span className="text-red-500">*</span></label>
+                                        <select required className={inputClass} value={formDataCommon.storeId} onChange={(e) => setFormDataCommon({...formDataCommon, storeId: e.target.value})} disabled={isEditMode}>
+                                            <option value="">-- Chọn Store --</option>
+                                            {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                        </select>
+                                    </div>
+                                    
+                                    {/* System Date Display (Only in Edit Mode) */}
+                                    {isEditMode && (
+                                        <div className="md:col-span-12 flex items-center gap-2 text-xs text-gray-500 mt-2 bg-gray-50 p-2 rounded border border-gray-100">
+                                            <Clock size={14} className="text-orange-500"/>
+                                            <span>
+                                                Hệ thống sẽ tự động cập nhật <strong>Ngày Hệ Thống</strong> thành thời điểm hiện tại khi bạn lưu thay đổi.
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* PRODUCT INFO ... (Rest of Form) */}
+                            <div className="bg-white p-5 rounded-lg border border-gray-200 shadow-sm">
+                                <div className="flex justify-between items-center mb-4 border-b border-gray-100 pb-2"><h4 className="text-orange-600 text-xs font-bold uppercase flex items-center gap-2"><Package size={16} /> Sản Phẩm ({formItems.length})</h4>{!isEditMode && user?.role === 'admin' && (<button type="button" onClick={() => setIsAddingUnit(true)} className="text-xs text-blue-600 hover:text-blue-800 flex items-center bg-blue-50 px-2 py-1 rounded border border-blue-200"><Plus size={12} className="mr-1" /> Thêm Unit</button>)}</div>
+                                {isAddingUnit && (<div className="flex gap-2 mb-4 bg-blue-50 p-3 rounded border border-blue-200"><input type="text" className="flex-1 border border-blue-300 rounded px-2 py-1 text-sm bg-white" placeholder="Tên đơn vị mới..." value={newUnitName} onChange={(e) => setNewUnitName(e.target.value)} /><button type="button" onClick={handleAddUnit} className="bg-blue-600 text-white px-3 rounded text-xs font-bold">Lưu</button><button type="button" onClick={() => setIsAddingUnit(false)} className="bg-white text-gray-600 px-2 rounded text-xs border border-gray-300">✕</button></div>)}
+                                <div className="space-y-4">
+                                    {formItems.map((item, index) => (
+                                        <div key={index} className="bg-slate-50 border border-gray-300 rounded-lg p-4 relative group hover:border-orange-300 transition-colors">
+                                            <div className="flex justify-between items-start mb-3 border-b border-gray-200 pb-2">
+                                                <div className="flex items-center gap-2"><span className="bg-slate-800 text-white text-xs font-bold px-2 py-0.5 rounded">#{index + 1}</span>{!isEditMode && <button type="button" onClick={() => handleDuplicateItemRow(index)} className="text-blue-600 hover:text-blue-800 text-xs flex items-center gap-1"><Copy size={12} /> Nhân bản</button>}</div>
+                                                {!isEditMode && <button type="button" onClick={() => handleRemoveItemRow(index)} className="text-gray-400 hover:text-red-500 bg-white p-1 rounded hover:bg-red-50"><Trash2 size={16} /></button>}
+                                            </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-4">
+                                                <div className="lg:col-span-2"><label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Loại</label><select className={inputClass} value={item.type} onChange={(e) => handleItemChange(index, 'type', e.target.value)}><option value="">-- Chọn --</option>{units.map((u, i) => <option key={i} value={u}>{u}</option>)}{!units.includes('Printway') && <option value="Printway">Printway</option>}<option value="Khác">Khác</option></select></div>
+                                                <div className="lg:col-span-2"><label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">SKU <span className="text-red-500">*</span></label><input type="text" className={`font-mono font-bold ${inputClass}`} placeholder="Mã SKU..." value={item.sku} onChange={(e) => handleItemChange(index, 'sku', e.target.value)} /></div>
+                                                <div className="lg:col-span-1"><label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Số Lượng</label><input type="number" className={`text-center font-bold ${inputClass}`} value={item.quantity} onChange={(e) => handleItemChange(index, 'quantity', e.target.value)} min="1" /></div>
+                                                <div className="lg:col-span-2"><label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Item SKU</label><input type="text" className={inputClass} placeholder="Mã item..." value={item.itemSku || ''} onChange={(e) => handleItemChange(index, 'itemSku', e.target.value)} /></div>
+                                                <div className="lg:col-span-5"><label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Mockup URL</label><input type="text" className={inputClass} placeholder="URL..." value={item.urlMockup || ''} onChange={(e) => handleItemChange(index, 'urlMockup', e.target.value)} /></div>
+                                                <div className="lg:col-span-5"><label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Product Name</label><input type="text" className={inputClass} placeholder="Tên sản phẩm..." value={item.productName || ''} onChange={(e) => handleItemChange(index, 'productName', e.target.value)} /></div>
+                                                <div className="lg:col-span-7"><label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Ghi Chú Sản Phẩm (Note)</label><input type="text" className={`${inputClass} bg-yellow-50 border-yellow-200 focus:ring-yellow-400`} placeholder="Ghi chú chi tiết cho sản phẩm này..." value={item.note || ''} onChange={(e) => handleItemChange(index, 'note', e.target.value)} /></div>
+                                                <div className="lg:col-span-6"><label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Artwork Front</label><input type="text" className={inputClass} placeholder="URL..." value={item.urlArtworkFront || ''} onChange={(e) => handleItemChange(index, 'urlArtworkFront', e.target.value)} /></div>
+                                                <div className="lg:col-span-6"><label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Artwork Back</label><input type="text" className={inputClass} placeholder="URL..." value={item.urlArtworkBack || ''} onChange={(e) => handleItemChange(index, 'urlArtworkBack', e.target.value)} /></div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {!isEditMode && (<button type="button" onClick={handleAddItemRow} className="w-full py-3 bg-white border-2 border-dashed border-gray-300 text-blue-600 rounded-lg hover:bg-blue-50 text-sm font-bold uppercase tracking-wide transition-colors flex items-center justify-center gap-2"><Plus size={16} /> Thêm Sản Phẩm</button>)}
+                                </div>
+                            </div>
+
+                            {/* TRACKING & SHIPPING */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="bg-white p-5 rounded-lg border border-gray-200 shadow-sm"><h4 className="text-orange-600 text-xs font-bold uppercase mb-4 border-b border-orange-100 pb-2 flex items-center gap-2"><Tag size={16} /> Xử lý & Tracking</h4><div className="space-y-4"><div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-bold text-gray-500 mb-1">Tracking Number</label><input type="text" className={inputClass} value={formDataExtra.tracking} onChange={(e) => setFormDataExtra({...formDataExtra, tracking: e.target.value})} /></div><div><label className="block text-xs font-bold text-gray-500 mb-1">Link Tracking</label><input type="text" className={inputClass} value={formDataExtra.link} onChange={(e) => setFormDataExtra({...formDataExtra, link: e.target.value})} /></div></div><div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-bold text-gray-500 mb-1">Trạng Thái</label><select className={inputClass} value={formDataExtra.status} onChange={(e) => setFormDataExtra({...formDataExtra, status: e.target.value})}><option value="Pending">Pending</option><option value="Fulfilled">Fulfilled</option><option value="Cancelled">Cancelled</option><option value="Resend">Resend</option><option value="Refund">Refund</option></select></div><div><label className="block text-xs font-bold text-gray-500 mb-1">Role Action</label><select className={inputClass} value={formDataExtra.actionRole} onChange={(e) => setFormDataExtra({...formDataExtra, actionRole: e.target.value})}><option value="">-- Assign User --</option>{assignableUsers.map(u => (<option key={u.username} value={u.username}>{u.username} ({u.role})</option>))}</select></div></div></div></div>
+                                <div className="bg-blue-50/50 p-5 rounded-lg border border-blue-100 shadow-sm"><h4 className="text-blue-700 text-xs font-bold uppercase mb-4 border-b border-blue-200 pb-2 flex items-center gap-2"><MapPin size={16} /> Thông tin Giao Hàng</h4><div><label className="block text-xs font-bold text-gray-500 mb-1">Paste Shipping Info (Key: Value)</label><textarea className={`${inputClass} h-32 font-mono text-xs`} placeholder={`First_name: John\nLast_name: Doe\nShipping_address1: 123 Main St...`} value={rawAddress} onChange={(e) => setRawAddress(e.target.value)} /><p className="text-[10px] text-gray-500 mt-1 italic">* Hệ thống tự động phân tích định dạng Key: Value khi lưu.</p></div></div>
+                            </div>
+                        </div>
+
+                        {/* FOOTER ACTIONS */}
+                        <div className="p-4 bg-white border-t border-gray-200 flex justify-end gap-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-10">
+                            {isEditMode && !formDataExtra.isFulfilled && (
+                                <button 
+                                    type="button" 
+                                    disabled={isSubmitting} 
+                                    onClick={handleFulfillFromModal} 
+                                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition-colors flex items-center gap-2 mr-auto"
+                                    title="Lưu thông tin hiện tại và gửi sang Fulfillment"
+                                >
+                                    <Truck size={18} /> Fulfill Ngay
+                                </button>
+                            )}
+                            <button type="button" disabled={isSubmitting} onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 bg-gray-100 text-gray-700 font-bold rounded-lg hover:bg-gray-200 transition-colors">Hủy bỏ</button>
+                            <button type="submit" disabled={isSubmitting} className="px-6 py-2.5 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white rounded-lg font-bold shadow-md flex items-center gap-2 transition-all transform active:scale-95">
+                                {isSubmitting ? <Loader2 className="animate-spin" size={20}/> : <Save size={20} />} 
+                                {isSubmitting ? 'Đang xử lý...' : (isEditMode ? 'Lưu Thay Đổi' : 'Tạo Đơn Hàng')}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        )}
       {sysModal.isOpen && (
-          <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 animate-fade-in">
-              <div className="bg-white rounded-lg shadow-xl w-full max-w-sm overflow-hidden scale-100 transform transition-all">
-                  <div className="p-4 flex gap-3">
-                      <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
-                          sysModal.type === 'error' ? 'bg-red-100 text-red-600' :
-                          sysModal.type === 'success' ? 'bg-green-100 text-green-600' :
-                          sysModal.type === 'confirm' ? 'bg-blue-100 text-blue-600' : 'bg-yellow-100 text-yellow-600'
-                      }`}>
-                          {sysModal.type === 'error' && <AlertTriangle size={20} />}
-                          {sysModal.type === 'success' && <CheckSquare size={20} />}
-                          {sysModal.type === 'confirm' && <Info size={20} />}
-                          {sysModal.type === 'alert' && <Info size={20} />}
-                      </div>
-                      <div className="flex-1">
-                          <h3 className="text-lg font-bold text-gray-900 mb-1">{sysModal.title}</h3>
-                          <p className="text-sm text-gray-600">{sysModal.message}</p>
-                      </div>
-                  </div>
-                  <div className="bg-gray-50 px-4 py-3 flex justify-end gap-2">
-                      {sysModal.type === 'confirm' ? (
-                          <>
-                              <button onClick={closeMessage} className="px-3 py-2 text-sm text-gray-600 hover:bg-gray-200 rounded">Hủy bỏ</button>
-                              <button 
-                                  onClick={() => { closeMessage(); if(sysModal.onConfirm) sysModal.onConfirm(); }} 
-                                  className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded font-medium"
-                              >
-                                  Xác nhận
-                              </button>
-                          </>
-                      ) : (
-                          <button onClick={closeMessage} className="px-4 py-2 text-sm bg-gray-200 hover:bg-gray-300 text-gray-800 rounded font-medium">Đóng</button>
-                      )}
+          <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
+              <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-4">
+                  <h3 className="font-bold text-lg mb-2">{sysModal.title}</h3>
+                  <p className="text-sm text-gray-600 mb-4">{sysModal.message}</p>
+                  <div className="flex justify-end gap-2">
+                      {sysModal.type === 'confirm' && <button onClick={closeMessage} className="px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded">Hủy</button>}
+                      <button onClick={() => { closeMessage(); if(sysModal.onConfirm) sysModal.onConfirm(); }} className="px-4 py-2 text-sm bg-blue-600 text-white rounded font-bold">OK</button>
                   </div>
               </div>
           </div>
       )}
-
-      {/* --- MODAL TẠO / SỬA ĐƠN HÀNG (DARK MODE & MULTI SKU) --- */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl w-full max-w-[95%] xl:max-w-7xl shadow-2xl overflow-hidden max-h-[95vh] flex flex-col">
-                <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-[#1e293b]">
-                    <h3 className="font-bold text-lg text-white flex items-center gap-2">
-                        {isEditMode ? <Edit className="text-orange-500" size={24} /> : <Plus className="text-orange-500" size={24} />}
-                        {isEditMode ? 'CHỈNH SỬA ĐƠN HÀNG' : 'TẠO ĐƠN HÀNG MỚI'}
-                    </h3>
-                    {!isSubmitting && (
-                        <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-white transition-colors p-1 rounded-full">✕</button>
-                    )}
-                </div>
-                
-                <form onSubmit={handleSubmitOrder} className="flex-1 flex flex-col overflow-hidden">
-                    <div className="p-6 overflow-y-auto custom-scrollbar space-y-6">
-                        {/* 1. THÔNG TIN CHUNG */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4 border-b border-gray-200">
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Ngày Đặt <span className="text-red-500">*</span></label>
-                                <input 
-                                    type="datetime-local" 
-                                    step="1"
-                                    required 
-                                    className={`${darkInputClass} ${isEditMode ? 'opacity-70 cursor-not-allowed' : ''}`} 
-                                    value={formDataCommon.date} 
-                                    onChange={(e) => setFormDataCommon({...formDataCommon, date: e.target.value})}
-                                    readOnly={isEditMode}
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Mã Đơn (ID) <span className="text-red-500">*</span></label>
-                                <input 
-                                    type="text" 
-                                    required 
-                                    className={`${darkInputClass} ${isEditMode ? 'opacity-70 cursor-not-allowed' : ''}`} 
-                                    placeholder="ORD-..." 
-                                    value={formDataCommon.id} 
-                                    onChange={(e) => setFormDataCommon({...formDataCommon, id: e.target.value})}
-                                    onBlur={handleIdBlur} 
-                                    readOnly={isEditMode}
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Cửa Hàng <span className="text-red-500">*</span></label>
-                                <div className="relative">
-                                    <select 
-                                        required 
-                                        className={`${darkSelectClass} ${isEditMode ? 'opacity-70 cursor-not-allowed' : ''}`}
-                                        value={formDataCommon.storeId} 
-                                        onChange={(e) => setFormDataCommon({...formDataCommon, storeId: e.target.value})}
-                                        disabled={isEditMode}
-                                    >
-                                        <option value="" className="text-gray-400">-- Chọn Store --</option>
-                                        {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                    </select>
-                                    <ArrowDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* 2. DANH SÁCH SẢN PHẨM (CARD LIST LAYOUT) */}
-                        <div>
-                            <div className="flex justify-between items-center mb-2">
-                                <label className="block text-xs font-bold text-gray-500 uppercase">
-                                    {isEditMode ? 'Sản Phẩm' : `Danh Sách Sản Phẩm (${formItems.length})`}
-                                </label>
-                                {!isEditMode && user?.role === 'admin' && (
-                                    <button type="button" onClick={() => setIsAddingUnit(true)} className="text-xs text-blue-600 hover:text-blue-800 flex items-center bg-blue-50 px-2 py-1 rounded border border-blue-200">
-                                        <Plus size={12} className="mr-1" /> Thêm Unit
-                                    </button>
-                                )}
-                            </div>
-
-                            {/* ADD UNIT INLINE */}
-                            {isAddingUnit && (
-                                <div className="flex gap-2 mb-3 bg-blue-50 p-2 rounded border border-blue-100">
-                                    <input type="text" className="flex-1 border border-blue-300 rounded px-2 py-1 text-sm focus:ring-1 focus:ring-blue-500" placeholder="Tên đơn vị mới..." value={newUnitName} onChange={(e) => setNewUnitName(e.target.value)} autoFocus />
-                                    <button type="button" onClick={handleAddUnit} className="bg-blue-600 text-white px-3 rounded text-xs font-bold hover:bg-blue-700">Lưu</button>
-                                    <button type="button" onClick={() => setIsAddingUnit(false)} className="bg-gray-200 text-gray-600 px-2 rounded text-xs hover:bg-gray-300">✕</button>
-                                </div>
-                            )}
-
-                            <div className="space-y-3">
-                                {formItems.map((item, index) => (
-                                    <div key={index} className="bg-slate-700 border border-gray-600 rounded-lg p-4 relative group hover:border-orange-500/50 transition-colors">
-                                        {/* Card Header: Index & Actions */}
-                                        <div className="flex justify-between items-start mb-3 border-b border-gray-600 pb-2">
-                                            <div className="flex items-center gap-2">
-                                                <span className="bg-slate-800 text-orange-500 text-xs font-bold px-2 py-0.5 rounded border border-gray-600">#{index + 1}</span>
-                                                {!isEditMode && (
-                                                    <button type="button" onClick={() => handleDuplicateItemRow(index)} className="text-blue-400 hover:text-blue-300 text-xs flex items-center gap-1 transition-colors" title="Nhân bản dòng này">
-                                                        <Copy size={12} /> Nhân bản
-                                                    </button>
-                                                )}
-                                            </div>
-                                            {/* Delete Button */}
-                                            {!isEditMode && (
-                                                <button type="button" onClick={() => handleRemoveItemRow(index)} className="text-gray-400 hover:text-red-400 transition-colors p-1 rounded hover:bg-slate-600" title="Xóa sản phẩm này">
-                                                    <Trash2 size={16} />
-                                                </button>
-                                            )}
-                                        </div>
-
-                                        {/* Grid Layout for Inputs */}
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                                            {/* Row 1 */}
-                                            <div className="col-span-1">
-                                                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Loại (Type)</label>
-                                                <select className="w-full border border-gray-600 rounded px-2 py-1.5 text-xs text-white bg-slate-800 focus:ring-1 focus:ring-orange-500 outline-none" value={item.type} onChange={(e) => handleItemChange(index, 'type', e.target.value)}>
-                                                    <option value="">-- Chọn --</option>
-                                                    {units.map((u, i) => <option key={i} value={u}>{u}</option>)}
-                                                    {!units.includes('Printway') && <option value="Printway">Printway</option>}
-                                                    <option value="Khác">Khác</option>
-                                                </select>
-                                            </div>
-                                            <div className="col-span-1">
-                                                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Product Name</label>
-                                                <input type="text" className="w-full border border-gray-600 rounded px-2 py-1.5 text-xs text-white bg-slate-800 focus:ring-1 focus:ring-orange-500 outline-none placeholder-gray-500" placeholder="Tên sản phẩm..." value={item.productName || ''} onChange={(e) => handleItemChange(index, 'productName', e.target.value)} />
-                                            </div>
-                                            <div className="col-span-1">
-                                                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Item SKU</label>
-                                                <input type="text" className="w-full border border-gray-600 rounded px-2 py-1.5 text-xs text-white bg-slate-800 font-mono focus:ring-1 focus:ring-orange-500 outline-none placeholder-gray-500" placeholder="Mã item..." value={item.itemSku || ''} onChange={(e) => handleItemChange(index, 'itemSku', e.target.value)} />
-                                            </div>
-                                            <div className="col-span-1">
-                                                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">SKU <span className="text-red-500">*</span></label>
-                                                <input type="text" className="w-full border border-gray-600 rounded px-2 py-1.5 text-xs text-white bg-slate-800 font-mono font-bold focus:ring-1 focus:ring-orange-500 outline-none placeholder-gray-500" placeholder="Mã SKU..." value={item.sku} onChange={(e) => handleItemChange(index, 'sku', e.target.value)} />
-                                            </div>
-
-                                            {/* Row 2 */}
-                                            <div className="col-span-1">
-                                                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Artwork Front (URL)</label>
-                                                <div className="relative">
-                                                    <LinkIcon size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500"/>
-                                                    <input type="text" className="w-full border border-gray-600 rounded pl-7 pr-2 py-1.5 text-xs text-blue-400 bg-slate-800 focus:ring-1 focus:ring-orange-500 outline-none placeholder-gray-600" placeholder="https://..." value={item.urlArtworkFront || ''} onChange={(e) => handleItemChange(index, 'urlArtworkFront', e.target.value)} />
-                                                </div>
-                                            </div>
-                                            <div className="col-span-1">
-                                                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Artwork Back (URL)</label>
-                                                <div className="relative">
-                                                    <LinkIcon size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500"/>
-                                                    <input type="text" className="w-full border border-gray-600 rounded pl-7 pr-2 py-1.5 text-xs text-blue-400 bg-slate-800 focus:ring-1 focus:ring-orange-500 outline-none placeholder-gray-600" placeholder="https://..." value={item.urlArtworkBack || ''} onChange={(e) => handleItemChange(index, 'urlArtworkBack', e.target.value)} />
-                                                </div>
-                                            </div>
-                                            <div className="col-span-1">
-                                                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Mockup URL</label>
-                                                <div className="relative">
-                                                    <LinkIcon size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500"/>
-                                                    <input type="text" className="w-full border border-gray-600 rounded pl-7 pr-2 py-1.5 text-xs text-blue-400 bg-slate-800 focus:ring-1 focus:ring-orange-500 outline-none placeholder-gray-600" placeholder="https://..." value={item.urlMockup || ''} onChange={(e) => handleItemChange(index, 'urlMockup', e.target.value)} />
-                                                </div>
-                                            </div>
-                                            <div className="col-span-1">
-                                                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Loại Mockup</label>
-                                                <select className="w-full border border-gray-600 rounded px-2 py-1.5 text-xs text-white bg-slate-800 focus:ring-1 focus:ring-orange-500 outline-none" value={item.mockupType || 'Mockup để tham khảo'} onChange={(e) => handleItemChange(index, 'mockupType', e.target.value)}>
-                                                    <option value="Mockup để tham khảo">Mockup để tham khảo</option>
-                                                    <option value="Mockup để tham khảo 1">Mockup để tham khảo 1</option>
-                                                    <option value="Mockup để tham khảo 2">Mockup để tham khảo 2</option>
-                                                </select>
-                                            </div>
-
-                                            {/* Row 3 */}
-                                            <div className="col-span-1 sm:col-span-1 lg:col-span-1">
-                                                 <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Số Lượng</label>
-                                                 <input type="number" className="w-full border border-gray-600 rounded px-2 py-1.5 text-xs text-white bg-slate-800 text-center font-bold focus:ring-1 focus:ring-orange-500 outline-none" value={item.quantity} onChange={(e) => handleItemChange(index, 'quantity', e.target.value)} min="1" />
-                                            </div>
-                                            <div className="col-span-1 sm:col-span-1 lg:col-span-3">
-                                                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Ghi Chú</label>
-                                                <input type="text" className="w-full border border-gray-600 rounded px-2 py-1.5 text-xs text-white bg-slate-800 focus:ring-1 focus:ring-orange-500 outline-none placeholder-gray-500" placeholder="Ghi chú thêm..." value={item.note} onChange={(e) => handleItemChange(index, 'note', e.target.value)} />
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                                
-                                {!isEditMode && (
-                                    <button 
-                                        type="button" 
-                                        onClick={handleAddItemRow}
-                                        className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-blue-400 text-sm font-bold uppercase tracking-wide transition-colors border-2 border-dashed border-slate-600 rounded-lg flex items-center justify-center gap-2"
-                                    >
-                                        <Plus size={16} /> Thêm Sản Phẩm
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* 3. THÔNG TIN XỬ LÝ (Tracking, Status, Role, v.v.) */}
-                        <div className="bg-slate-700 p-4 rounded-lg border border-gray-600">
-                             <h4 className="text-white text-xs font-bold uppercase mb-3 flex items-center gap-2">
-                                 <Calendar size={14} />
-                                 Thông tin xử lý & Tracking
-                             </h4>
-                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                 <div>
-                                     <label className="block text-xs font-bold text-gray-400 mb-1">Tracking Number</label>
-                                     <input 
-                                        type="text" 
-                                        className={darkInputClass} 
-                                        placeholder="Mã vận đơn..."
-                                        value={formDataExtra.tracking}
-                                        onChange={(e) => setFormDataExtra({...formDataExtra, tracking: e.target.value})}
-                                     />
-                                 </div>
-                                 <div>
-                                     <label className="block text-xs font-bold text-gray-400 mb-1">Link Tracking</label>
-                                     <input 
-                                        type="text" 
-                                        className={darkInputClass} 
-                                        placeholder="https://..."
-                                        value={formDataExtra.link}
-                                        onChange={(e) => setFormDataExtra({...formDataExtra, link: e.target.value})}
-                                     />
-                                 </div>
-                                 <div>
-                                     <label className="block text-xs font-bold text-gray-400 mb-1">Trạng Thái Đơn</label>
-                                     <select 
-                                        className={darkSelectClass}
-                                        value={formDataExtra.status}
-                                        onChange={(e) => setFormDataExtra({...formDataExtra, status: e.target.value})}
-                                     >
-                                         <option value="Pending">Pending</option>
-                                         <option value="Fulfilled">Fulfilled</option>
-                                         <option value="Cancelled">Cancelled</option>
-                                         <option value="Resend">Resend</option>
-                                         <option value="Refund">Refund</option>
-                                     </select>
-                                 </div>
-                                 <div>
-                                     <label className="block text-xs font-bold text-gray-400 mb-1">Giao Việc (Role Action)</label>
-                                     <select 
-                                        className={darkSelectClass}
-                                        value={formDataExtra.actionRole}
-                                        onChange={(e) => setFormDataExtra({...formDataExtra, actionRole: e.target.value})}
-                                     >
-                                        <option value="">-- Assign User --</option>
-                                        {assignableUsers.map(u => (
-                                            <option key={u.username} value={u.username}>
-                                                {u.username} ({u.role})
-                                            </option>
-                                        ))}
-                                     </select>
-                                 </div>
-                                 <div className="md:col-span-2 flex items-center gap-3 pt-2">
-                                     <button 
-                                        type="button"
-                                        onClick={() => setFormDataExtra({...formDataExtra, isChecked: !formDataExtra.isChecked})}
-                                        className="flex items-center gap-2 text-white hover:text-orange-400 transition-colors"
-                                     >
-                                         {formDataExtra.isChecked ? <CheckSquare className="text-green-500" /> : <Square className="text-gray-400" />}
-                                         <span className="text-sm font-medium">Đánh dấu đã kiểm tra (Check)</span>
-                                     </button>
-                                 </div>
-                             </div>
-                        </div>
-
-                         {/* 4. THÔNG TIN GIAO HÀNG (SHIPPING - RAW PASTE) */}
-                         <div className="bg-slate-700 p-4 rounded-lg border border-gray-600">
-                            <h4 className="text-white text-xs font-bold uppercase mb-3 flex items-center gap-2">
-                                <MapPin size={14} />
-                                Thông tin giao hàng (Shipping)
-                            </h4>
-                            <div className="space-y-3">
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-400 mb-1">Dán địa chỉ (Tự động phân tích)</label>
-                                    <textarea
-                                        className={`${darkInputClass} h-24 resize-none font-mono text-xs`}
-                                        placeholder={`First_name: Sharon\nLast_name: Zwick\nShipping_address1: 124 Tallwood Dr\nShipping_address2: --\nShipping_city: Vernon\nShipping_zip: 06066-5926\nShipping_province: CT\nShipping_country: United States\nShipping_phone: --`}
-                                        value={rawAddress}
-                                        onChange={(e) => setRawAddress(e.target.value)}
-                                    />
-                                    <p className="text-gray-400 text-[10px] mt-1 italic">
-                                        * Hệ thống sẽ tự động phân tích định dạng Key: Value và lưu vào các cột Shipping khi bạn bấm "{isEditMode ? 'Lưu Thay Đổi' : 'Tạo Đơn Hàng'}".
-                                    </p>
-                                </div>
-                            </div>
-                         </div>
-                    </div>
-
-                    <div className="p-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
-                        {/* FULFILL BUTTON - ONLY ENABLED IN EDIT MODE */}
-                        <button 
-                            type="button" 
-                            disabled={isSubmitting || !isEditMode} // DISABLE IF NOT EDIT MODE
-                            onClick={handleFulfillOrder} 
-                            className={`px-5 py-2.5 rounded-lg font-bold shadow-sm transition-colors flex items-center gap-2 ${
-                                isSubmitting || !isEditMode 
-                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
-                                : 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                            }`}
-                            title={!isEditMode ? "Chỉ khả dụng khi chỉnh sửa đơn hàng" : "Fulfill đơn hàng"}
-                        >
-                            {isSubmitting ? <Loader2 className="animate-spin" size={20}/> : <Truck size={20} />}
-                            Fulfill
-                        </button>
-                        
-                        <div className="flex-1"></div>
-                        <button type="button" disabled={isSubmitting} onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors shadow-sm">Hủy bỏ</button>
-                        <button type="submit" disabled={isSubmitting} className="px-6 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-70">
-                            {isSubmitting ? <Loader2 className="animate-spin" size={20}/> : <Save size={20} />}
-                            {isSubmitting ? 'Đang xử lý...' : (isEditMode ? 'Lưu Thay Đổi' : 'Tạo Đơn Hàng')}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-      )}
     </div>
   );
 };
-
-export default OrderList;

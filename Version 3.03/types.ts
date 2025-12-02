@@ -23,7 +23,8 @@ export interface OrderItem {
 
 export interface Order {
   id: string;
-  date: string; // YYYY-MM-DD HH:mm:ss
+  date: string; // YYYY-MM-DD HH:mm:ss (Date List - User Selected)
+  lastModified?: string; // New: System Timestamp (Created/Updated At)
   storeId: string;
   sku: string;
   tracking: string;
@@ -37,6 +38,7 @@ export interface Order {
   actionRole?: string; // New Role Action
   items?: OrderItem[]; // Support multiple items per order
   isFulfilled?: boolean; // New Fulfilled Status
+  isDesignDone?: boolean; // New Designer Check Status
 
   // --- SHIPPING INFO (Hidden on UI, saved to Sheet) ---
   rawShipping?: string; // Raw text to be parsed by backend
@@ -122,6 +124,12 @@ export interface StoreHistoryItem {
   storeId: string;
   listing: number;
   sale: number;
+}
+
+// --- SKU MAPPING TYPE ---
+export interface SkuMapping {
+  sku: string;
+  category: string;
 }
 
 // --- SYSTEM TYPES ---
