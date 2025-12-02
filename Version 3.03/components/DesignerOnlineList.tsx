@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Search, RefreshCw, Copy, ArrowUp, ArrowDown, Calendar, UserCircle, ChevronLeft, ChevronRight, Settings, Save, X, Loader2, CheckCircle, AlertCircle, Filter, ArrowDownAZ, ArrowUpAZ, AlertTriangle, Info, FileSpreadsheet, DollarSign, CheckSquare, Square, Users, Award } from 'lucide-react';
+import { Search, RefreshCw, Copy, ArrowUp, ArrowDown, Calendar, UserCircle, ChevronLeft, ChevronRight, Settings, Save, X, Loader2, CheckCircle, AlertCircle, Filter, ArrowDownAZ, ArrowUpAZ, AlertTriangle, Info, FileSpreadsheet, DollarSign, CheckSquare, Square, Users } from 'lucide-react';
 import { sheetService } from '../services/sheetService';
 import { Order, Store, User } from '../types';
 
@@ -37,7 +36,7 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
   const [stores, setStores] = useState<Store[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [skuMap, setSkuMap] = useState<Record<string, string>>({}); 
-  const [priceMap, setPriceMap] = useState<Record<string, number>>({}); // New Price Map
+  const [priceMap, setPriceMap] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [dataError, setDataError] = useState<{ message: string, detail?: string, fileId?: string } | null>(null);
   
@@ -84,16 +83,13 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
           sheetService.getStores(),
           sheetService.getUsers(),
           sheetService.getSkuMappings(),
-          sheetService.getPriceMappings() // Fetch prices
+          sheetService.getPriceMappings()
       ]);
 
-      // RACE CONDITION CHECK
-      if (selectedMonthRef.current !== monthToFetch) {
-          return;
-      }
+      if (selectedMonthRef.current !== monthToFetch) return;
 
       setStores(storeData);
-      setUsers(Array.isArray(usersData) ? usersData : []); // Ensure users is array
+      setUsers(Array.isArray(usersData) ? usersData : []);
       setCurrentFileId(orderResult.fileId);
       
       const mappingObj: Record<string, string> = {};
@@ -107,9 +103,8 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
           if (p.category) priceObj[p.category] = Number(p.price) || 0;
       });
       setPriceMap(priceObj);
-      setTempPriceMap(priceObj); // Initialize temp map for modal
+      setTempPriceMap(priceObj);
 
-      // STRICT DATE FILTER
       const rawOrders = orderResult.orders || [];
       const ordersInMonth = rawOrders.filter(o => {
            if (!o.date) return false;
@@ -120,7 +115,6 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
       if (rawOrders.length > 0 && ordersInMonth.length === 0) {
           const sampleDate = rawOrders[0].date;
           const actualMonth = sampleDate ? sampleDate.substring(0, 7) : 'Không xác định';
-
           setDataError({
             message: `Lỗi Dữ Liệu: Bạn chọn tháng ${monthToFetch} nhưng hệ thống trả về toàn bộ dữ liệu của tháng ${actualMonth}.`,
             detail: `Nguyên nhân: File ID trong sheet "FileIndex" (Master) đang trỏ sai file.`,
@@ -131,14 +125,11 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
 
       const userRole = (user.role || '').toLowerCase();
       const currentUsername = user.username;
-
       let filteredOrders = [];
 
       if (userRole === 'designer online') {
           filteredOrders = ordersInMonth.filter(o => o.actionRole === currentUsername);
       } else {
-          // Show orders assigned to ANY designer if not a designer online
-          // Safe filtering even if usersData failed
           const safeUsers = Array.isArray(usersData) ? usersData : [];
           const designerUsernames = safeUsers
               .filter(u => {
@@ -151,7 +142,6 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
               return o.actionRole && designerUsernames.includes(o.actionRole);
           });
       }
-
       setOrders(filteredOrders);
 
     } catch (e) {
@@ -172,11 +162,10 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
       loadData(selectedMonth); 
   }, [selectedMonth, user.username]);
 
-  // --- STATS CALCULATION ---
   const stats = useMemo(() => {
       const result = {
           totalOrders: 0,
-          totalMoney: 0, // NEW: Tổng tiền
+          totalMoney: 0,
           categories: {
               'Loại 1': { total: 0, checked: 0, money: 0 },
               'Loại 2': { total: 0, checked: 0, money: 0 },
@@ -193,7 +182,6 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
           const isChecked = o.isDesignDone === true;
           const designerName = o.actionRole || 'Chưa Giao';
 
-          // 1. Calculate by Category
           let catKey = category;
           if (!result.categories[catKey as keyof typeof result.categories]) catKey = 'Khác';
 
@@ -202,7 +190,6 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
           target.money += price;
           if (isChecked) target.checked += 1;
 
-          // 2. Calculate by Designer
           if (!result.designers[designerName]) {
               result.designers[designerName] = { total: 0, checked: 0, money: 0 };
           }
@@ -211,7 +198,7 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
           if (isChecked) result.designers[designerName].checked += 1;
 
           result.totalOrders += 1;
-          result.totalMoney += price; // Accumulate Total Money
+          result.totalMoney += price;
       });
 
       return result;
@@ -241,7 +228,30 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
     setSelectedMonth(`${newYear}-${newMonth}`);
   };
 
-  const handleUpdateSku = async (e: React.FormEvent) => { e.preventDefault(); if (!skuFormData.sku.trim()) { setSkuMessage({ type: 'error', text: 'Vui lòng nhập SKU' }); return; } setIsSubmittingSku(true); setSkuMessage(null); try { const result = await sheetService.updateSkuCategory(skuFormData.sku.trim(), skuFormData.category); if (result.success) { setSkuMessage({ type: 'success', text: 'Cập nhật phân loại thành công!' }); setSkuFormData(prev => ({ ...prev, sku: '' })); await loadData(selectedMonth); setTimeout(() => { setIsSkuModalOpen(false); setSkuMessage(null); }, 1500); } else { setSkuMessage({ type: 'error', text: result.error || 'Lỗi cập nhật.' }); } } catch (err) { setSkuMessage({ type: 'error', text: 'Lỗi kết nối hệ thống.' }); } finally { setIsSubmittingSku(false); } };
+  const handleUpdateSku = async (e: React.FormEvent) => { 
+      e.preventDefault(); 
+      if (!skuFormData.sku.trim()) { 
+          setSkuMessage({ type: 'error', text: 'Vui lòng nhập SKU' }); 
+          return; 
+      } 
+      setIsSubmittingSku(true); 
+      setSkuMessage(null); 
+      try { 
+          const result = await sheetService.updateSkuCategory(skuFormData.sku.trim(), skuFormData.category); 
+          if (result.success) { 
+              setSkuMessage({ type: 'success', text: 'Cập nhật phân loại thành công!' }); 
+              setSkuFormData(prev => ({ ...prev, sku: '' })); 
+              await loadData(selectedMonth); 
+              setTimeout(() => { setIsSkuModalOpen(false); setSkuMessage(null); }, 1500); 
+          } else { 
+              setSkuMessage({ type: 'error', text: result.error || 'Lỗi cập nhật.' }); 
+          } 
+      } catch (err) { 
+          setSkuMessage({ type: 'error', text: 'Lỗi kết nối hệ thống.' }); 
+      } finally { 
+          setIsSubmittingSku(false); 
+      } 
+  };
 
   const handleSavePrices = async () => {
     setIsSavingPrices(true);
@@ -265,17 +275,14 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
 
       const newValue = !order.isDesignDone;
       
-      // Prevent navigation / tab close
       if (onProcessStart) onProcessStart();
       setUpdatingIds(prev => new Set(prev).add(order.id));
 
-      // Optimistic update
       setOrders(prev => prev.map(o => o.id === order.id ? { ...o, isDesignDone: newValue } : o));
 
       try {
           await sheetService.updateOrder(currentFileId, order.id, 'isDesignDone', newValue ? "TRUE" : "FALSE");
       } catch (error) {
-          // Revert on error
           setOrders(prev => prev.map(o => o.id === order.id ? { ...o, isDesignDone: !newValue } : o));
           alert('Lỗi cập nhật trạng thái');
       } finally {
@@ -284,7 +291,6 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
               newSet.delete(order.id);
               return newSet;
           });
-          // Allow navigation again
           if (onProcessEnd) onProcessEnd();
       }
   };
@@ -323,7 +329,6 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
     })
     .map(x => x.item);
 
-  // CATEGORY LIST FOR PRICE SETTINGS
   const PRICE_CATEGORIES = ['Loại 1', 'Loại 2', 'Loại 3', 'Loại 4'];
 
   return (
@@ -335,11 +340,8 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                 <DollarSign size={16} className="text-green-600"/> Tổng Hợp Tháng {currentMonthStr}/{currentYearStr}
             </h3>
             
-            {/* GRID LAYOUT: LEFT = CATEGORY SUMMARY, RIGHT = DESIGNER SUMMARY */}
             <div className="flex flex-col xl:flex-row gap-6">
-                {/* PART 1: CATEGORY SUMMARY */}
                 <div className="flex-1">
-                    {/* Updated Grid Columns to 6 to fit Total Money Card */}
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-6 gap-3">
                         <div className="bg-indigo-600 text-white rounded p-3 shadow-sm flex flex-col justify-center items-center text-center">
                             <span className="text-xs opacity-80 uppercase tracking-wide">Tổng Đơn</span>
@@ -592,6 +594,7 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                 </div>
             </div>
         )}
+      </div>
     </div>
   );
 };
