@@ -139,7 +139,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         {/* Footer Section */}
         <div className="bg-gray-50/50 px-8 py-4 border-t border-gray-100 text-center">
           <p className="text-xs text-gray-400">
-            Powered by Google Sheets & Gemini AI
+            TH Version 3.6
           </p>
         </div>
       </div>
