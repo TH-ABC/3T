@@ -167,7 +167,7 @@ function App() {
 
         {/* Footer */}
         <footer className="bg-white border-t border-gray-200 py-4 text-center text-xs text-gray-500">
-          <p>© 2025 Order Management System. Powered by Google Sheets & Gemini AI.</p>
+          <p>© TH </p>
         </footer>
       </div>
 

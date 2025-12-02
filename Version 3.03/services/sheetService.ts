@@ -1,5 +1,8 @@
 
-import { Order, OrderStatus, DailyRevenue, Store, User, AuthResponse, DailyStat, StoreHistoryItem, Role } from '../types';
+import { 
+  Order, Store, DashboardMetrics, DailyStat, 
+  StoreHistoryItem, User, Role, AuthResponse, DailyRevenue 
+} from '../types';
 
 // ============================================================================
 // CẤU HÌNH KẾT NỐI GOOGLE SHEET
@@ -154,11 +157,14 @@ export const sheetService = {
         // Product Info
         productName: item.productName || '',
         itemSku: item.itemSku || '',
-        // Mockup Info (New Columns)
+        // Mockup Info
         urlMockup: item.urlMockup || '',
         mockupType: item.mockupType || 'Mockup để tham khảo',
         // Fulfilled Status
-        isFulfilled: item.isFulfilled === true || item.isFulfilled === "TRUE"
+        isFulfilled: item.isFulfilled === true || item.isFulfilled === "TRUE",
+        // Artwork Info (New)
+        urlArtworkFront: item.urlArtworkFront || '',
+        urlArtworkBack: item.urlArtworkBack || ''
     });
 
     // Xử lý dữ liệu trả về
@@ -214,7 +220,6 @@ export const sheetService = {
   },
 
   // EXPORT ORDER TO FULFILLMENT SHEET
-  // Use keepalive: true to ensure execution even if tab closes
   fulfillOrder: async (fileId: string, orderData: Order): Promise<any> => {
     return await callAPI('fulfillOrder', 'POST', { fileId, ...orderData }, { keepalive: true });
   },

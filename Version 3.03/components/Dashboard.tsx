@@ -57,8 +57,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSelectStore }) => {
       let currentTotalListing = 0;
       let currentTotalSale = 0;
       storeData.forEach(s => {
-         currentTotalListing += Number(s.listing.replace(/,/g,'')) || 0;
-         currentTotalSale += Number(s.sale.replace(/,/g,'')) || 0;
+         // Safe conversion to string before replacing to avoid "s.sale.replace is not a function"
+         const listingStr = String(s.listing || '0');
+         const saleStr = String(s.sale || '0');
+         
+         currentTotalListing += Number(listingStr.replace(/,/g,'')) || 0;
+         currentTotalSale += Number(saleStr.replace(/,/g,'')) || 0;
       });
 
       // 2. Tìm mốc chốt sổ gần nhất (Hôm qua hoặc hôm nay nếu đã chốt)
@@ -210,14 +214,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSelectStore }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard 
           title="Doanh số tổng" 
-          value={`${metrics.revenue.toLocaleString('vi-VN')} đ`}
+          value={`${(metrics.revenue || 0).toLocaleString('vi-VN')} đ`}
           subValue="Tháng này"
           bgColor="bg-blue-600"
           icon={<ShoppingCart size={40} />}
         />
         <StatCard 
           title="Lợi nhuận" 
-          value={`${metrics.netIncome.toLocaleString('vi-VN')} đ`}
+          value={`${(metrics.netIncome || 0).toLocaleString('vi-VN')} đ`}
           bgColor="bg-emerald-500"
           icon={<DollarSign size={40} />}
         />

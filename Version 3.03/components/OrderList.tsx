@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Plus, RefreshCw, Copy, ArrowDown, Save, ExternalLink, Calendar, FileSpreadsheet, ChevronLeft, ChevronRight, UserCircle, CheckSquare, Square, Trash2, Edit, Loader2, FolderPlus, AlertTriangle, Info, Filter, ArrowDownAZ, ArrowUpAZ, MapPin, Truck, Lock } from 'lucide-react';
+import { Search, Plus, RefreshCw, Copy, ArrowDown, Save, ExternalLink, Calendar, FileSpreadsheet, ChevronLeft, ChevronRight, UserCircle, CheckSquare, Square, Trash2, Edit, Loader2, FolderPlus, AlertTriangle, Info, Filter, ArrowDownAZ, ArrowUpAZ, MapPin, Truck, Lock, Link as LinkIcon, Package } from 'lucide-react';
 import { sheetService } from '../services/sheetService';
 import { Order, Store, User, OrderItem } from '../types';
 
@@ -11,8 +12,25 @@ const getCurrentLocalMonth = () => {
     return `${year}-${month}`;
 };
 
+// --- FIX LỖI HIỂN THỊ NGÀY ---
 const formatDateDisplay = (dateStr: string) => {
     if (!dateStr) return '';
+    // Manual parsing chuỗi để giữ nguyên giá trị Server gửi về
+    const parts = dateStr.split(/[-T :]/); 
+    
+    if (parts.length >= 3) {
+        const y = parts[0];
+        const m = parts[1];
+        const d = parts[2];
+        const hh = parts[3] || '00';
+        const mm = parts[4] || '00';
+        const ss = parts[5] && parts[5].length >= 2 ? parts[5].substring(0, 2) : '00';
+        
+        if (y.length === 4) {
+             return `${d}/${m}/${y} ${hh}:${mm}:${ss}`;
+        }
+    }
+
     try {
         const date = new Date(dateStr);
         if (isNaN(date.getTime())) return dateStr;
@@ -34,7 +52,6 @@ const toDatetimeLocal = (dateStr: string) => {
     try {
         const date = new Date(dateStr);
         if (isNaN(date.getTime())) return '';
-        // Điều chỉnh múi giờ để hiển thị đúng giờ địa phương trong input
         const localDate = new Date(date.getTime() - (date.getTimezoneOffset() * 60000));
         return localDate.toISOString().slice(0, 16);
     } catch (e) { return ''; }
@@ -137,7 +154,8 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
     { 
         sku: '', type: 'Printway', quantity: 1, note: '', 
         productName: '', itemSku: '', 
-        urlMockup: '', mockupType: 'Mockup để tham khảo' 
+        urlMockup: '', mockupType: 'Mockup để tham khảo',
+        urlArtworkFront: '', urlArtworkBack: ''
     }
   ]);
 
@@ -506,12 +524,27 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
     setFormItems([...formItems, { 
         sku: '', type: 'Printway', quantity: 1, note: '', 
         productName: '', itemSku: '',
-        urlMockup: '', mockupType: 'Mockup để tham khảo'
+        urlMockup: '', mockupType: 'Mockup để tham khảo',
+        urlArtworkFront: '', urlArtworkBack: ''
     }]);
   };
 
+  const handleDuplicateItemRow = (index: number) => {
+      const itemToCopy = formItems[index];
+      const newItem = { ...itemToCopy };
+      setFormItems([...formItems, newItem]);
+  };
+
   const handleRemoveItemRow = (index: number) => {
-    if (formItems.length === 1) return;
+    if (formItems.length === 1 && !isEditMode) {
+        setFormItems([{ 
+            sku: '', type: 'Printway', quantity: 1, note: '', 
+            productName: '', itemSku: '',
+            urlMockup: '', mockupType: 'Mockup để tham khảo',
+            urlArtworkFront: '', urlArtworkBack: ''
+        }]);
+        return;
+    }
     const updatedItems = formItems.filter((_, i) => i !== index);
     setFormItems(updatedItems);
   };
@@ -606,9 +639,59 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
       setFormItems([{ 
           sku: '', type: 'Printway', quantity: 1, note: '', 
           productName: '', itemSku: '',
-          urlMockup: '', mockupType: 'Mockup để tham khảo'
+          urlMockup: '', mockupType: 'Mockup để tham khảo',
+          urlArtworkFront: '', urlArtworkBack: ''
       }]);
       setRawAddress('');
+      setIsModalOpen(true);
+  };
+
+  const openDuplicateModal = (order: Order) => {
+      setIsEditMode(false);
+      setEditingOrderId(null);
+      // Use current time for new order, but allow override
+      const now = new Date();
+      now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+
+      // Copy basic info
+      setFormDataCommon({ 
+          id: '', // Reset ID so user can enter new one
+          date: now.toISOString().slice(0, 16), 
+          storeId: order.storeId 
+      });
+
+      // Copy extra info but reset status/tracking/link/checked/fulfilled
+      setFormDataExtra({
+          tracking: '',
+          link: '',
+          status: 'Pending',
+          actionRole: order.actionRole || '',
+          isChecked: false,
+          isFulfilled: false
+      });
+
+      // Copy products
+      setFormItems([{
+          sku: order.sku,
+          type: order.type || '',
+          quantity: order.quantity || 1,
+          note: order.note || '',
+          productName: order.productName || '',
+          itemSku: order.itemSku || '',
+          urlMockup: order.urlMockup || '',
+          mockupType: order.mockupType || 'Mockup để tham khảo',
+          urlArtworkFront: order.urlArtworkFront || '',
+          urlArtworkBack: order.urlArtworkBack || ''
+      }]);
+
+      // Copy Shipping info to Raw Address field for display/parsing
+      if (order.shippingFirstName || order.shippingAddress1) {
+          const constructed = `First_name: ${order.shippingFirstName}\nLast_name: ${order.shippingLastName}\nShipping_address1: ${order.shippingAddress1}\nShipping_address2: ${order.shippingAddress2}\nShipping_city: ${order.shippingCity}\nShipping_zip: ${order.shippingZip}\nShipping_province: ${order.shippingProvince}\nShipping_country: ${order.shippingCountry}\nShipping_phone: ${order.shippingPhone}`;
+          setRawAddress(constructed);
+      } else {
+          setRawAddress('');
+      }
+
       setIsModalOpen(true);
   };
 
@@ -621,14 +704,8 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
       const dateVal = toDatetimeLocal(order.date);
       
       setFormDataCommon({ id: order.id, date: dateVal || order.date, storeId: order.storeId });
-      setFormDataExtra({
-          tracking: order.tracking || '',
-          link: order.link || '',
-          status: order.status || 'Pending',
-          actionRole: order.actionRole || '',
-          isChecked: order.isChecked || false,
-          isFulfilled: order.isFulfilled || false
-      });
+      setFormDataExtra({ tracking: order.tracking || '', link: order.link || '', status: order.status || 'Pending', actionRole: order.actionRole || '', isChecked: order.isChecked || false, isFulfilled: order.isFulfilled || false });
+      
       setFormItems([{
           sku: order.sku,
           type: order.type || '',
@@ -637,7 +714,9 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
           productName: order.productName || '',
           itemSku: order.itemSku || '',
           urlMockup: order.urlMockup || '',
-          mockupType: order.mockupType || 'Mockup để tham khảo'
+          mockupType: order.mockupType || 'Mockup để tham khảo',
+          urlArtworkFront: order.urlArtworkFront || '',
+          urlArtworkBack: order.urlArtworkBack || ''
       }]);
       // Attempt to populate raw address for display if available in hidden fields? 
       // For now we keep it empty or try to reconstruct it if fields exist
@@ -742,7 +821,10 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
                     productName: item.productName,
                     itemSku: item.itemSku,
                     urlMockup: item.urlMockup,
-                    mockupType: item.mockupType
+                    mockupType: item.mockupType,
+                    // Pass artwork info
+                    urlArtworkFront: item.urlArtworkFront,
+                    urlArtworkBack: item.urlArtworkBack
                 }));
 
                 try {
@@ -798,6 +880,9 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
             itemSku: itemToUpdate.itemSku,
             urlMockup: itemToUpdate.urlMockup,
             mockupType: itemToUpdate.mockupType,
+            // Include Artwork Info
+            urlArtworkFront: itemToUpdate.urlArtworkFront,
+            urlArtworkBack: itemToUpdate.urlArtworkBack,
             // Include Shipping Info
             shippingName: shipInfo.name,
             shippingFirstName: shipInfo.firstName,
@@ -872,6 +957,9 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
             itemSku: item.itemSku,
             urlMockup: item.urlMockup,
             mockupType: item.mockupType,
+            // Include Artwork Info
+            urlArtworkFront: item.urlArtworkFront,
+            urlArtworkBack: item.urlArtworkBack,
             isFulfilled: false
         }));
 
@@ -1074,7 +1162,7 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
                     <tr><td colSpan={15} className="text-center py-12 text-gray-500">Tháng {selectedMonth} chưa có đơn hàng nào hoặc không tìm thấy kết quả.</td></tr> :
                     sortedOrders.map((order, idx) => (
                         <tr key={order.id + idx} className="hover:bg-gray-50 border-b border-gray-200 text-gray-800 transition-colors">
-                            <td className="px-2 py-3 border-r text-center whitespace-nowrap text-gray-600">{formatDateDisplay(order.date)}</td>
+                            <td className="px-2 py-3 border-r text-center whitespace-nowrap text-gray-600 font-mono text-xs">{formatDateDisplay(order.date)}</td>
                             <td className="px-3 py-3 border-r font-semibold text-gray-900 whitespace-nowrap">
                                 <div className="flex justify-between items-center group gap-2">
                                     <span>{order.id}</span>
@@ -1160,13 +1248,22 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
                                         <Lock size={14} />
                                     </div>
                                 ) : (
-                                    <button 
-                                        onClick={() => openEditModal(order)}
-                                        className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
-                                        title="Chỉnh sửa đơn hàng"
-                                    >
-                                        <Edit size={16} />
-                                    </button>
+                                    <div className="flex items-center justify-center gap-2">
+                                        <button 
+                                            onClick={() => openEditModal(order)}
+                                            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
+                                            title="Chỉnh sửa đơn hàng"
+                                        >
+                                            <Edit size={16} />
+                                        </button>
+                                        <button 
+                                            onClick={() => openDuplicateModal(order)}
+                                            className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-full transition-colors"
+                                            title="Nhân bản đơn hàng (Tạo mới từ đơn này)"
+                                        >
+                                            <Copy size={16} />
+                                        </button>
+                                    </div>
                                 )}
                             </td>
                         </tr>
@@ -1278,11 +1375,11 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
                             </div>
                         </div>
 
-                        {/* 2. THÔNG TIN SẢN PHẨM */}
+                        {/* 2. DANH SÁCH SẢN PHẨM (CARD LIST LAYOUT) */}
                         <div>
                             <div className="flex justify-between items-center mb-2">
                                 <label className="block text-xs font-bold text-gray-500 uppercase">
-                                    {isEditMode ? 'Sản Phẩm (Đang chỉnh sửa dòng này)' : `Danh Sách Sản Phẩm (${formItems.length})`}
+                                    {isEditMode ? 'Sản Phẩm' : `Danh Sách Sản Phẩm (${formItems.length})`}
                                 </label>
                                 {!isEditMode && user?.role === 'admin' && (
                                     <button type="button" onClick={() => setIsAddingUnit(true)} className="text-xs text-blue-600 hover:text-blue-800 flex items-center bg-blue-50 px-2 py-1 rounded border border-blue-200">
@@ -1300,125 +1397,103 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
                                 </div>
                             )}
 
-                            <div className="bg-gray-50 border border-gray-200 rounded-lg overflow-hidden overflow-x-auto">
-                                <table className="w-full text-left text-sm min-w-[1000px]">
-                                    <thead className="bg-gray-100 text-gray-600 text-xs uppercase font-semibold">
-                                        <tr>
-                                            <th className="px-3 py-2 w-10 text-center">#</th>
-                                            <th className="px-3 py-2 w-28">Type</th>
-                                            <th className="px-3 py-2 w-48">Product Name</th>
-                                            <th className="px-3 py-2 w-32">Item SKU</th>
-                                            <th className="px-3 py-2 w-32">SKU Sản Phẩm <span className="text-red-500">*</span></th>
-                                            <th className="px-3 py-2 w-48">URL Mockup</th>
-                                            <th className="px-3 py-2 w-40">Loại Mockup</th>
-                                            <th className="px-3 py-2 w-16 text-center">SL</th>
-                                            <th className="px-3 py-2 w-32">Ghi chú</th>
-                                            <th className="px-3 py-2 w-10"></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-200">
-                                        {formItems.map((item, index) => (
-                                            <tr key={index} className="bg-white">
-                                                <td className="px-3 py-2 text-center text-gray-400 font-mono text-xs">{index + 1}</td>
-                                                <td className="px-2 py-2">
-                                                    <select 
-                                                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-orange-500 outline-none"
-                                                        value={item.type}
-                                                        onChange={(e) => handleItemChange(index, 'type', e.target.value)}
-                                                    >
-                                                        <option value="">-- Loại --</option>
-                                                        {units.map((u, i) => <option key={i} value={u}>{u}</option>)}
-                                                        {!units.includes('Printway') && <option value="Printway">Printway</option>}
-                                                        <option value="Khác">Khác</option>
-                                                    </select>
-                                                </td>
-                                                <td className="px-2 py-2">
-                                                    <input 
-                                                        type="text" 
-                                                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-orange-500 outline-none" 
-                                                        placeholder="Tên sản phẩm..." 
-                                                        value={item.productName || ''}
-                                                        onChange={(e) => handleItemChange(index, 'productName', e.target.value)}
-                                                    />
-                                                </td>
-                                                <td className="px-2 py-2">
-                                                    <input 
-                                                        type="text" 
-                                                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs font-mono focus:ring-1 focus:ring-orange-500 outline-none" 
-                                                        placeholder="Item SKU..." 
-                                                        value={item.itemSku || ''}
-                                                        onChange={(e) => handleItemChange(index, 'itemSku', e.target.value)}
-                                                    />
-                                                </td>
-                                                <td className="px-2 py-2">
-                                                    <input 
-                                                        type="text" 
-                                                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs font-mono focus:ring-1 focus:ring-orange-500 outline-none" 
-                                                        placeholder="SKU..." 
-                                                        value={item.sku}
-                                                        onChange={(e) => handleItemChange(index, 'sku', e.target.value)}
-                                                    />
-                                                </td>
-                                                <td className="px-2 py-2">
-                                                    <input 
-                                                        type="text" 
-                                                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs text-blue-600 focus:ring-1 focus:ring-orange-500 outline-none" 
-                                                        placeholder="URL..." 
-                                                        value={item.urlMockup || ''}
-                                                        onChange={(e) => handleItemChange(index, 'urlMockup', e.target.value)}
-                                                    />
-                                                </td>
-                                                <td className="px-2 py-2">
-                                                    <select 
-                                                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-orange-500 outline-none"
-                                                        value={item.mockupType || 'Mockup để tham khảo'}
-                                                        onChange={(e) => handleItemChange(index, 'mockupType', e.target.value)}
-                                                    >
-                                                        <option value="Mockup để tham khảo">Mockup để tham khảo</option>
-                                                        <option value="Mockup để tham khảo 1">Mockup để tham khảo 1</option>
-                                                        <option value="Mockup để tham khảo 2">Mockup để tham khảo 2</option>
-                                                    </select>
-                                                </td>
-                                                <td className="px-2 py-2">
-                                                    <input 
-                                                        type="number" 
-                                                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs text-center font-bold focus:ring-1 focus:ring-orange-500 outline-none" 
-                                                        value={item.quantity}
-                                                        onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
-                                                        min="1"
-                                                    />
-                                                </td>
-                                                <td className="px-2 py-2">
-                                                    <input 
-                                                        type="text" 
-                                                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-orange-500 outline-none" 
-                                                        placeholder="..." 
-                                                        value={item.note}
-                                                        onChange={(e) => handleItemChange(index, 'note', e.target.value)}
-                                                    />
-                                                </td>
-                                                <td className="px-2 py-2 text-center">
-                                                    {!isEditMode && formItems.length > 1 && (
-                                                        <button 
-                                                            type="button" 
-                                                            onClick={() => handleRemoveItemRow(index)}
-                                                            className="text-gray-400 hover:text-red-500 p-1 transition-colors"
-                                                        >
-                                                            <Trash2 size={16} />
-                                                        </button>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                            <div className="space-y-3">
+                                {formItems.map((item, index) => (
+                                    <div key={index} className="bg-slate-700 border border-gray-600 rounded-lg p-4 relative group hover:border-orange-500/50 transition-colors">
+                                        {/* Card Header: Index & Actions */}
+                                        <div className="flex justify-between items-start mb-3 border-b border-gray-600 pb-2">
+                                            <div className="flex items-center gap-2">
+                                                <span className="bg-slate-800 text-orange-500 text-xs font-bold px-2 py-0.5 rounded border border-gray-600">#{index + 1}</span>
+                                                {!isEditMode && (
+                                                    <button type="button" onClick={() => handleDuplicateItemRow(index)} className="text-blue-400 hover:text-blue-300 text-xs flex items-center gap-1 transition-colors" title="Nhân bản dòng này">
+                                                        <Copy size={12} /> Nhân bản
+                                                    </button>
+                                                )}
+                                            </div>
+                                            {/* Delete Button */}
+                                            {!isEditMode && (
+                                                <button type="button" onClick={() => handleRemoveItemRow(index)} className="text-gray-400 hover:text-red-400 transition-colors p-1 rounded hover:bg-slate-600" title="Xóa sản phẩm này">
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        {/* Grid Layout for Inputs */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                            {/* Row 1 */}
+                                            <div className="col-span-1">
+                                                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Loại (Type)</label>
+                                                <select className="w-full border border-gray-600 rounded px-2 py-1.5 text-xs text-white bg-slate-800 focus:ring-1 focus:ring-orange-500 outline-none" value={item.type} onChange={(e) => handleItemChange(index, 'type', e.target.value)}>
+                                                    <option value="">-- Chọn --</option>
+                                                    {units.map((u, i) => <option key={i} value={u}>{u}</option>)}
+                                                    {!units.includes('Printway') && <option value="Printway">Printway</option>}
+                                                    <option value="Khác">Khác</option>
+                                                </select>
+                                            </div>
+                                            <div className="col-span-1">
+                                                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Product Name</label>
+                                                <input type="text" className="w-full border border-gray-600 rounded px-2 py-1.5 text-xs text-white bg-slate-800 focus:ring-1 focus:ring-orange-500 outline-none placeholder-gray-500" placeholder="Tên sản phẩm..." value={item.productName || ''} onChange={(e) => handleItemChange(index, 'productName', e.target.value)} />
+                                            </div>
+                                            <div className="col-span-1">
+                                                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Item SKU</label>
+                                                <input type="text" className="w-full border border-gray-600 rounded px-2 py-1.5 text-xs text-white bg-slate-800 font-mono focus:ring-1 focus:ring-orange-500 outline-none placeholder-gray-500" placeholder="Mã item..." value={item.itemSku || ''} onChange={(e) => handleItemChange(index, 'itemSku', e.target.value)} />
+                                            </div>
+                                            <div className="col-span-1">
+                                                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">SKU <span className="text-red-500">*</span></label>
+                                                <input type="text" className="w-full border border-gray-600 rounded px-2 py-1.5 text-xs text-white bg-slate-800 font-mono font-bold focus:ring-1 focus:ring-orange-500 outline-none placeholder-gray-500" placeholder="Mã SKU..." value={item.sku} onChange={(e) => handleItemChange(index, 'sku', e.target.value)} />
+                                            </div>
+
+                                            {/* Row 2 */}
+                                            <div className="col-span-1">
+                                                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Artwork Front (URL)</label>
+                                                <div className="relative">
+                                                    <LinkIcon size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500"/>
+                                                    <input type="text" className="w-full border border-gray-600 rounded pl-7 pr-2 py-1.5 text-xs text-blue-400 bg-slate-800 focus:ring-1 focus:ring-orange-500 outline-none placeholder-gray-600" placeholder="https://..." value={item.urlArtworkFront || ''} onChange={(e) => handleItemChange(index, 'urlArtworkFront', e.target.value)} />
+                                                </div>
+                                            </div>
+                                            <div className="col-span-1">
+                                                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Artwork Back (URL)</label>
+                                                <div className="relative">
+                                                    <LinkIcon size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500"/>
+                                                    <input type="text" className="w-full border border-gray-600 rounded pl-7 pr-2 py-1.5 text-xs text-blue-400 bg-slate-800 focus:ring-1 focus:ring-orange-500 outline-none placeholder-gray-600" placeholder="https://..." value={item.urlArtworkBack || ''} onChange={(e) => handleItemChange(index, 'urlArtworkBack', e.target.value)} />
+                                                </div>
+                                            </div>
+                                            <div className="col-span-1">
+                                                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Mockup URL</label>
+                                                <div className="relative">
+                                                    <LinkIcon size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500"/>
+                                                    <input type="text" className="w-full border border-gray-600 rounded pl-7 pr-2 py-1.5 text-xs text-blue-400 bg-slate-800 focus:ring-1 focus:ring-orange-500 outline-none placeholder-gray-600" placeholder="https://..." value={item.urlMockup || ''} onChange={(e) => handleItemChange(index, 'urlMockup', e.target.value)} />
+                                                </div>
+                                            </div>
+                                            <div className="col-span-1">
+                                                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Loại Mockup</label>
+                                                <select className="w-full border border-gray-600 rounded px-2 py-1.5 text-xs text-white bg-slate-800 focus:ring-1 focus:ring-orange-500 outline-none" value={item.mockupType || 'Mockup để tham khảo'} onChange={(e) => handleItemChange(index, 'mockupType', e.target.value)}>
+                                                    <option value="Mockup để tham khảo">Mockup để tham khảo</option>
+                                                    <option value="Mockup để tham khảo 1">Mockup để tham khảo 1</option>
+                                                    <option value="Mockup để tham khảo 2">Mockup để tham khảo 2</option>
+                                                </select>
+                                            </div>
+
+                                            {/* Row 3 */}
+                                            <div className="col-span-1 sm:col-span-1 lg:col-span-1">
+                                                 <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Số Lượng</label>
+                                                 <input type="number" className="w-full border border-gray-600 rounded px-2 py-1.5 text-xs text-white bg-slate-800 text-center font-bold focus:ring-1 focus:ring-orange-500 outline-none" value={item.quantity} onChange={(e) => handleItemChange(index, 'quantity', e.target.value)} min="1" />
+                                            </div>
+                                            <div className="col-span-1 sm:col-span-1 lg:col-span-3">
+                                                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Ghi Chú</label>
+                                                <input type="text" className="w-full border border-gray-600 rounded px-2 py-1.5 text-xs text-white bg-slate-800 focus:ring-1 focus:ring-orange-500 outline-none placeholder-gray-500" placeholder="Ghi chú thêm..." value={item.note} onChange={(e) => handleItemChange(index, 'note', e.target.value)} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                                
                                 {!isEditMode && (
                                     <button 
                                         type="button" 
                                         onClick={handleAddItemRow}
-                                        className="w-full py-2 bg-gray-50 hover:bg-gray-100 text-blue-600 text-xs font-bold uppercase tracking-wide transition-colors border-t border-gray-200"
+                                        className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-blue-400 text-sm font-bold uppercase tracking-wide transition-colors border-2 border-dashed border-slate-600 rounded-lg flex items-center justify-center gap-2"
                                     >
-                                        + Thêm dòng sản phẩm
+                                        <Plus size={16} /> Thêm Sản Phẩm
                                     </button>
                                 )}
                             </div>
@@ -1517,15 +1592,27 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
                     </div>
 
                     <div className="p-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
-                        <button type="button" disabled={isSubmitting} onClick={handleFulfillOrder} className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-sm transition-colors flex items-center gap-2 disabled:opacity-70">
+                        {/* FULFILL BUTTON - ONLY ENABLED IN EDIT MODE */}
+                        <button 
+                            type="button" 
+                            disabled={isSubmitting || !isEditMode} // DISABLE IF NOT EDIT MODE
+                            onClick={handleFulfillOrder} 
+                            className={`px-5 py-2.5 rounded-lg font-bold shadow-sm transition-colors flex items-center gap-2 ${
+                                isSubmitting || !isEditMode 
+                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                                : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                            }`}
+                            title={!isEditMode ? "Chỉ khả dụng khi chỉnh sửa đơn hàng" : "Fulfill đơn hàng"}
+                        >
                             {isSubmitting ? <Loader2 className="animate-spin" size={20}/> : <Truck size={20} />}
                             Fulfill
                         </button>
+                        
                         <div className="flex-1"></div>
                         <button type="button" disabled={isSubmitting} onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors shadow-sm">Hủy bỏ</button>
                         <button type="submit" disabled={isSubmitting} className="px-6 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-70">
                             {isSubmitting ? <Loader2 className="animate-spin" size={20}/> : <Save size={20} />}
-                            {isSubmitting ? 'Đang tạo file & đơn...' : (isEditMode ? 'Lưu Thay Đổi' : 'Tạo Đơn Hàng')}
+                            {isSubmitting ? 'Đang xử lý...' : (isEditMode ? 'Lưu Thay Đổi' : 'Tạo Đơn Hàng')}
                         </button>
                     </div>
                 </form>

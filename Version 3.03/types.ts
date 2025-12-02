@@ -16,11 +16,14 @@ export interface OrderItem {
   itemSku?: string;
   urlMockup?: string;
   mockupType?: string;
+  // New Artwork fields
+  urlArtworkFront?: string;
+  urlArtworkBack?: string;
 }
 
 export interface Order {
   id: string;
-  date: string; // YYYY-MM-DD
+  date: string; // YYYY-MM-DD HH:mm:ss
   storeId: string;
   sku: string;
   tracking: string;
@@ -53,6 +56,9 @@ export interface Order {
   itemSku?: string;
   urlMockup?: string;
   mockupType?: string;
+  // New Artwork fields
+  urlArtworkFront?: string;
+  urlArtworkBack?: string;
 }
 
 export interface Store {
