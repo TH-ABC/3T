@@ -1,10 +1,10 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Store, StoreHistoryItem } from '../types';
 import { ArrowLeft, Globe, MapPin, Activity, Package, TrendingUp, Calendar, ExternalLink } from 'lucide-react';
 import StatCard from './StatCard';
 import { sheetService } from '../services/sheetService';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 interface StoreDetailProps {
   store: Store;
@@ -29,6 +29,37 @@ const StoreDetail: React.FC<StoreDetailProps> = ({ store, onBack }) => {
     };
     loadHistory();
   }, [store.id]);
+
+  // --- CALCULATE DAILY GROWTH (DELTA) ---
+  const chartData = useMemo(() => {
+    if (history.length === 0) return [];
+
+    // Ensure sorted by date ascending
+    const sortedHistory = [...history].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    return sortedHistory.map((item, index) => {
+        if (index === 0) {
+            // Ngày đầu tiên trong lịch sử, coi như tăng trưởng = 0 để tránh cột quá cao làm lệch biểu đồ
+            return {
+                ...item,
+                dailySale: 0,
+                dailyListing: 0,
+                originalDate: item.date // Keep for formatting
+            };
+        }
+
+        const prev = sortedHistory[index - 1];
+        const saleGrowth = item.sale - prev.sale;
+        const listingGrowth = item.listing - prev.listing;
+
+        return {
+            ...item,
+            dailySale: saleGrowth > 0 ? saleGrowth : 0, // Chỉ hiện số dương
+            dailyListing: listingGrowth > 0 ? listingGrowth : 0,
+            originalDate: item.date
+        };
+    });
+  }, [history]);
 
   const statusColor = (store.status?.toUpperCase() === 'LIVE' || store.status?.toUpperCase() === 'ACTIVE') 
     ? 'text-green-600 bg-green-100 border-green-200' 
@@ -124,7 +155,7 @@ const StoreDetail: React.FC<StoreDetailProps> = ({ store, onBack }) => {
         {/* Store Performance Chart */}
         <div className="lg:col-span-2 bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col min-h-[400px]">
           <div className="p-4 border-b border-gray-100 bg-gray-50 font-bold text-gray-700 flex justify-between items-center">
-            <span>Biểu Đồ Tăng Trưởng</span>
+            <span>Biểu Đồ Tăng Trưởng (Hàng Ngày)</span>
             <div className="text-xs text-gray-500 font-normal">
                 {history.length > 0 ? `${history.length} ngày gần nhất` : 'Chưa có dữ liệu'}
             </div>
@@ -137,7 +168,7 @@ const StoreDetail: React.FC<StoreDetailProps> = ({ store, onBack }) => {
                         <span className="text-xs">Đang tải lịch sử...</span>
                     </div>
                 </div>
-            ) : history.length === 0 ? (
+            ) : chartData.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-gray-400 flex-col">
                     <Activity size={48} className="opacity-20 mb-2" />
                     <p>Chưa có dữ liệu lịch sử cho Store này.</p>
@@ -146,7 +177,7 @@ const StoreDetail: React.FC<StoreDetailProps> = ({ store, onBack }) => {
             ) : (
                 <div className="h-[300px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={history} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                        <BarChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
                             <XAxis 
                                 dataKey="date" 
@@ -163,6 +194,7 @@ const StoreDetail: React.FC<StoreDetailProps> = ({ store, onBack }) => {
                                 tick={{fontSize: 12, fill: '#6b7280'}} 
                                 tickLine={false}
                                 axisLine={false}
+                                label={{ value: 'Listing Mới', angle: -90, position: 'insideLeft', style: { fill: '#2563eb', fontSize: 10 } }}
                             />
                             <YAxis 
                                 yAxisId="right" 
@@ -170,33 +202,35 @@ const StoreDetail: React.FC<StoreDetailProps> = ({ store, onBack }) => {
                                 tick={{fontSize: 12, fill: '#6b7280'}} 
                                 tickLine={false}
                                 axisLine={false}
+                                label={{ value: 'Sale Mới', angle: 90, position: 'insideRight', style: { fill: '#16a34a', fontSize: 10 } }}
                             />
                             <Tooltip 
                                 contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
                                 labelStyle={{fontWeight: 'bold', color: '#374151', marginBottom: '0.5rem'}}
+                                cursor={{fill: '#f3f4f6'}}
+                                formatter={(value: number, name: string) => [
+                                    `+${value.toLocaleString('vi-VN')}`, 
+                                    name === 'Listing' ? 'Listing mới' : 'Sale mới'
+                                ]}
                             />
                             <Legend wrapperStyle={{paddingTop: '20px'}} />
-                            <Line 
+                            <Bar 
                                 yAxisId="right"
-                                type="monotone" 
-                                dataKey="sale" 
+                                dataKey="dailySale" 
                                 name="Sale" 
-                                stroke="#16a34a" 
-                                strokeWidth={2}
-                                dot={{r: 4, strokeWidth: 2}}
-                                activeDot={{r: 6}}
+                                fill="#16a34a" 
+                                radius={[4, 4, 0, 0]}
+                                barSize={20}
                             />
-                            <Line 
+                            <Bar 
                                 yAxisId="left"
-                                type="monotone" 
-                                dataKey="listing" 
+                                dataKey="dailyListing" 
                                 name="Listing" 
-                                stroke="#2563eb" 
-                                strokeWidth={2}
-                                dot={{r: 4, strokeWidth: 2}}
-                                activeDot={{r: 6}}
+                                fill="#2563eb" 
+                                radius={[4, 4, 0, 0]}
+                                barSize={20}
                             />
-                        </LineChart>
+                        </BarChart>
                     </ResponsiveContainer>
                 </div>
             )}

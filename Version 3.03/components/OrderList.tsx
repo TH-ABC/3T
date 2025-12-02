@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, Plus, RefreshCw, Copy, ArrowDown, Save, ExternalLink, Calendar, FileSpreadsheet, ChevronLeft, ChevronRight, UserCircle, CheckSquare, Square, Trash2, Edit, Loader2, FolderPlus, AlertTriangle, Info, Filter, ArrowDownAZ, ArrowUpAZ, MapPin, Truck, Lock } from 'lucide-react';
 import { sheetService } from '../services/sheetService';
@@ -15,13 +14,30 @@ const getCurrentLocalMonth = () => {
 const formatDateDisplay = (dateStr: string) => {
     if (!dateStr) return '';
     try {
-        const parts = dateStr.split('-');
-        if (parts.length === 3) {
-            const [y, m, d] = parts;
-            return `${d}/${m}/${y}`;
-        }
-        return dateStr;
+        const date = new Date(dateStr);
+        if (isNaN(date.getTime())) return dateStr;
+        
+        const d = String(date.getDate()).padStart(2, '0');
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const y = date.getFullYear();
+        const hh = String(date.getHours()).padStart(2, '0');
+        const mm = String(date.getMinutes()).padStart(2, '0');
+        const ss = String(date.getSeconds()).padStart(2, '0');
+        
+        return `${d}/${m}/${y} ${hh}:${mm}:${ss}`;
     } catch (e) { return dateStr; }
+};
+
+// Helper để convert date string sang format cho input datetime-local (YYYY-MM-DDThh:mm)
+const toDatetimeLocal = (dateStr: string) => {
+    if (!dateStr) return '';
+    try {
+        const date = new Date(dateStr);
+        if (isNaN(date.getTime())) return '';
+        // Điều chỉnh múi giờ để hiển thị đúng giờ địa phương trong input
+        const localDate = new Date(date.getTime() - (date.getTimezoneOffset() * 60000));
+        return localDate.toISOString().slice(0, 16);
+    } catch (e) { return ''; }
 };
 
 // --- HIERARCHY CONFIGURATION ---
@@ -96,7 +112,12 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
   
   const [formDataCommon, setFormDataCommon] = useState({
     id: '', 
-    date: new Date().toISOString().split('T')[0], 
+    // Khởi tạo ngày giờ hiện tại cho form
+    date: (() => {
+        const now = new Date();
+        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+        return now.toISOString().slice(0, 16);
+    })(),
     storeId: ''
   });
 
@@ -565,9 +586,13 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
   const openAddModal = () => {
       setIsEditMode(false);
       setEditingOrderId(null);
+      // Reset về thời gian hiện tại
+      const now = new Date();
+      now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+      
       setFormDataCommon({ 
           id: '', 
-          date: new Date().toISOString().split('T')[0], 
+          date: now.toISOString().slice(0, 16), 
           storeId: '' 
       });
       setFormDataExtra({
@@ -591,7 +616,11 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
       if (updatingOrderIds.has(order.id)) return;
       setIsEditMode(true);
       setEditingOrderId(order.id);
-      setFormDataCommon({ id: order.id, date: order.date, storeId: order.storeId });
+      
+      // Convert date string to datetime-local compatible format
+      const dateVal = toDatetimeLocal(order.date);
+      
+      setFormDataCommon({ id: order.id, date: dateVal || order.date, storeId: order.storeId });
       setFormDataExtra({
           tracking: order.tracking || '',
           link: order.link || '',
@@ -1021,7 +1050,7 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
           <table className="w-full text-left border-collapse text-sm relative">
             <thead className="text-white font-bold text-center uppercase text-xs tracking-wider sticky top-0 z-20 shadow-md">
               <tr>
-                {renderTh("Date", "date", "", "bg-[#1a4019]")}
+                {renderTh("Date", "date", "w-40", "bg-[#1a4019]")}
                 {renderTh("ID Order Etsy", "id", "", "bg-[#1a4019]")}
                 {renderTh("STORE", "storeName", "", "bg-[#1a4019]")}
                 {renderTh("Đơn vị", "type", "w-24", "bg-[#1a4019]")}
@@ -1112,7 +1141,9 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
 
                             <td className="px-1 py-1 border-l text-center">
                                 {order.isFulfilled ? (
-                                    <Truck size={18} className="text-indigo-600 inline" title="Đã Fulfill" />
+                                    <span title="Đã Fulfill">
+                                        <Truck size={18} className="text-indigo-600 inline" />
+                                    </span>
                                 ) : (
                                     <span className="text-gray-300">-</span>
                                 )}
@@ -1207,7 +1238,8 @@ const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEn
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Ngày Đặt <span className="text-red-500">*</span></label>
                                 <input 
-                                    type="date" 
+                                    type="datetime-local" 
+                                    step="1"
                                     required 
                                     className={`${darkInputClass} ${isEditMode ? 'opacity-70 cursor-not-allowed' : ''}`} 
                                     value={formDataCommon.date} 
