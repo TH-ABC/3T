@@ -124,12 +124,6 @@ export interface StoreHistoryItem {
   sale: number;
 }
 
-// --- SKU MAPPING TYPE ---
-export interface SkuMapping {
-  sku: string;
-  category: string;
-}
-
 // --- SYSTEM TYPES ---
 export interface MonthOption {
   value: string; // YYYY-MM
