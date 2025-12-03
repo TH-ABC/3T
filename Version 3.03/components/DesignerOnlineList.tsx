@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Search, RefreshCw, Copy, ArrowUp, ArrowDown, Calendar, UserCircle, ChevronLeft, ChevronRight, Settings, Save, X, Loader2, CheckCircle, AlertCircle, Filter, ArrowDownAZ, ArrowUpAZ, AlertTriangle, Info, FileSpreadsheet, DollarSign, CheckSquare, Square, Users } from 'lucide-react';
+import { Search, RefreshCw, Copy, ArrowUp, ArrowDown, Calendar, UserCircle, ChevronLeft, ChevronRight, Settings, Save, X, Loader2, CheckCircle, AlertCircle, Filter, ArrowDownAZ, ArrowUpAZ, AlertTriangle, Info, FileSpreadsheet, DollarSign, CheckSquare, Square, Users, Layers, Code } from 'lucide-react';
 import { sheetService } from '../services/sheetService';
 import { Order, Store, User } from '../types';
 
@@ -62,15 +62,22 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
   const [isPriceModalOpen, setIsPriceModalOpen] = useState(false);
   const [tempPriceMap, setTempPriceMap] = useState<Record<string, number>>({});
   const [isSavingPrices, setIsSavingPrices] = useState(false);
+  const [isLoadingPrices, setIsLoadingPrices] = useState(false); 
+  const [backendConfigError, setBackendConfigError] = useState(false); // Detect missing backend logic
 
   const currentYear = new Date().getFullYear();
   const yearsList = Array.from({ length: 11 }, (_, i) => currentYear - 5 + i);
   const monthsList = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
 
+  const PRICE_CATEGORIES = ['Loại 1', 'Loại 2', 'Loại 3', 'Loại 4'];
+
   const getStoreName = (id: string) => {
       const store = stores.find(s => String(s.id) === String(id) || s.name === id);
       return store ? store.name : id;
   };
+
+  // Helper to normalize keys for map lookup (lowercase + trim)
+  const normalizeKey = (key: string) => key ? key.toLowerCase().trim() : '';
 
   const loadData = async (monthToFetch: string) => {
     setLoading(true);
@@ -79,7 +86,8 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
     setCurrentFileId(null);
 
     try {
-      const [orderResult, storeData, usersData, skuMappings, priceMappings] = await Promise.all([
+      // Use Promise.allSettled to allow some requests to fail without breaking everything
+      const results = await Promise.allSettled([
           sheetService.getOrders(monthToFetch), 
           sheetService.getStores(),
           sheetService.getUsers(),
@@ -89,22 +97,37 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
 
       if (selectedMonthRef.current !== monthToFetch) return;
 
-      setStores(storeData);
+      // Extract data safely
+      const orderResult = results[0].status === 'fulfilled' ? results[0].value : { orders: [], fileId: null };
+      const storeData = results[1].status === 'fulfilled' ? results[1].value : [];
+      const usersData = results[2].status === 'fulfilled' ? results[2].value : [];
+      const skuMappings = results[3].status === 'fulfilled' ? results[3].value : [];
+      const priceMappings = results[4].status === 'fulfilled' ? results[4].value : [];
+
+      setStores(Array.isArray(storeData) ? storeData : []);
       setUsers(Array.isArray(usersData) ? usersData : []);
       setCurrentFileId(orderResult.fileId);
       
+      // Safe Mapping for SKU
+      const safeSkuMappings = Array.isArray(skuMappings) ? skuMappings : [];
       const mappingObj: Record<string, string> = {};
-      skuMappings.forEach(m => {
-          if (m.sku) mappingObj[m.sku.toLowerCase().trim()] = m.category;
+      safeSkuMappings.forEach(m => {
+          if (m && m.sku) {
+             mappingObj[normalizeKey(m.sku)] = String(m.category).trim();
+          }
       });
       setSkuMap(mappingObj);
 
+      // Safe Mapping for Prices with Normalization
+      const safePriceMappings = Array.isArray(priceMappings) ? priceMappings : [];
       const priceObj: Record<string, number> = {};
-      priceMappings.forEach(p => {
-          if (p.category) priceObj[p.category] = Number(p.price) || 0;
+      safePriceMappings.forEach(p => {
+          if (p && p.category) {
+              const normalizedKey = normalizeKey(String(p.category)); 
+              priceObj[normalizedKey] = Number(p.price) || 0;
+          }
       });
       setPriceMap(priceObj);
-      setTempPriceMap(priceObj);
 
       const rawOrders = orderResult.orders || [];
       const ordersInMonth = rawOrders.filter(o => {
@@ -124,44 +147,112 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
         setCurrentFileId(orderResult.fileId);
       }
 
-      const userRole = (user.role || '').toLowerCase();
-      const currentUsername = user.username;
-      let filteredOrders = [];
+      const userRole = (user.role || '').toLowerCase().trim();
+      const currentUsername = user.username.toLowerCase().trim();
+      const currentUserLevel = getRoleLevel(user.role);
+      
+      // LOGIC LỌC ĐƠN NGHIÊM NGẶT THEO QUYỀN
+      const filteredOrders = ordersInMonth.filter(o => {
+          const actionRoleRaw = (o.actionRole || '').toLowerCase().trim();
+          
+          // 1. Xác định xem đơn hàng này có thuộc phạm vi "Designer Online" không
+          let isDesignerOnlineOrder = false;
 
-      if (userRole === 'designer online') {
-          filteredOrders = ordersInMonth.filter(o => o.actionRole === currentUsername);
-      } else {
-          const safeUsers = Array.isArray(usersData) ? usersData : [];
-          const designerUsernames = safeUsers
-              .filter(u => {
-                  const r = (u.role || '').toLowerCase();
-                  return r.includes('designer');
-              })
-              .map(u => u.username);
+          // TH1: Đơn gán cho nhóm chung "designer online"
+          if (actionRoleRaw === 'designer online') {
+              isDesignerOnlineOrder = true;
+          } else {
+              // TH2: Đơn gán cho 1 user cụ thể, và user đó có role là "designer online"
+              const assignedUser = usersData.find((u: User) => u.username.toLowerCase() === actionRoleRaw);
+              if (assignedUser && (assignedUser.role || '').toLowerCase() === 'designer online') {
+                  isDesignerOnlineOrder = true;
+              }
+          }
+
+          // Nếu không phải đơn của mảng Designer Online, loại bỏ ngay
+          if (!isDesignerOnlineOrder) return false;
+
+          // 2. Phân quyền xem (View Permission)
+          
+          // Quyền Admin, Leader, Support (Level < 5): Xem tất cả
+          if (currentUserLevel < 5) return true;
+
+          // Quyền Designer Online (Level 5): 
+          if (userRole === 'designer online') {
+              // a. Xem đơn được gán trực tiếp cho chính mình
+              if (actionRoleRaw === currentUsername) return true;
               
-          filteredOrders = ordersInMonth.filter(o => {
-              return o.actionRole && designerUsernames.includes(o.actionRole);
-          });
-      }
+              // b. Xem đơn chung của nhóm "designer online" (để còn nhận đơn)
+              if (actionRoleRaw === 'designer online') return true;
+
+              // c. KHÔNG xem đơn của người khác (Action Role là tên người khác)
+              return false;
+          }
+
+          return false;
+      });
+
       setOrders(filteredOrders);
 
     } catch (e) {
-      if (selectedMonthRef.current === monthToFetch) {
-        console.error(e);
-        setOrders([]);
-        setCurrentFileId(null);
-      }
+      if (selectedMonthRef.current === monthToFetch) console.error("Load Data Error:", e);
     } finally {
-      if (selectedMonthRef.current === monthToFetch) {
-        setLoading(false);
-      }
+      if (selectedMonthRef.current === monthToFetch) setLoading(false);
     }
+  };
+
+  // Helper to fetch prices independently when modal opens
+  const fetchLatestPrices = async () => {
+      setIsLoadingPrices(true);
+      setBackendConfigError(false);
+      try {
+          const res = await sheetService.getPriceMappings();
+          // DEBUG: Kiểm tra xem Backend trả về Mảng hay Object rỗng
+          if (Array.isArray(res)) {
+             const newMap: Record<string, number> = {};
+             res.forEach(p => {
+                 if(p.category) newMap[normalizeKey(p.category)] = Number(p.price) || 0;
+             });
+             setPriceMap(newMap);
+          } else {
+             // Nếu không phải mảng, nghĩa là Backend không xử lý action này và trả về {}
+             console.error("Backend returned invalid price data:", res);
+             setBackendConfigError(true);
+          }
+      } catch(e) { console.error("Error fetching prices", e); }
+      finally { setIsLoadingPrices(false); }
   };
 
   useEffect(() => { 
       selectedMonthRef.current = selectedMonth;
       loadData(selectedMonth); 
   }, [selectedMonth, user.username]);
+
+  // Sync tempPriceMap when modal opens and fetch fresh data
+  useEffect(() => {
+    if (isPriceModalOpen) {
+        fetchLatestPrices();
+    }
+  }, [isPriceModalOpen]);
+
+  // Update temp form when priceMap changes
+  useEffect(() => {
+    if (isPriceModalOpen) {
+        const initialMap: Record<string, number> = {};
+        PRICE_CATEGORIES.forEach(cat => {
+            const key = normalizeKey(cat);
+            initialMap[cat] = priceMap[key] || 0;
+        });
+        setTempPriceMap(initialMap);
+    }
+  }, [priceMap, isPriceModalOpen]);
+
+  // Helper to get price safely
+  const getPriceForCategory = (categoryName: string) => {
+      if (!categoryName) return 0;
+      const key = normalizeKey(categoryName);
+      return priceMap[key] || 0;
+  };
 
   const stats = useMemo<{
     totalOrders: number;
@@ -183,10 +274,16 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
       };
 
       orders.forEach(o => {
-          const category = skuMap[o.sku.toLowerCase().trim()] || 'Khác';
-          const price = priceMap[category] || 0;
+          const skuNorm = normalizeKey(o.sku);
+          let rawCategory = skuMap[skuNorm] || 'Khác';
+          let category = rawCategory.trim();
+          const matchedCategory = PRICE_CATEGORIES.find(c => normalizeKey(c) === normalizeKey(category));
+          if (matchedCategory) category = matchedCategory;
+          else category = 'Khác';
+
+          const price = getPriceForCategory(category);
           const isChecked = o.isDesignDone === true;
-          const designerName = o.actionRole || 'Chưa Giao';
+          const designerName = o.actionRole ? o.actionRole.trim() : 'Chưa Giao';
 
           let catKey = category;
           if (!result.categories[catKey]) catKey = 'Khác';
@@ -263,13 +360,26 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
     setIsSavingPrices(true);
     try {
         const categories = Object.keys(tempPriceMap);
+        let successCount = 0;
+        
+        const newMap = {...priceMap};
+        categories.forEach(cat => {
+            newMap[normalizeKey(cat)] = tempPriceMap[cat];
+        });
+        setPriceMap(newMap);
+
         for (const cat of categories) {
-             await sheetService.updateCategoryPrice(cat, tempPriceMap[cat]);
+             const res = await sheetService.updateCategoryPrice(cat, tempPriceMap[cat]);
+             if (res && res.success) successCount++;
+             await new Promise(r => setTimeout(r, 300));
         }
-        setPriceMap(tempPriceMap);
+        
         setIsPriceModalOpen(false);
+        fetchLatestPrices();
+        
     } catch (e) {
-        alert('Lỗi khi lưu bảng giá.');
+        console.error(e);
+        alert('Lỗi khi lưu bảng giá. Vui lòng kiểm tra lại kết nối mạng.');
     } finally {
         setIsSavingPrices(false);
     }
@@ -307,8 +417,9 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
   };
 
   const [currentYearStr, currentMonthStr] = selectedMonth.split('-');
+  
   const userLevel = getRoleLevel(user.role);
-  const canManageSku = userLevel <= 4; 
+  const canManageSku = userLevel === 1 || user.permissions?.canManageSku === true;
   const canManagePrice = userLevel <= 2; 
   const canCheckDesign = userLevel <= 4; 
 
@@ -334,8 +445,6 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
       return 0;
     })
     .map(x => x.item);
-
-  const PRICE_CATEGORIES = ['Loại 1', 'Loại 2', 'Loại 3', 'Loại 4'];
 
   return (
     <div className="p-4 bg-gray-100 min-h-screen">
@@ -494,11 +603,12 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                                      </a>
                                 )}
                             </div>
-                        ) : 'Không có đơn hàng nào.'}
+                        ) : 'Không có đơn hàng nào thuộc nhóm Designer Online.'}
                     </td></tr> :
                     sortedOrders.map((order, idx) => {
-                        const category = skuMap[order.sku.toLowerCase().trim()] || '';
-                        const price = priceMap[category] || 0;
+                        const normalizedSku = normalizeKey(order.sku);
+                        const category = skuMap[normalizedSku] || '';
+                        const price = getPriceForCategory(category);
                         const isUpdating = updatingIds.has(order.id);
                         
                         return (
@@ -512,7 +622,6 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                                 <td className="px-3 py-3 border-r text-center font-medium text-indigo-600 bg-indigo-50/50">{category}</td>
                                 <td className="px-3 py-3 border-r text-center font-bold text-green-700 bg-green-50/50">{formatPrice(price)}</td>
                                 
-                                {/* DESIGNER CHECKBOX */}
                                 <td className="px-1 py-1 border-r text-center align-middle bg-blue-50/30">
                                     {isUpdating ? (
                                         <div className="flex justify-center"><Loader2 size={16} className="animate-spin text-blue-500" /></div>
@@ -557,7 +666,7 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
         </div>
         )}
 
-        {/* NEW PRICE SETTINGS MODAL (Admin/Leader only) */}
+        {/* PRICE SETTINGS MODAL */}
         {isPriceModalOpen && (
             <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fade-in">
                 <div className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden">
@@ -572,6 +681,29 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                             <Info size={16} className="flex-shrink-0"/>
                             <span>Giá tiền sẽ được áp dụng tự động cho các đơn hàng có SKU thuộc phân loại tương ứng.</span>
                         </div>
+                        
+                        {/* BACKEND CONFIG ERROR WARNING */}
+                        {backendConfigError && (
+                            <div className="bg-red-50 border border-red-200 p-3 rounded text-xs text-red-700 mb-4 flex gap-2">
+                                <AlertCircle size={16} className="flex-shrink-0 mt-0.5"/>
+                                <div>
+                                    <strong>Lỗi Backend:</strong> Hệ thống Google Sheet chưa có các hàm xử lý <code>getPriceMappings</code> và <code>updateCategoryPrice</code>.
+                                    <br/>Vui lòng cập nhật script trong Google Apps Script.
+                                </div>
+                            </div>
+                        )}
+
+                        {isLoadingPrices && (
+                             <div className="text-center py-2 text-gray-500 text-xs flex items-center justify-center gap-2">
+                                <Loader2 className="animate-spin" size={14} /> Đang cập nhật dữ liệu mới nhất...
+                             </div>
+                        )}
+                        {!isLoadingPrices && !backendConfigError && Object.keys(priceMap).length === 0 && (
+                            <div className="bg-yellow-50 border border-yellow-200 p-3 rounded text-xs text-yellow-700 mb-4 flex gap-2">
+                                <AlertTriangle size={16} className="flex-shrink-0"/>
+                                <span>Chưa tải được bảng giá từ Sheet (Sheet có thể đang trống).</span>
+                            </div>
+                        )}
                         <div className="space-y-3 mb-6">
                             {PRICE_CATEGORIES.map(cat => (
                                 <div key={cat} className="flex items-center gap-3">
@@ -580,7 +712,7 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                                         <input 
                                             type="number" 
                                             className="w-full border border-gray-300 rounded px-3 py-2 text-sm text-right pr-8 font-mono focus:ring-2 focus:ring-green-500 outline-none"
-                                            value={tempPriceMap[cat] || ''}
+                                            value={tempPriceMap[cat] !== undefined ? tempPriceMap[cat] : 0}
                                             onChange={(e) => setTempPriceMap({...tempPriceMap, [cat]: Number(e.target.value)})}
                                             placeholder="0"
                                         />

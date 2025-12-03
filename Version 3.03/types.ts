@@ -1,4 +1,5 @@
 
+
 export enum OrderStatus {
   PENDING = 'Pending',
   FULFILLED = 'Fulfilled',
@@ -98,6 +99,9 @@ export interface User {
   email?: string;
   phone?: string;
   status?: 'Active' | 'Inactive' | string;
+  permissions?: {
+    canManageSku?: boolean;
+  };
 }
 
 export interface Role {

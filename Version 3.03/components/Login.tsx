@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { User } from '../types';
 import { sheetService } from '../services/sheetService';
-import { Lock, User as UserIcon, Loader2, AlertCircle, ShoppingBag } from 'lucide-react';
+import { Lock, User as UserIcon, Loader2, AlertCircle, ShoppingBag, Settings } from 'lucide-react';
 
 interface LoginProps {
   onLogin: (user: User) => void;
@@ -13,6 +13,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showConfigHelp, setShowConfigHelp] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,13 +24,20 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
     setLoading(true);
     setError('');
+    setShowConfigHelp(false);
 
     try {
       const response = await sheetService.login(username, password);
       if (response.success && response.user) {
         onLogin(response.user);
       } else {
-        setError(response.error || 'Đăng nhập thất bại. Vui lòng kiểm tra lại.');
+        const errorMsg = response.error || 'Đăng nhập thất bại.';
+        setError(errorMsg);
+        
+        // Detect Backend Config Error
+        if (errorMsg.includes('Chưa cấu hình MASTER_SS_ID')) {
+            setShowConfigHelp(true);
+        }
       }
     } catch (err) {
       setError('Lỗi kết nối đến hệ thống.');
@@ -78,9 +86,23 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         {/* Form Section */}
         <form onSubmit={handleSubmit} className="p-8 space-y-6">
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl flex items-center gap-3 text-sm animate-[shake_0.5s_ease-in-out]">
-              <AlertCircle size={18} className="flex-shrink-0" />
-              <span>{error}</span>
+            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl flex flex-col gap-2 text-sm animate-[shake_0.5s_ease-in-out]">
+              <div className="flex items-center gap-3">
+                  <AlertCircle size={18} className="flex-shrink-0" />
+                  <span>{error}</span>
+              </div>
+              {showConfigHelp && (
+                  <div className="ml-7 text-xs text-gray-600 bg-white p-3 rounded border border-red-100">
+                      <strong>Hướng dẫn khắc phục:</strong>
+                      <ol className="list-decimal ml-4 mt-1 space-y-1">
+                          <li>Mở file Google Sheet của bạn.</li>
+                          <li>Vào <strong>Extensions</strong> &gt; <strong>Apps Script</strong>.</li>
+                          <li>Tìm dòng <code>const MASTER_SS_ID = ...</code></li>
+                          <li>Thay bằng ID của file Sheet hiện tại.</li>
+                          <li>Lưu và nhấn <strong>Deploy</strong> lại.</li>
+                      </ol>
+                  </div>
+              )}
             </div>
           )}
 
@@ -139,7 +161,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         {/* Footer Section */}
         <div className="bg-gray-50/50 px-8 py-4 border-t border-gray-100 text-center">
           <p className="text-xs text-gray-400">
-            TH Version 5.0
+            Powered by Google Sheets & Gemini AI
           </p>
         </div>
       </div>

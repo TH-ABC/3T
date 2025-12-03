@@ -240,8 +240,8 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
           totalOrders: number, 
           totalQty: number,
           fulfilled: number, 
-          pending: number,
-          paid: number // Replaced 'checked' logic conceptualized as 'Paid'
+          hasTracking: number, // Replaced 'pending' with 'hasTracking'
+          paid: number 
       }> = {};
 
       orders.forEach(order => {
@@ -255,7 +255,7 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
                   totalOrders: 0,
                   totalQty: 0,
                   fulfilled: 0,
-                  pending: 0,
+                  hasTracking: 0,
                   paid: 0
               };
           }
@@ -265,8 +265,11 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
 
           if (order.isFulfilled) {
               stats[storeId].fulfilled += 1;
-          } else {
-              stats[storeId].pending += 1;
+          }
+
+          // Count Tracking
+          if (order.tracking && String(order.tracking).trim() !== '') {
+              stats[storeId].hasTracking += 1;
           }
 
           // Checkbox (Paid) Logic
@@ -293,22 +296,37 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
 
       const rawOrders = orderResult.orders || [];
       const validOrders = rawOrders.filter(o => {
+          // 1. Loại bỏ các dòng mà ID Order rỗng hoặc null
+          if (!o.id || String(o.id).trim() === '') return false;
+
+          // 2. Lọc theo tháng
           if (!o.date) return false;
           const dateStr = String(o.date).trim();
           return dateStr.startsWith(monthToFetch);
       });
 
       if (rawOrders.length > 0 && validOrders.length === 0) {
-          const sampleDate = rawOrders[0].date;
-          const actualMonth = sampleDate ? sampleDate.substring(0, 7) : 'Không xác định';
+          // Trường hợp filter trả về rỗng nhưng raw có dữ liệu (có thể do sai tháng hoặc toàn dòng lỗi)
+          // Kiểm tra xem có phải do sai tháng không
+          const validDateOrders = rawOrders.filter(o => o.date && String(o.date).trim().startsWith(monthToFetch));
           
-          setDataError({
-              message: `Cảnh báo: Bạn đang chọn Tháng ${monthToFetch} nhưng dữ liệu tải về thuộc Tháng ${actualMonth}.`,
-              detail: `Hệ thống vẫn hiển thị dữ liệu bên dưới để bạn kiểm tra. Vui lòng kiểm tra nội dung File Sheet nguồn.`,
-              fileId: orderResult.fileId
-          });
-          setOrders(rawOrders);
-          setCurrentFileId(orderResult.fileId); 
+          if (rawOrders.length > 0 && validDateOrders.length === 0) {
+             const sampleDate = rawOrders[0].date;
+             const actualMonth = sampleDate ? sampleDate.substring(0, 7) : 'Không xác định';
+             setDataError({
+                  message: `Cảnh báo: Bạn đang chọn Tháng ${monthToFetch} nhưng dữ liệu tải về thuộc Tháng ${actualMonth}.`,
+                  detail: `Hệ thống vẫn hiển thị dữ liệu bên dưới để bạn kiểm tra. Vui lòng kiểm tra nội dung File Sheet nguồn.`,
+                  fileId: orderResult.fileId
+              });
+             // Vẫn phải filter ID rỗng cho rawOrders
+             const cleanedRaw = rawOrders.filter(o => o.id && String(o.id).trim() !== '');
+             setOrders(cleanedRaw);
+             setCurrentFileId(orderResult.fileId); 
+          } else {
+             // Đúng tháng nhưng lọc ID rỗng hết -> set empty
+             setOrders(validOrders);
+             setCurrentFileId(orderResult.fileId); 
+          }
       } else {
           setOrders(validOrders);
           setCurrentFileId(orderResult.fileId); 
@@ -671,8 +689,8 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
                             </div>
                             <div className="h-8 w-px bg-gray-200 mx-1"></div>
                             <div className="text-center">
-                                <div className="text-xs text-orange-500 mb-0.5 font-medium">Pending</div>
-                                <span className="text-lg font-bold text-orange-500">{stat.pending}</span>
+                                <div className="text-xs text-purple-600 mb-0.5 font-medium">Tracking</div>
+                                <span className="text-lg font-bold text-purple-600">{stat.hasTracking}</span>
                             </div>
                         </div>
                     </div>

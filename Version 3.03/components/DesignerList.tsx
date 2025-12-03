@@ -73,7 +73,7 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
     setCurrentFileId(null);
 
     try {
-      const [orderResult, storeData, usersData, skuMappings] = await Promise.all([
+      const results = await Promise.allSettled([
           sheetService.getOrders(monthToFetch), 
           sheetService.getStores(),
           sheetService.getUsers(),
@@ -82,13 +82,19 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
 
       if (selectedMonthRef.current !== monthToFetch) return;
 
-      setStores(storeData);
+      const orderResult = results[0].status === 'fulfilled' ? results[0].value : { orders: [], fileId: null };
+      const storeData = results[1].status === 'fulfilled' ? results[1].value : [];
+      const usersData = results[2].status === 'fulfilled' ? results[2].value : [];
+      const skuMappings = results[3].status === 'fulfilled' ? results[3].value : [];
+
+      setStores(Array.isArray(storeData) ? storeData : []);
       setUsers(Array.isArray(usersData) ? usersData : []);
       setCurrentFileId(orderResult.fileId);
       
+      const safeSkuMappings = Array.isArray(skuMappings) ? skuMappings : [];
       const mappingObj: Record<string, string> = {};
-      skuMappings.forEach(m => {
-          if (m.sku) mappingObj[m.sku.toLowerCase().trim()] = m.category;
+      safeSkuMappings.forEach(m => {
+          if (m && m.sku) mappingObj[m.sku.toLowerCase().trim()] = m.category;
       });
       setSkuMap(mappingObj);
 
@@ -110,34 +116,36 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
         setCurrentFileId(orderResult.fileId);
       }
 
-      const userRole = (user.role || '').toLowerCase();
-      const currentUsername = user.username;
-      let filteredOrders = [];
+      const userRole = (user.role || '').toLowerCase().trim();
+      const currentUsername = user.username.toLowerCase().trim();
+      
+      // LOGIC LỌC ĐƠN NGHIÊM NGẶT: CHỈ HIỆN ĐƠN CỦA DESIGNER (OFFLINE)
+      // Áp dụng cho cả Admin, Leader và Designer
+      const filteredOrders = ordersInMonth.filter(o => {
+          const actionRoleRaw = (o.actionRole || '').toLowerCase().trim();
+          
+          // 1. Đơn gán cho role chung 'designer'
+          if (actionRoleRaw === 'designer') return true;
 
-      if (userRole === 'designer') {
-          // Nếu là Designer thường, chỉ xem đơn của mình
-          filteredOrders = ordersInMonth.filter(o => o.actionRole === currentUsername);
-      } else {
-          // Admin/Leader xem được hết các đơn có actionRole là designer
-          const safeUsers = Array.isArray(usersData) ? usersData : [];
-          const designerUsernames = safeUsers
-              .filter(u => {
-                  const r = (u.role || '').toLowerCase();
-                  return r === 'designer';
-              })
-              .map(u => u.username);
-              
-          filteredOrders = ordersInMonth.filter(o => {
-              return o.actionRole && designerUsernames.includes(o.actionRole);
-          });
-      }
+          // 2. Đơn gán cho user cụ thể mà user đó có role là 'designer'
+          // Tìm user trong danh sách users đã load
+          const assignedUser = usersData.find((u: User) => u.username.toLowerCase() === actionRoleRaw);
+          if (assignedUser && (assignedUser.role || '').toLowerCase() === 'designer') {
+              return true;
+          }
+
+          // 3. Fallback: Nếu user hiện tại đang xem là Designer và đơn gán đúng tên họ
+          // (Trường hợp user chưa kịp load hoặc lỗi đồng bộ)
+          if (userRole === 'designer' && actionRoleRaw === currentUsername) return true;
+
+          return false;
+      });
+
       setOrders(filteredOrders);
 
     } catch (e) {
       if (selectedMonthRef.current === monthToFetch) {
         console.error(e);
-        setOrders([]);
-        setCurrentFileId(null);
       }
     } finally {
       if (selectedMonthRef.current === monthToFetch) {
@@ -171,7 +179,8 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
       orders.forEach(o => {
           const category = skuMap[o.sku.toLowerCase().trim()] || 'Khác';
           const isChecked = o.isDesignDone === true;
-          const designerName = o.actionRole || 'Chưa Giao';
+          // Normalize designer name
+          const designerName = o.actionRole ? o.actionRole.trim() : 'Chưa Giao';
 
           let catKey = category;
           if (!result.categories[catKey]) catKey = 'Khác';
@@ -303,7 +312,7 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
         {/* TOP SUMMARY DASHBOARD */}
         <div className="bg-white border-b border-gray-200 p-4">
             <h3 className="text-sm font-bold text-gray-700 uppercase mb-3 flex items-center gap-2">
-                <Layers size={16} className="text-indigo-600"/> Tổng Hợp Tháng {currentMonthStr}/{currentYearStr}
+                <PenTool size={16} className="text-indigo-600"/> Tổng Hợp Tháng {currentMonthStr}/{currentYearStr}
             </h3>
             
             <div className="flex flex-col xl:flex-row gap-6">
@@ -440,7 +449,7 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
                                      </a>
                                 )}
                             </div>
-                        ) : 'Không có đơn hàng nào.'}
+                        ) : 'Không có đơn hàng nào thuộc nhóm Designer.'}
                     </td></tr> :
                     sortedOrders.map((order, idx) => {
                         const category = skuMap[order.sku.toLowerCase().trim()] || '';

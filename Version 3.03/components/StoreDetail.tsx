@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Store, StoreHistoryItem } from '../types';
-import { ArrowLeft, Globe, MapPin, Activity, Package, TrendingUp, Calendar, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Globe, MapPin, Activity, Package, TrendingUp, Calendar, ExternalLink, Info } from 'lucide-react';
 import StatCard from './StatCard';
 import { sheetService } from '../services/sheetService';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
@@ -14,6 +14,34 @@ interface StoreDetailProps {
 const StoreDetail: React.FC<StoreDetailProps> = ({ store, onBack }) => {
   const [history, setHistory] = useState<StoreHistoryItem[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
+
+  // Helper Parse Date an toàn (Hỗ trợ YYYY-MM-DD và DD/MM/YYYY)
+  const parseSafeDate = (dateStr: string): number => {
+    if (!dateStr) return 0;
+    const str = String(dateStr).trim();
+    
+    // 1. ISO Format YYYY-MM-DD
+    const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) {
+        return new Date(
+            parseInt(isoMatch[1], 10), 
+            parseInt(isoMatch[2], 10) - 1, 
+            parseInt(isoMatch[3], 10)
+        ).getTime();
+    }
+
+    // 2. VN Format DD/MM/YYYY
+    const vnMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (vnMatch) {
+        return new Date(
+            parseInt(vnMatch[3], 10), 
+            parseInt(vnMatch[2], 10) - 1, 
+            parseInt(vnMatch[1], 10)
+        ).getTime();
+    }
+    
+    return 0;
+  };
 
   useEffect(() => {
     const loadHistory = async () => {
@@ -34,28 +62,69 @@ const StoreDetail: React.FC<StoreDetailProps> = ({ store, onBack }) => {
   const chartData = useMemo(() => {
     if (history.length === 0) return [];
 
-    // Ensure sorted by date ascending
-    const sortedHistory = [...history].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    // 1. Deduplicate & Aggregate by Date
+    // Lấy MAX value của từng ngày để tránh trường hợp data lỗi bị sụt giảm trong cùng 1 ngày
+    const uniqueMap = new Map<string, { item: StoreHistoryItem, ts: number, saleVal: number, listVal: number }>();
+    
+    history.forEach(item => {
+        const ts = parseSafeDate(item.date);
+        if (ts === 0) return;
+        
+        const d = new Date(ts);
+        const dateKey = `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
+        
+        const currentSale = Number(String(item.sale).replace(/,/g, '')) || 0;
+        const currentListing = Number(String(item.listing).replace(/,/g, '')) || 0;
+        
+        const existing = uniqueMap.get(dateKey);
+        
+        if (!existing) {
+            uniqueMap.set(dateKey, { item, ts, saleVal: currentSale, listVal: currentListing });
+        } else {
+            uniqueMap.set(dateKey, { 
+                item: item, 
+                ts, 
+                saleVal: Math.max(currentSale, existing.saleVal),
+                listVal: Math.max(currentListing, existing.listVal)
+            });
+        }
+    });
 
-    return sortedHistory.map((item, index) => {
+    // 2. Sort Ascending
+    const sortedHistory = Array.from(uniqueMap.values()).sort((a, b) => a.ts - b.ts);
+
+    // 3. Calculate Delta
+    return sortedHistory.map((entry, index) => {
+        const { item, saleVal: currentSale, listVal: currentListing } = entry;
+
         if (index === 0) {
-            // Ngày đầu tiên trong lịch sử, coi như tăng trưởng = 0 để tránh cột quá cao làm lệch biểu đồ
             return {
                 ...item,
                 dailySale: 0,
                 dailyListing: 0,
-                originalDate: item.date // Keep for formatting
+                totalSale: currentSale,
+                totalListing: currentListing,
+                originalDate: item.date
             };
         }
 
         const prev = sortedHistory[index - 1];
-        const saleGrowth = item.sale - prev.sale;
-        const listingGrowth = item.listing - prev.listing;
+        const prevSale = prev.saleVal;
+        const prevListing = prev.listVal;
+
+        const saleGrowth = currentSale - prevSale;
+        const listingGrowth = currentListing - prevListing;
 
         return {
             ...item,
-            dailySale: saleGrowth > 0 ? saleGrowth : 0, // Chỉ hiện số dương
+            // Nếu tăng trưởng âm (do hoàn đơn hoặc xóa listing), hiển thị 0 trên biểu đồ cột
+            dailySale: saleGrowth > 0 ? saleGrowth : 0, 
             dailyListing: listingGrowth > 0 ? listingGrowth : 0,
+            // Lưu giá trị thực tế để hiển thị tooltip
+            realSaleGrowth: saleGrowth,
+            realListingGrowth: listingGrowth,
+            totalSale: currentSale,
+            totalListing: currentListing,
             originalDate: item.date
         };
     });
@@ -100,7 +169,6 @@ const StoreDetail: React.FC<StoreDetailProps> = ({ store, onBack }) => {
           bgColor="bg-green-600"
           icon={<TrendingUp size={40} />}
         />
-        {/* Mock Data cho các chỉ số khác để giao diện đẹp hơn */}
         <StatCard 
           title="Tỉ lệ chuyển đổi" 
           value="1.2%"
@@ -155,7 +223,15 @@ const StoreDetail: React.FC<StoreDetailProps> = ({ store, onBack }) => {
         {/* Store Performance Chart */}
         <div className="lg:col-span-2 bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col min-h-[400px]">
           <div className="p-4 border-b border-gray-100 bg-gray-50 font-bold text-gray-700 flex justify-between items-center">
-            <span>Biểu Đồ Tăng Trưởng (Hàng Ngày)</span>
+            <div className="flex items-center gap-2">
+                <span>Biểu Đồ Tăng Trưởng</span>
+                <div className="group relative">
+                    <Info size={14} className="text-gray-400 cursor-help" />
+                    <div className="absolute left-0 bottom-full mb-2 w-64 p-2 bg-gray-800 text-white text-xs rounded hidden group-hover:block z-50">
+                        Biểu đồ hiển thị số lượng tăng thêm hàng ngày. Rê chuột vào cột để xem Tổng số tích lũy.
+                    </div>
+                </div>
+            </div>
             <div className="text-xs text-gray-500 font-normal">
                 {history.length > 0 ? `${history.length} ngày gần nhất` : 'Chưa có dữ liệu'}
             </div>
@@ -172,7 +248,6 @@ const StoreDetail: React.FC<StoreDetailProps> = ({ store, onBack }) => {
                 <div className="h-full flex items-center justify-center text-gray-400 flex-col">
                     <Activity size={48} className="opacity-20 mb-2" />
                     <p>Chưa có dữ liệu lịch sử cho Store này.</p>
-                    <p className="text-xs mt-1">Dữ liệu sẽ được tạo khi hệ thống chốt sổ (23h) hoặc bạn chạy Test Giả Lập.</p>
                 </div>
             ) : (
                 <div className="h-[300px] w-full">
@@ -180,12 +255,14 @@ const StoreDetail: React.FC<StoreDetailProps> = ({ store, onBack }) => {
                         <BarChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
                             <XAxis 
-                                dataKey="date" 
+                                dataKey="originalDate" 
                                 tick={{fontSize: 12, fill: '#6b7280'}} 
                                 tickLine={false}
                                 axisLine={{stroke: '#e5e7eb'}}
                                 tickFormatter={(str) => {
-                                    const date = new Date(str);
+                                    const ts = parseSafeDate(str);
+                                    if (ts === 0) return str;
+                                    const date = new Date(ts);
                                     return `${date.getDate()}/${date.getMonth() + 1}`;
                                 }}
                             />
@@ -205,13 +282,33 @@ const StoreDetail: React.FC<StoreDetailProps> = ({ store, onBack }) => {
                                 label={{ value: 'Sale Mới', angle: 90, position: 'insideRight', style: { fill: '#16a34a', fontSize: 10 } }}
                             />
                             <Tooltip 
-                                contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
+                                contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '12px'}}
                                 labelStyle={{fontWeight: 'bold', color: '#374151', marginBottom: '0.5rem'}}
                                 cursor={{fill: '#f3f4f6'}}
-                                formatter={(value: number, name: string) => [
-                                    `+${value.toLocaleString('vi-VN')}`, 
-                                    name === 'Listing' ? 'Listing mới' : 'Sale mới'
-                                ]}
+                                labelFormatter={(str) => {
+                                    const ts = parseSafeDate(str);
+                                    if (ts === 0) return str;
+                                    return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(ts));
+                                }}
+                                formatter={(value: number, name: string, props: any) => {
+                                    const isListing = name === 'Listing';
+                                    const total = isListing ? props.payload.totalListing : props.payload.totalSale;
+                                    const realGrowth = isListing ? props.payload.realListingGrowth : props.payload.realSaleGrowth;
+                                    
+                                    // Hiển thị context rõ ràng: Tăng trưởng + (Tổng tích lũy)
+                                    let growthText = `+${value.toLocaleString('vi-VN')}`;
+                                    if (realGrowth < 0) {
+                                        growthText = `${realGrowth.toLocaleString('vi-VN')}`;
+                                    }
+
+                                    return [
+                                        <div className="flex flex-col gap-1">
+                                            <span className="font-bold">{growthText} (Mới)</span>
+                                            <span className="text-gray-500 font-normal border-t border-dashed border-gray-200 pt-1 mt-1">Tổng: {total.toLocaleString('vi-VN')}</span>
+                                        </div>, 
+                                        name === 'Listing' ? 'Listing' : 'Sale'
+                                    ];
+                                }}
                             />
                             <Legend wrapperStyle={{paddingTop: '20px'}} />
                             <Bar 

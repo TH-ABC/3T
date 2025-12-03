@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { sheetService } from '../services/sheetService';
 import { User, Role } from '../types';
-import { UserPlus, Save, CheckCircle, AlertCircle, Loader2, Mail, Phone, User as UserIcon, Lock, Shield, UserCog, List, Settings } from 'lucide-react';
+import { UserPlus, Save, CheckCircle, AlertCircle, Loader2, Mail, Phone, User as UserIcon, Lock, Shield, UserCog, List, Settings, ToggleLeft, ToggleRight } from 'lucide-react';
 
 const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
@@ -20,7 +20,8 @@ const UserManagement: React.FC = () => {
     fullName: '',
     email: '',
     phone: '',
-    role: 'support'
+    role: 'support',
+    canManageSku: false
   });
 
   // Form data for adding new role
@@ -47,7 +48,8 @@ const UserManagement: React.FC = () => {
   }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const value = e.target.type === 'checkbox' ? (e.target as HTMLInputElement).checked : e.target.value;
+    setFormData({ ...formData, [e.target.name]: value });
   };
 
   const handleSubmitUser = async (e: React.FormEvent) => {
@@ -61,10 +63,17 @@ const UserManagement: React.FC = () => {
     setStatus({ type: null, message: '' });
 
     try {
-      const response = await sheetService.createUser(formData);
+      // Structure permissions object
+      const permissions = { canManageSku: formData.canManageSku };
+      
+      const response = await sheetService.createUser({
+          ...formData,
+          permissions
+      });
+
       if (response.success) {
         setStatus({ type: 'success', message: 'Tạo tài khoản thành công!' });
-        setFormData({ username: '', password: '', fullName: '', email: '', phone: '', role: 'support' });
+        setFormData({ username: '', password: '', fullName: '', email: '', phone: '', role: 'support', canManageSku: false });
         loadData();
         setTimeout(() => setIsModalOpen(false), 1500);
       } else {
@@ -289,6 +298,21 @@ const UserManagement: React.FC = () => {
                                         {roles.map(r => <option key={r.name} value={r.name}>{r.name}</option>)}
                                     </select>
                                 </div>
+                            </div>
+                            
+                            {/* Permission Toggle */}
+                            <div className="pt-2">
+                                <label className="flex items-center gap-2 cursor-pointer group">
+                                    <input 
+                                        type="checkbox" 
+                                        name="canManageSku" 
+                                        checked={formData.canManageSku} 
+                                        onChange={handleChange} 
+                                        className="sr-only peer"
+                                    />
+                                    <div className="relative w-9 h-5 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-600"></div>
+                                    <span className="text-xs font-medium text-gray-400 group-hover:text-gray-300 transition-colors">Cấp quyền cập nhật Phân Loại/SKU</span>
+                                </label>
                             </div>
                         </div>
 
