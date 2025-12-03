@@ -8,6 +8,7 @@ import Login from './components/Login';
 import UserManagement from './components/UserManagement';
 import StoreDetail from './components/StoreDetail';
 import { DesignerOnlineList } from './components/DesignerOnlineList';
+import { DesignerList } from './components/DesignerList';
 import ChangePasswordModal from './components/ChangePasswordModal';
 import { User, Store } from './types';
 
@@ -35,8 +36,13 @@ function App() {
 
   // Auto redirect logic for restricted roles on load/login
   useEffect(() => {
-    if (user && (user.role || '').toLowerCase() === 'designer online') {
-      setCurrentTab('designer_online');
+    if (user) {
+      const role = (user.role || '').toLowerCase();
+      if (role === 'designer online') {
+        setCurrentTab('designer_online');
+      } else if (role === 'designer') {
+        setCurrentTab('designer');
+      }
     }
   }, [user]);
 
@@ -63,9 +69,12 @@ function App() {
     localStorage.setItem('oms_user_session', JSON.stringify(userData));
     setUser(userData);
     
-    // Nếu là Designer Online, chuyển ngay tab
-    if ((userData.role || '').toLowerCase() === 'designer online') {
+    // Auto redirect based on role
+    const role = (userData.role || '').toLowerCase();
+    if (role === 'designer online') {
         setCurrentTab('designer_online');
+    } else if (role === 'designer') {
+        setCurrentTab('designer');
     } else {
         setCurrentTab('dashboard');
     }
@@ -105,13 +114,13 @@ function App() {
   const renderContent = () => {
     switch (currentTab) {
       case 'dashboard':
-        if ((user.role || '').toLowerCase() === 'designer online') return null; // Security fallback
+        if ((user.role || '').toLowerCase() === 'designer online' || (user.role || '').toLowerCase() === 'designer') return null; // Security fallback
         if (selectedStore) {
             return <StoreDetail store={selectedStore} onBack={() => setSelectedStore(null)} />;
         }
         return <Dashboard user={user} onSelectStore={setSelectedStore} />;
       case 'orders':
-        if ((user.role || '').toLowerCase() === 'designer online') return null; // Security fallback
+        if ((user.role || '').toLowerCase() === 'designer online' || (user.role || '').toLowerCase() === 'designer') return null; // Security fallback
         return <OrderList 
             user={user} 
             onProcessStart={handleProcessStart} 
@@ -119,6 +128,12 @@ function App() {
         />;
       case 'designer_online':
         return <DesignerOnlineList 
+            user={user}
+            onProcessStart={handleProcessStart}
+            onProcessEnd={handleProcessEnd}
+        />;
+      case 'designer':
+        return <DesignerList 
             user={user}
             onProcessStart={handleProcessStart}
             onProcessEnd={handleProcessEnd}

@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { 
   LayoutDashboard, 
@@ -13,7 +14,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Palette,
-  Key
+  Key,
+  PenTool
 } from 'lucide-react';
 import { User } from '../types';
 
@@ -33,7 +35,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   isOpen, setIsOpen, currentTab, setCurrentTab, user, onLogout, onChangePassword,
   isDesktopCollapsed, setIsDesktopCollapsed 
 }) => {
-  const isDesignerOnline = (user.role || '').toLowerCase() === 'designer online';
+  const role = (user.role || '').toLowerCase();
+  const isDesignerOnline = role === 'designer online';
+  const isDesigner = role === 'designer';
 
   let menuGroups = [
     {
@@ -42,6 +46,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { id: 'dashboard', label: 'Trang chủ', icon: <LayoutDashboard size={20} /> },
         { id: 'orders', label: 'Quản lý Đơn hàng', icon: <ShoppingCart size={20} /> },
         { id: 'designer_online', label: 'Designer Online', icon: <Palette size={20} /> },
+        { id: 'designer', label: 'Designer', icon: <PenTool size={20} /> },
         { id: 'customers', label: 'Khách hàng', icon: <Users size={20} /> },
       ]
     },
@@ -73,19 +78,29 @@ const Sidebar: React.FC<SidebarProps> = ({
     }];
   }
 
+  // Nếu là Designer thường, chỉ hiển thị đúng 1 menu mới tạo
+  if (isDesigner) {
+    menuGroups = [{
+      title: 'NGHIỆP VỤ',
+      items: [
+        { id: 'designer', label: 'Designer', icon: <PenTool size={20} /> }
+      ]
+    }];
+  }
+
   return (
     <>
-      {/* Mobile Overlay */}
+      {/* Mobile Overlay - Increased z-index to 40 */}
       {isOpen && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-20 lg:hidden"
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
           onClick={() => setIsOpen(false)}
         />
       )}
 
-      {/* Sidebar Container */}
+      {/* Sidebar Container - Increased z-index to 50 to sit above sticky headers (z-30) */}
       <div className={`
-        fixed top-0 left-0 h-full bg-[#1e293b] text-white z-30 transition-all duration-300 ease-in-out flex flex-col border-r border-gray-700
+        fixed top-0 left-0 h-full bg-[#1e293b] text-white z-50 transition-all duration-300 ease-in-out flex flex-col border-r border-gray-700
         ${isOpen ? 'translate-x-0' : '-translate-x-full'} 
         lg:translate-x-0 
         ${isDesktopCollapsed ? 'w-20' : 'w-64'}

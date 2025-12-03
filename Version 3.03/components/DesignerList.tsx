@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Search, RefreshCw, Copy, ArrowUp, ArrowDown, Calendar, UserCircle, ChevronLeft, ChevronRight, Settings, Save, X, Loader2, CheckCircle, AlertCircle, Filter, ArrowDownAZ, ArrowUpAZ, AlertTriangle, Info, FileSpreadsheet, DollarSign, CheckSquare, Square, Users } from 'lucide-react';
+import { Search, RefreshCw, Copy, ArrowUp, ArrowDown, Calendar, UserCircle, ChevronLeft, ChevronRight, Settings, Save, Loader2, CheckCircle, AlertCircle, AlertTriangle, Info, FileSpreadsheet, PenTool, CheckSquare, Square, Users, Layers } from 'lucide-react';
 import { sheetService } from '../services/sheetService';
 import { Order, Store, User } from '../types';
 
@@ -26,18 +26,17 @@ const getRoleLevel = (role: string): number => {
     return ROLE_HIERARCHY[(role || '').toLowerCase().trim()] || 99; 
 };
 
-interface DesignerOnlineListProps {
+interface DesignerListProps {
     user: User;
     onProcessStart?: () => void;
     onProcessEnd?: () => void;
 }
 
-export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, onProcessStart, onProcessEnd }) => {
+export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart, onProcessEnd }) => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [skuMap, setSkuMap] = useState<Record<string, string>>({}); 
-  const [priceMap, setPriceMap] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [dataError, setDataError] = useState<{ message: string, detail?: string, fileId?: string } | null>(null);
   
@@ -58,11 +57,6 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
   const [isSubmittingSku, setIsSubmittingSku] = useState(false);
   const [skuMessage, setSkuMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   
-  // --- PRICE SETTINGS MODAL STATE ---
-  const [isPriceModalOpen, setIsPriceModalOpen] = useState(false);
-  const [tempPriceMap, setTempPriceMap] = useState<Record<string, number>>({});
-  const [isSavingPrices, setIsSavingPrices] = useState(false);
-
   const currentYear = new Date().getFullYear();
   const yearsList = Array.from({ length: 11 }, (_, i) => currentYear - 5 + i);
   const monthsList = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
@@ -79,12 +73,11 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
     setCurrentFileId(null);
 
     try {
-      const [orderResult, storeData, usersData, skuMappings, priceMappings] = await Promise.all([
+      const [orderResult, storeData, usersData, skuMappings] = await Promise.all([
           sheetService.getOrders(monthToFetch), 
           sheetService.getStores(),
           sheetService.getUsers(),
-          sheetService.getSkuMappings(),
-          sheetService.getPriceMappings()
+          sheetService.getSkuMappings()
       ]);
 
       if (selectedMonthRef.current !== monthToFetch) return;
@@ -98,13 +91,6 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
           if (m.sku) mappingObj[m.sku.toLowerCase().trim()] = m.category;
       });
       setSkuMap(mappingObj);
-
-      const priceObj: Record<string, number> = {};
-      priceMappings.forEach(p => {
-          if (p.category) priceObj[p.category] = Number(p.price) || 0;
-      });
-      setPriceMap(priceObj);
-      setTempPriceMap(priceObj);
 
       const rawOrders = orderResult.orders || [];
       const ordersInMonth = rawOrders.filter(o => {
@@ -128,14 +114,16 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
       const currentUsername = user.username;
       let filteredOrders = [];
 
-      if (userRole === 'designer online') {
+      if (userRole === 'designer') {
+          // Nếu là Designer thường, chỉ xem đơn của mình
           filteredOrders = ordersInMonth.filter(o => o.actionRole === currentUsername);
       } else {
+          // Admin/Leader xem được hết các đơn có actionRole là designer
           const safeUsers = Array.isArray(usersData) ? usersData : [];
           const designerUsernames = safeUsers
               .filter(u => {
                   const r = (u.role || '').toLowerCase();
-                  return r.includes('designer');
+                  return r === 'designer';
               })
               .map(u => u.username);
               
@@ -165,26 +153,23 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
 
   const stats = useMemo<{
     totalOrders: number;
-    totalMoney: number;
-    categories: Record<string, { total: number; checked: number; money: number }>;
-    designers: Record<string, { total: number; checked: number; money: number }>;
+    categories: Record<string, { total: number; checked: number }>;
+    designers: Record<string, { total: number; checked: number }>;
   }>(() => {
       const result = {
           totalOrders: 0,
-          totalMoney: 0,
           categories: {
-              'Loại 1': { total: 0, checked: 0, money: 0 },
-              'Loại 2': { total: 0, checked: 0, money: 0 },
-              'Loại 3': { total: 0, checked: 0, money: 0 },
-              'Loại 4': { total: 0, checked: 0, money: 0 },
-              'Khác': { total: 0, checked: 0, money: 0 }
-          } as Record<string, { total: number; checked: number; money: number }>,
-          designers: {} as Record<string, { total: number; checked: number; money: number }>
+              'Loại 1': { total: 0, checked: 0 },
+              'Loại 2': { total: 0, checked: 0 },
+              'Loại 3': { total: 0, checked: 0 },
+              'Loại 4': { total: 0, checked: 0 },
+              'Khác': { total: 0, checked: 0 }
+          } as Record<string, { total: number; checked: number }>,
+          designers: {} as Record<string, { total: number; checked: number }>
       };
 
       orders.forEach(o => {
           const category = skuMap[o.sku.toLowerCase().trim()] || 'Khác';
-          const price = priceMap[category] || 0;
           const isChecked = o.isDesignDone === true;
           const designerName = o.actionRole || 'Chưa Giao';
 
@@ -193,22 +178,19 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
 
           const target = result.categories[catKey];
           target.total += 1;
-          target.money += price;
           if (isChecked) target.checked += 1;
 
           if (!result.designers[designerName]) {
-              result.designers[designerName] = { total: 0, checked: 0, money: 0 };
+              result.designers[designerName] = { total: 0, checked: 0 };
           }
           result.designers[designerName].total += 1;
-          result.designers[designerName].money += price;
           if (isChecked) result.designers[designerName].checked += 1;
 
           result.totalOrders += 1;
-          result.totalMoney += price;
       });
 
       return result;
-  }, [orders, skuMap, priceMap]);
+  }, [orders, skuMap]);
 
   const formatDateDisplay = (dateStr: string) => {
     if (!dateStr) return '';
@@ -259,22 +241,6 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
       } 
   };
 
-  const handleSavePrices = async () => {
-    setIsSavingPrices(true);
-    try {
-        const categories = Object.keys(tempPriceMap);
-        for (const cat of categories) {
-             await sheetService.updateCategoryPrice(cat, tempPriceMap[cat]);
-        }
-        setPriceMap(tempPriceMap);
-        setIsPriceModalOpen(false);
-    } catch (e) {
-        alert('Lỗi khi lưu bảng giá.');
-    } finally {
-        setIsSavingPrices(false);
-    }
-  };
-
   const handleDesignerToggle = async (order: Order) => {
       if (!currentFileId) return;
       if (updatingIds.has(order.id)) return;
@@ -301,16 +267,10 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
       }
   };
 
-  const formatPrice = (price: number) => {
-      if (!price) return '-';
-      return price.toLocaleString('vi-VN') + ' đ';
-  };
-
   const [currentYearStr, currentMonthStr] = selectedMonth.split('-');
   const userLevel = getRoleLevel(user.role);
   const canManageSku = userLevel <= 4; 
-  const canManagePrice = userLevel <= 2; 
-  const canCheckDesign = userLevel <= 4; 
+  const canCheckDesign = userLevel <= 5; // Designer level 5 can check
 
   const filteredOrders = orders.filter(o => 
     (o.id ? String(o.id).toLowerCase() : '').includes(searchTerm.toLowerCase()) || 
@@ -343,7 +303,7 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
         {/* TOP SUMMARY DASHBOARD */}
         <div className="bg-white border-b border-gray-200 p-4">
             <h3 className="text-sm font-bold text-gray-700 uppercase mb-3 flex items-center gap-2">
-                <DollarSign size={16} className="text-green-600"/> Tổng Hợp Tháng {currentMonthStr}/{currentYearStr}
+                <Layers size={16} className="text-indigo-600"/> Tổng Hợp Tháng {currentMonthStr}/{currentYearStr}
             </h3>
             
             <div className="flex flex-col xl:flex-row gap-6">
@@ -353,19 +313,13 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                             <span className="text-xs opacity-80 uppercase tracking-wide">Tổng Đơn</span>
                             <span className="text-xl font-bold">{stats.totalOrders}</span>
                         </div>
-                        {/* NEW TOTAL MONEY CARD */}
-                        <div className="bg-emerald-600 text-white rounded p-3 shadow-sm flex flex-col justify-center items-center text-center">
-                            <span className="text-xs opacity-80 uppercase tracking-wide">Tổng Tiền</span>
-                            <span className="text-lg font-bold">{formatPrice(stats.totalMoney)}</span>
-                        </div>
-
+                        
                         {PRICE_CATEGORIES.map(cat => {
-                            const data = (stats.categories[cat] as { total: number; checked: number; money: number } | undefined) || { total: 0, checked: 0, money: 0 };
+                            const data = (stats.categories[cat] as { total: number; checked: number } | undefined) || { total: 0, checked: 0 };
                             return (
                                 <div key={cat} className="bg-gray-50 border border-gray-200 rounded p-3 shadow-sm flex flex-col justify-between">
                                     <div className="flex justify-between items-start border-b border-gray-200 pb-1 mb-1">
                                         <span className="text-xs font-bold text-gray-700 uppercase">{cat}</span>
-                                        <span className="text-xs font-medium text-green-600">{formatPrice(data.money)}</span>
                                     </div>
                                     <div className="flex justify-between items-end">
                                         <div className="text-center">
@@ -383,7 +337,7 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                     </div>
                 </div>
 
-                {/* PART 2: DESIGNER SUMMARY (New) */}
+                {/* PART 2: DESIGNER SUMMARY (Without Money) */}
                 <div className="flex-1 border-l border-gray-200 xl:pl-6 pt-4 xl:pt-0 border-t xl:border-t-0 mt-2 xl:mt-0">
                     <h4 className="text-xs font-bold text-gray-500 uppercase mb-2 flex items-center gap-2">
                         <Users size={14} /> Chi Tiết Theo Designer
@@ -395,20 +349,18 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                                     <th className="px-3 py-2 border-b">Designer</th>
                                     <th className="px-3 py-2 border-b text-center">Số lượng</th>
                                     <th className="px-3 py-2 border-b text-center">Đã Check</th>
-                                    <th className="px-3 py-2 border-b text-right">Tạm tính</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
-                                {Object.entries(stats.designers).map(([name, data]: [string, { total: number; checked: number; money: number }]) => (
+                                {Object.entries(stats.designers).map(([name, data]: [string, { total: number; checked: number }]) => (
                                     <tr key={name} className="hover:bg-gray-50">
                                         <td className="px-3 py-2 font-medium text-gray-700 truncate max-w-[120px]" title={name}>{name}</td>
                                         <td className="px-3 py-2 text-center text-gray-600">{data.total}</td>
                                         <td className="px-3 py-2 text-center font-bold text-blue-600">{data.checked}</td>
-                                        <td className="px-3 py-2 text-right font-medium text-green-700">{data.money.toLocaleString('vi-VN')}</td>
                                     </tr>
                                 ))}
                                 {Object.keys(stats.designers).length === 0 && (
-                                    <tr><td colSpan={4} className="px-3 py-4 text-center text-gray-400 italic">Chưa có dữ liệu designer.</td></tr>
+                                    <tr><td colSpan={3} className="px-3 py-4 text-center text-gray-400 italic">Chưa có dữ liệu designer.</td></tr>
                                 )}
                             </tbody>
                         </table>
@@ -420,7 +372,7 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
         <div className="p-4 border-b border-gray-200 flex flex-col xl:flex-row justify-between items-center gap-4 bg-white z-20">
           <div className="flex flex-col md:flex-row items-center gap-4 w-full xl:w-auto">
             <h2 className="text-xl font-bold text-gray-800 whitespace-nowrap flex items-center gap-2">
-                DESIGNER ONLINE <span className="text-orange-600 uppercase text-sm border border-orange-200 bg-orange-50 px-2 py-0.5 rounded">Tháng {currentMonthStr}/{currentYearStr}</span>
+                DESIGNER <span className="text-orange-600 uppercase text-sm border border-orange-200 bg-orange-50 px-2 py-0.5 rounded">Tháng {currentMonthStr}/{currentYearStr}</span>
                 <button onClick={() => loadData(selectedMonth)} className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 transition-colors" title="Làm mới">
                     <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
                 </button>
@@ -442,12 +394,6 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                         <Settings size={16} /> <span className="hidden sm:inline">Phân loại</span>
                     </button>
                 )}
-                
-                {canManagePrice && (
-                    <button onClick={() => setIsPriceModalOpen(true)} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm h-[42px] whitespace-nowrap ml-2">
-                        <DollarSign size={16} /> <span className="hidden sm:inline">Cấu hình Giá</span>
-                    </button>
-                )}
             </div>
           </div>
           <div className="relative flex-1 sm:flex-none sm:w-64">
@@ -465,7 +411,7 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                 <th className="px-3 py-3 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20">STORE</th>
                 <th className="px-3 py-3 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20">SKU</th>
                 <th className="px-3 py-3 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-32 text-yellow-300">Phân Loại</th>
-                <th className="px-3 py-3 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-32 text-green-300">Giá Tiền</th>
+                {/* No Price Column Here */}
                 {/* CHECKBOX COLUMN */}
                 <th className="px-1 py-3 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-12 text-center text-blue-300">CHK</th>
                 
@@ -475,9 +421,9 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
             </thead>
             <tbody className="divide-y divide-gray-200">
               {loading ? 
-                <tr><td colSpan={9} className="text-center py-12 text-gray-500">Đang tải dữ liệu Tháng {currentMonthStr}...</td></tr> : 
+                <tr><td colSpan={8} className="text-center py-12 text-gray-500">Đang tải dữ liệu Tháng {currentMonthStr}...</td></tr> : 
                 (sortedOrders.length === 0 ? 
-                    <tr><td colSpan={9} className="text-center py-12 text-gray-500">
+                    <tr><td colSpan={8} className="text-center py-12 text-gray-500">
                          {dataError ? (
                             <div className="flex flex-col items-center justify-center p-4 bg-red-50 border border-red-200 rounded-lg max-w-2xl mx-auto my-4 text-red-700">
                                 <div className="flex items-center gap-2 font-bold text-lg mb-2">
@@ -498,7 +444,6 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                     </td></tr> :
                     sortedOrders.map((order, idx) => {
                         const category = skuMap[order.sku.toLowerCase().trim()] || '';
-                        const price = priceMap[category] || 0;
                         const isUpdating = updatingIds.has(order.id);
                         
                         return (
@@ -510,7 +455,6 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                                 <td className="px-3 py-3 border-r text-gray-700">{getStoreName(order.storeId)}</td>
                                 <td className="px-3 py-3 border-r font-mono text-xs text-gray-600">{order.sku}</td>
                                 <td className="px-3 py-3 border-r text-center font-medium text-indigo-600 bg-indigo-50/50">{category}</td>
-                                <td className="px-3 py-3 border-r text-center font-bold text-green-700 bg-green-50/50">{formatPrice(price)}</td>
                                 
                                 {/* DESIGNER CHECKBOX */}
                                 <td className="px-1 py-1 border-r text-center align-middle bg-blue-50/30">
@@ -555,50 +499,6 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                 </form>
             </div>
         </div>
-        )}
-
-        {/* NEW PRICE SETTINGS MODAL (Admin/Leader only) */}
-        {isPriceModalOpen && (
-            <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fade-in">
-                <div className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden">
-                    <div className="px-5 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                        <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2">
-                            <DollarSign className="text-green-600" size={20} /> Cấu Hình Giá Tiền
-                        </h3>
-                        <button onClick={() => setIsPriceModalOpen(false)} disabled={isSavingPrices} className="text-gray-400 hover:text-gray-600">✕</button>
-                    </div>
-                    <div className="p-5">
-                        <div className="bg-blue-50 border border-blue-100 p-3 rounded text-xs text-blue-700 mb-4 flex gap-2">
-                            <Info size={16} className="flex-shrink-0"/>
-                            <span>Giá tiền sẽ được áp dụng tự động cho các đơn hàng có SKU thuộc phân loại tương ứng.</span>
-                        </div>
-                        <div className="space-y-3 mb-6">
-                            {PRICE_CATEGORIES.map(cat => (
-                                <div key={cat} className="flex items-center gap-3">
-                                    <div className="w-24 text-sm font-bold text-gray-700">{cat}</div>
-                                    <div className="flex-1 relative">
-                                        <input 
-                                            type="number" 
-                                            className="w-full border border-gray-300 rounded px-3 py-2 text-sm text-right pr-8 font-mono focus:ring-2 focus:ring-green-500 outline-none"
-                                            value={tempPriceMap[cat] || ''}
-                                            onChange={(e) => setTempPriceMap({...tempPriceMap, [cat]: Number(e.target.value)})}
-                                            placeholder="0"
-                                        />
-                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">đ</span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                        <div className="flex gap-3 pt-2 border-t border-gray-100">
-                            <button onClick={() => setIsPriceModalOpen(false)} disabled={isSavingPrices} className="flex-1 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md text-sm font-medium">Hủy bỏ</button>
-                            <button onClick={handleSavePrices} disabled={isSavingPrices} className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-bold shadow-sm flex items-center justify-center gap-2">
-                                {isSavingPrices ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
-                                Lưu Cấu Hình
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
         )}
       </div>
     </div>

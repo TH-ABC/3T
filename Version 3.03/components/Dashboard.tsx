@@ -36,6 +36,33 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSelectStore }) => {
   // Derived Stats cho Hiệu suất hôm nay
   const [todayGrowth, setTodayGrowth] = useState({ listing: 0, sale: 0, totalListingNow: 0, totalSaleNow: 0 });
 
+  // Helper Parse Date an toàn (Hỗ trợ YYYY-MM-DD và DD/MM/YYYY kèm giờ phút)
+  const parseSafeDate = (dateStr: string): number => {
+    if (!dateStr) return 0;
+    
+    // 1. Thử parse chuẩn ISO (YYYY-MM-DD)
+    let d = new Date(dateStr);
+    if (!isNaN(d.getTime())) return d.getTime();
+
+    // 2. Thử parse định dạng Việt Nam/Sheet (DD/MM/YYYY HH:mm:ss hoặc DD/MM/YYYY)
+    // Regex bắt: Ngày/Tháng/Năm (bắt buộc) + Giờ:Phút:Giây (tùy chọn)
+    const match = dateStr.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+    
+    if (match) {
+        const day = parseInt(match[1], 10);
+        const month = parseInt(match[2], 10) - 1; // Tháng trong JS bắt đầu từ 0
+        const year = parseInt(match[3], 10);
+        const hour = match[4] ? parseInt(match[4], 10) : 0;
+        const minute = match[5] ? parseInt(match[5], 10) : 0;
+        const second = match[6] ? parseInt(match[6], 10) : 0;
+        
+        const composedDate = new Date(year, month, day, hour, minute, second);
+        return composedDate.getTime();
+    }
+    
+    return 0; 
+  };
+
   const loadData = async (showMainLoading = true) => {
     if (showMainLoading) setLoading(true);
     else setIsRefreshing(true);
@@ -50,14 +77,21 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSelectStore }) => {
 
       setMetrics(stats);
       setStores(storeData);
-      setDailyStats(historyStats.reverse()); // Đảo ngược để hiện ngày mới nhất lên đầu
+
+      // --- FIX SORTING (STRICT NEWEST TO OLDEST) ---
+      // Sử dụng parseSafeDate mới để đảm bảo ngày giờ được tính đúng
+      const sortedHistory = [...historyStats].sort((a, b) => {
+          const timeA = parseSafeDate(a.date);
+          const timeB = parseSafeDate(b.date);
+          return timeB - timeA; // Descending (Lớn xếp trước)
+      });
+      setDailyStats(sortedHistory);
 
       // --- TÍNH TOÁN HIỆU SUẤT TĂNG TRƯỞNG ---
-      // 1. Tính tổng hiện tại (Real-time)
+      // 1. Tính tổng hiện tại (Real-time từ bảng Stores)
       let currentTotalListing = 0;
       let currentTotalSale = 0;
       storeData.forEach(s => {
-         // Safe conversion to string before replacing to avoid "s.sale.replace is not a function"
          const listingStr = String(s.listing || '0');
          const saleStr = String(s.sale || '0');
          
@@ -65,17 +99,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSelectStore }) => {
          currentTotalSale += Number(saleStr.replace(/,/g,'')) || 0;
       });
 
-      // 2. Tìm mốc chốt sổ gần nhất (Hôm qua hoặc hôm nay nếu đã chốt)
-      const lastRecord = historyStats.length > 0 ? historyStats[0] : null; 
+      // 2. Tìm mốc chốt sổ gần nhất (Record đầu tiên trong mảng đã sort DESC)
+      const lastRecord = sortedHistory.length > 0 ? sortedHistory[0] : null; 
       
       let growthListing = 0;
       let growthSale = 0;
 
       if (lastRecord) {
+         // Tăng trưởng = (Hiện tại - Lần chốt gần nhất)
          growthListing = currentTotalListing - lastRecord.totalListing;
          growthSale = currentTotalSale - lastRecord.totalSale;
       } else {
-         // Chưa có lịch sử -> Tăng trưởng chính là tổng hiện tại
          growthListing = currentTotalListing;
          growthSale = currentTotalSale;
       }
@@ -109,9 +143,22 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSelectStore }) => {
     return () => clearInterval(intervalId);
   }, []);
 
-  // Hàm xử lý khi bấm nút refresh thủ công
+  // Hàm xử lý nút refresh thủ công
   const handleManualRefresh = () => {
     loadData(false);
+  };
+
+  // Helper format ngày hiển thị đầy đủ
+  const formatDateFull = (dateStr: string) => {
+      if (!dateStr) return '';
+      const ts = parseSafeDate(dateStr);
+      if (ts > 0) {
+          return new Intl.DateTimeFormat('vi-VN', {
+              day: '2-digit', month: '2-digit', year: 'numeric',
+              hour: '2-digit', minute: '2-digit'
+          }).format(new Date(ts));
+      }
+      return dateStr;
   };
 
   // Hàm xử lý nút Test giả lập
@@ -378,7 +425,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSelectStore }) => {
         </div>
       </div>
 
-      {/* --- PHẦN MỚI: HIỆU SUẤT TĂNG TRƯỞNG (DAILY GROWTH) --- */}
+      {/* --- PHẦN HIỆU SUẤT TĂNG TRƯỞNG & LỊCH SỬ --- */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Cột 1: Tóm tắt hiệu suất hôm nay */}
         <div className="lg:col-span-1 space-y-4">
@@ -461,14 +508,23 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSelectStore }) => {
                             </tr>
                         ) : (
                             dailyStats.map((stat, index) => {
-                                // Tính biến động so với ngày trước đó (trong mảng đã reverse thì là phần tử kế tiếp)
+                                // Tính biến động so với ngày trước đó (Record kế tiếp trong mảng đã sort DESC)
                                 const prevStat = dailyStats[index + 1];
+                                
                                 const diffSale = prevStat ? stat.totalSale - prevStat.totalSale : 0;
+                                const diffListing = prevStat ? stat.totalListing - prevStat.totalListing : 0;
                                 
                                 return (
                                     <tr key={index} className="hover:bg-gray-50">
-                                        <td className="px-6 py-3 font-medium text-gray-700">{stat.date}</td>
-                                        <td className="px-6 py-3 text-right text-gray-600">{stat.totalListing.toLocaleString('vi-VN')}</td>
+                                        <td className="px-6 py-3 font-medium text-gray-700">{formatDateFull(stat.date)}</td>
+                                        <td className="px-6 py-3 text-right text-gray-600">
+                                            {stat.totalListing.toLocaleString('vi-VN')}
+                                            {diffListing !== 0 && (
+                                                <span className={`text-[10px] ml-1 ${diffListing > 0 ? 'text-blue-500' : 'text-red-500'}`}>
+                                                    ({diffListing > 0 ? '+' : ''}{diffListing})
+                                                </span>
+                                            )}
+                                        </td>
                                         <td className="px-6 py-3 text-right font-bold text-gray-800">{stat.totalSale.toLocaleString('vi-VN')}</td>
                                         <td className="px-6 py-3 text-center">
                                             {prevStat ? (
