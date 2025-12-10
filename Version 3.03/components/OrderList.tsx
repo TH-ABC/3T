@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Search, RefreshCw, Copy, ExternalLink, Calendar, FileSpreadsheet, ChevronLeft, ChevronRight, UserCircle, CheckSquare, Square, Loader2, AlertTriangle, Filter, ArrowDownAZ, ArrowUpAZ, Truck, Settings2, CheckCircle, Package, TrendingUp, Clock, FilePlus, PenTool, X } from 'lucide-react';
 import { sheetService } from '../services/sheetService';
@@ -344,20 +343,53 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
 
   // --- FILTER UI ---
   const handleColumnSort = (key: keyof Order, direction: 'asc' | 'desc') => { setSortConfig({ key, direction }); setActiveFilterColumn(null); };
-  const getUniqueValues = (key: string): string[] => { const values = new Set<string>(); orders.forEach(o => { let val = ''; if(key==='storeName') val=getStoreName(o.storeId); else if(key==='isFulfilled') val=o.isFulfilled?"Fulfilled":"Chưa"; else if(key==='isDesignDone') val=o.isDesignDone?"Done":"Pending"; else val=String(o[key as keyof Order]||''); if(val) values.add(val); }); return Array.from(values).sort(); };
+  const getUniqueValues = (key: string): string[] => { const values = new Set<string>(); orders.forEach(o => { let val = ''; if(key==='storeName') val=getStoreName(o.storeId); else if(key==='isFulfilled') val=o.isFulfilled?"Fulfilled":"Chưa"; else if(key==='isDesignDone') val=o.isDesignDone?"Done":"Pending"; else val=String(o[key as keyof Order]||''); if(val) values.add(val); }); return Array.from(values).sort() as string[]; };
   const handleFilterValueChange = (col: string, val: string) => { const cur = columnFilters[col] || []; const next = cur.includes(val) ? cur.filter(v => v !== val) : [...cur, val]; setColumnFilters({ ...columnFilters, [col]: next }); };
   
   const showMessage = (title: string, message: string, type: SystemModalState['type'] = 'alert', onConfirm?: () => void) => { setSysModal({ isOpen: true, title, message, type, onConfirm }); };
   const closeMessage = () => setSysModal(prev => ({ ...prev, isOpen: false }));
   
   const handleCreateFile = async () => { showMessage('Xác nhận tạo file', `Bạn có chắc chắn muốn tạo file dữ liệu cho Tháng ${selectedMonth}?`, 'confirm', async () => { if (onProcessStart) onProcessStart(); try { const result = await sheetService.createMonthFile(selectedMonth); if (result && result.success) { showMessage('Thành công', `Đã tạo file cho tháng ${selectedMonth} thành công!`, 'success'); loadData(selectedMonth); } else { showMessage('Lỗi', `Không thể tạo file: ${result?.error || "Lỗi không xác định."}`, 'error'); } } catch (e) { showMessage('Lỗi kết nối', 'Không thể kết nối đến server.', 'error'); } finally { if (onProcessEnd) onProcessEnd(); } }); };
-  const handleToggleCheckbox = async (order: Order) => { if (updatingOrderIds.has(order.id)) return; if (!currentFileId) return; const newValue = !order.isChecked; setUpdatingOrderIds(prev => new Set(prev).add(order.id)); if (onProcessStart) onProcessStart(); try { await sheetService.updateOrder(currentFileId, order.id, 'isChecked', newValue ? "TRUE" : "FALSE"); setOrders(prev => prev.map(o => o.id === order.id ? { ...o, isChecked: newValue } : o)); } catch (error) { showMessage('Lỗi', 'Không thể cập nhật trạng thái.', 'error'); } finally { setUpdatingOrderIds(prev => { const newSet = new Set(prev); newSet.delete(order.id); return newSet; }); if (onProcessEnd) onProcessEnd(); } });
-  const handleToggleDesignDone = async (order: Order) => { if (updatingOrderIds.has(order.id)) return; if (!currentFileId) return; const newValue = !order.isDesignDone; setUpdatingOrderIds(prev => new Set(prev).add(order.id)); if (onProcessStart) onProcessStart(); try { await sheetService.updateDesignerStatus(currentFileId, order, "Master", newValue); setOrders(prev => prev.map(o => o.id === order.id ? { ...o, isDesignDone: newValue } : o)); } catch (error) { showMessage('Lỗi', 'Không thể cập nhật trạng thái Design.', 'error'); } finally { setUpdatingOrderIds(prev => { const newSet = new Set(prev); newSet.delete(order.id); return newSet; }); if (onProcessEnd) onProcessEnd(); } };
+  
+  const handleToggleCheckbox = async (order: Order) => { 
+    if (updatingOrderIds.has(order.id)) return; 
+    if (!currentFileId) return; 
+    const newValue = !order.isChecked; 
+    setUpdatingOrderIds(prev => new Set(prev).add(order.id)); 
+    if (onProcessStart) onProcessStart(); 
+    try { 
+        await sheetService.updateOrder(currentFileId, order.id, 'isChecked', newValue ? "TRUE" : "FALSE"); 
+        setOrders(prev => prev.map(o => o.id === order.id ? { ...o, isChecked: newValue } : o)); 
+    } catch (error) { 
+        showMessage('Lỗi', 'Không thể cập nhật trạng thái.', 'error'); 
+    } finally { 
+        setUpdatingOrderIds(prev => { const newSet = new Set(prev); newSet.delete(order.id); return newSet; }); 
+        if (onProcessEnd) onProcessEnd(); 
+    } 
+  };
+
+  const handleToggleDesignDone = async (order: Order) => { 
+    if (updatingOrderIds.has(order.id)) return; 
+    if (!currentFileId) return; 
+    const newValue = !order.isDesignDone; 
+    setUpdatingOrderIds(prev => new Set(prev).add(order.id)); 
+    if (onProcessStart) onProcessStart(); 
+    try { 
+        await sheetService.updateDesignerStatus(currentFileId, order, "Master", newValue); 
+        setOrders(prev => prev.map(o => o.id === order.id ? { ...o, isDesignDone: newValue } : o)); 
+    } catch (error) { 
+        showMessage('Lỗi', 'Không thể cập nhật trạng thái Design.', 'error'); 
+    } finally { 
+        setUpdatingOrderIds(prev => { const newSet = new Set(prev); newSet.delete(order.id); return newSet; }); 
+        if (onProcessEnd) onProcessEnd(); 
+    } 
+  };
+  
   const handleMonthChange = (step: number) => { const [year, month] = selectedMonth.split('-').map(Number); const date = new Date(year, month - 1 + step, 1); setSelectedMonth(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`); };
   const [currentYearStr, currentMonthStr] = selectedMonth.split('-');
 
   // Filter Popup Render (Simplified for brevity)
-  const renderFilterPopup = () => { if (!activeFilterColumn || !filterPopupPos) return null; const col = activeFilterColumn; const vals: string[] = getUniqueValues(col === 'storeName' ? 'storeName' : col === 'isFulfilled' ? 'isFulfilled' : col === 'isDesignDone' ? 'isDesignDone' : col); const display = vals.filter(v => v.toLowerCase().includes(filterSearchTerm.toLowerCase())); const selected = columnFilters[col]; return ( <div ref={filterPopupRef} className="fixed bg-white rounded-lg shadow-xl border border-gray-200 z-[100] flex flex-col w-72" style={{ top: filterPopupPos.top, left: filterPopupPos.left }}> <div className="p-2 border-b border-gray-100"><input type="text" placeholder="Tìm..." className="w-full px-2 py-1 text-sm border rounded" value={filterSearchTerm} onChange={(e) => setFilterSearchTerm(e.target.value)} autoFocus /></div> <div className="flex-1 overflow-y-auto max-h-60 p-2 space-y-1 custom-scrollbar"> {display.map((val, idx) => ( <label key={idx} className="flex items-center gap-2 px-2 py-1 hover:bg-gray-50 rounded cursor-pointer text-sm"> <input type="checkbox" checked={!selected || selected.includes(val)} onChange={() => handleFilterValueChange(col, val)} /> <span>{val || '(Trống)'}</span> </label> ))} </div> </div> ); };
+  const renderFilterPopup = () => { if (!activeFilterColumn || !filterPopupPos) return null; const col = activeFilterColumn; const vals = getUniqueValues(col === 'storeName' ? 'storeName' : col === 'isFulfilled' ? 'isFulfilled' : col === 'isDesignDone' ? 'isDesignDone' : col) as string[]; const display = vals.filter(v => v.toLowerCase().includes(filterSearchTerm.toLowerCase())); const selected = columnFilters[col]; return ( <div ref={filterPopupRef} className="fixed bg-white rounded-lg shadow-xl border border-gray-200 z-[100] flex flex-col w-72" style={{ top: filterPopupPos.top, left: filterPopupPos.left }}> <div className="p-2 border-b border-gray-100"><input type="text" placeholder="Tìm..." className="w-full px-2 py-1 text-sm border rounded" value={filterSearchTerm} onChange={(e) => setFilterSearchTerm(e.target.value)} autoFocus /></div> <div className="flex-1 overflow-y-auto max-h-60 p-2 space-y-1 custom-scrollbar"> {display.map((val, idx) => ( <label key={idx} className="flex items-center gap-2 px-2 py-1 hover:bg-gray-50 rounded cursor-pointer text-sm"> <input type="checkbox" checked={!selected || selected.includes(val)} onChange={() => handleFilterValueChange(col, val)} /> <span>{val || '(Trống)'}</span> </label> ))} </div> </div> ); };
 
   return (
     <div className="flex flex-col h-full bg-gray-100 relative">
