@@ -104,13 +104,66 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
   useEffect(() => { const handleClickOutside = (event: MouseEvent) => { if (filterPopupRef.current && !filterPopupRef.current.contains(event.target as Node)) { setActiveFilterColumn(null); setFilterSearchTerm(''); setFilterPopupPos(null); } }; document.addEventListener('mousedown', handleClickOutside); window.addEventListener('scroll', () => { if (activeFilterColumn) setActiveFilterColumn(null); }, true); return () => { document.removeEventListener('mousedown', handleClickOutside); window.removeEventListener('scroll', () => {}, true); }; }, [activeFilterColumn]);
 
   const getPriceForCategory = (categoryName: string) => { if (!categoryName) return 0; const key = normalizeKey(categoryName); return priceMap[key] || 0; };
-  const getUniqueValues = (key: keyof Order | 'storeName' | 'category' | 'isDesignDone'): string[] => { const values = new Set<string>(); orders.forEach(order => { let val = ''; if (key === 'storeName') val = getStoreName(order.storeId); else if (key === 'category') { const skuNorm = normalizeKey(order.sku); val = skuMap[skuNorm] || ''; const matched = PRICE_CATEGORIES.find(c => normalizeKey(c) === normalizeKey(val)); if (matched) val = matched; if (!val) val = '(Chưa phân loại)'; } else if (key === 'isDesignDone') val = order.isDesignDone ? "Đã xong" : "Chưa xong"; else val = String(order[key as keyof Order] || ''); if (val) values.add(val); }); return Array.from(values).sort() as string[]; };
+  
+  const getUniqueValues = (key: string): string[] => { 
+    const values = new Set<string>(); 
+    orders.forEach(order => { 
+      let val = ''; 
+      if (key === 'storeName') val = getStoreName(order.storeId); 
+      else if (key === 'category') { 
+        const skuNorm = normalizeKey(order.sku); 
+        val = skuMap[skuNorm] || ''; 
+        const matched = PRICE_CATEGORIES.find(c => normalizeKey(c) === normalizeKey(val)); 
+        if (matched) val = matched; 
+        if (!val) val = '(Chưa phân loại)'; 
+      } 
+      else if (key === 'isDesignDone') val = order.isDesignDone ? "Đã xong" : "Chưa xong"; 
+      else {
+        const v = order[key as keyof Order];
+        val = v !== undefined && v !== null ? String(v) : '';
+      }
+      if (val) values.add(val); 
+    }); 
+    return Array.from(values).sort(); 
+  };
+  
   const handleFilterClick = (e: React.MouseEvent, columnKey: string) => { e.stopPropagation(); if (activeFilterColumn === columnKey) { setActiveFilterColumn(null); setFilterPopupPos(null); } else { const rect = e.currentTarget.getBoundingClientRect(); let top = rect.bottom + 5; let left = rect.left; const POPUP_WIDTH = 288; if (left + POPUP_WIDTH > window.innerWidth - 10) { left = rect.right - POPUP_WIDTH; } setFilterPopupPos({ top, left, alignRight: false }); setActiveFilterColumn(columnKey); setFilterSearchTerm(''); } };
   const handleFilterValueChange = (columnKey: string, value: string) => { const currentFilters = columnFilters[columnKey] || []; const newFilters = currentFilters.includes(value) ? currentFilters.filter(v => v !== value) : [...currentFilters, value]; setColumnFilters({ ...columnFilters, [columnKey]: newFilters }); };
   const handleClearFilter = (columnKey: string) => setColumnFilters({ ...columnFilters, [columnKey]: [] });
   const handleSelectAllFilter = (columnKey: string, values: string[]) => setColumnFilters({ ...columnFilters, [columnKey]: values });
 
-  const renderFilterPopup = () => { if (!activeFilterColumn || !filterPopupPos) return null; const columnKey = activeFilterColumn; const uniqueValues = getUniqueValues(columnKey as any) as string[]; const displayValues = uniqueValues.filter(v => v.toLowerCase().includes(filterSearchTerm.toLowerCase())); const currentSelected = columnFilters[columnKey]; const isChecked = (val: string) => !currentSelected || currentSelected.includes(val); return ( <div ref={filterPopupRef} className="fixed bg-white rounded-lg shadow-xl border border-gray-200 z-[100] flex flex-col w-72 animate-fade-in" style={{ top: filterPopupPos.top, left: filterPopupPos.left }}> <div className="p-2 border-b border-gray-100 space-y-1"> <button onClick={() => { setSortConfig({ key: columnKey as keyof Order, direction: 'asc' }); setActiveFilterColumn(null); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 rounded text-gray-700 font-medium"><ArrowDownAZ size={16} /> Sắp xếp A - Z</button> <button onClick={() => { setSortConfig({ key: columnKey as keyof Order, direction: 'desc' }); setActiveFilterColumn(null); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 rounded text-gray-700 font-medium"><ArrowUpAZ size={16} /> Sắp xếp Z - A</button> </div> <div className="p-2 border-b border-gray-100 bg-gray-50"><div className="relative"><Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400"/><input type="text" placeholder="Tìm..." className="w-full pl-8 pr-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500 outline-none" value={filterSearchTerm} onChange={(e) => setFilterSearchTerm(e.target.value)} autoFocus /></div></div> <div className="flex-1 overflow-y-auto max-h-60 p-2 space-y-1 custom-scrollbar"> {displayValues.map((val, idx) => ( <label key={idx} className="flex items-center gap-2 px-2 py-1.5 hover:bg-indigo-50 rounded cursor-pointer text-sm select-none"> <input type="checkbox" className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" checked={isChecked(val)} onChange={() => handleFilterValueChange(columnKey, val)} /> <span className="truncate flex-1">{val || '(Trống)'}</span> </label> ))} </div> <div className="p-2 border-t border-gray-100 flex justify-between bg-gray-50 rounded-b-lg"> <button onClick={() => handleSelectAllFilter(columnKey, uniqueValues)} className="text-xs text-blue-600 font-bold px-2 py-1 hover:bg-blue-50 rounded">Chọn tất cả</button> <button onClick={() => handleClearFilter(columnKey)} className="text-xs text-red-500 font-bold px-2 py-1 hover:bg-red-50 rounded">Bỏ chọn</button> </div> </div> ); };
+  const renderFilterPopup = () => { 
+    if (!activeFilterColumn || !filterPopupPos) return null; 
+    const columnKey = activeFilterColumn; 
+    const uniqueValues = getUniqueValues(columnKey); 
+    const displayValues = uniqueValues.filter(v => v.toLowerCase().includes(filterSearchTerm.toLowerCase())); 
+    const currentSelected = columnFilters[columnKey]; 
+    const isChecked = (val: string) => !currentSelected || currentSelected.includes(val); 
+    
+    return ( 
+      <div ref={filterPopupRef} className="fixed bg-white rounded-lg shadow-xl border border-gray-200 z-[100] flex flex-col w-72 animate-fade-in" style={{ top: filterPopupPos.top, left: filterPopupPos.left }}> 
+        <div className="p-2 border-b border-gray-100 space-y-1"> 
+          <button onClick={() => { setSortConfig({ key: columnKey as keyof Order, direction: 'asc' }); setActiveFilterColumn(null); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 rounded text-gray-700 font-medium"><ArrowDownAZ size={16} /> Sắp xếp A - Z</button> 
+          <button onClick={() => { setSortConfig({ key: columnKey as keyof Order, direction: 'desc' }); setActiveFilterColumn(null); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 rounded text-gray-700 font-medium"><ArrowUpAZ size={16} /> Sắp xếp Z - A</button> 
+        </div> 
+        <div className="p-2 border-b border-gray-100 bg-gray-50">
+          <div className="relative"><Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400"/><input type="text" placeholder="Tìm..." className="w-full pl-8 pr-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500 outline-none" value={filterSearchTerm} onChange={(e) => setFilterSearchTerm(e.target.value)} autoFocus /></div>
+        </div> 
+        <div className="flex-1 overflow-y-auto max-h-60 p-2 space-y-1 custom-scrollbar"> 
+          {displayValues.map((val, idx) => ( 
+            <label key={idx} className="flex items-center gap-2 px-2 py-1.5 hover:bg-indigo-50 rounded cursor-pointer text-sm select-none"> 
+              <input type="checkbox" className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" checked={isChecked(val)} onChange={() => handleFilterValueChange(columnKey, val)} /> 
+              <span className="truncate flex-1">{val || '(Trống)'}</span> 
+            </label> 
+          ))} 
+        </div> 
+        <div className="p-2 border-t border-gray-100 flex justify-between bg-gray-50 rounded-b-lg"> 
+          <button onClick={() => handleSelectAllFilter(columnKey, uniqueValues as string[])} className="text-xs text-blue-600 font-bold px-2 py-1 hover:bg-blue-50 rounded">Chọn tất cả</button> 
+          <button onClick={() => handleClearFilter(columnKey)} className="text-xs text-red-500 font-bold px-2 py-1 hover:bg-red-50 rounded">Bỏ chọn</button> 
+        </div> 
+      </div> 
+    ); 
+  };
 
   const stats = useMemo<{ totalOrders: number; totalMoney: number; categories: Record<string, { total: number; checked: number; money: number }>; designers: Record<string, { total: number; checked: number; money: number }>; }>(() => { const result = { totalOrders: 0, totalMoney: 0, categories: { 'Loại 1': { total: 0, checked: 0, money: 0 }, 'Loại 2': { total: 0, checked: 0, money: 0 }, 'Loại 3': { total: 0, checked: 0, money: 0 }, 'Loại 4': { total: 0, checked: 0, money: 0 }, 'Khác': { total: 0, checked: 0, money: 0 } } as Record<string, { total: number; checked: number; money: number }>, designers: {} as Record<string, { total: number; checked: number; money: number }> }; orders.forEach(o => { const skuNorm = normalizeKey(o.sku); let rawCategory = skuMap[skuNorm] || 'Khác'; let category = rawCategory.trim(); const matchedCategory = PRICE_CATEGORIES.find(c => normalizeKey(c) === normalizeKey(category)); if (matchedCategory) category = matchedCategory; else category = 'Khác'; const price = getPriceForCategory(category); const isChecked = o.isDesignDone === true; const designerName = o.actionRole ? o.actionRole.trim() : 'Chưa Giao'; let catKey = category; if (!result.categories[catKey]) catKey = 'Khác'; const target = result.categories[catKey]; target.total += 1; target.money += price; if (isChecked) target.checked += 1; if (!result.designers[designerName]) { result.designers[designerName] = { total: 0, checked: 0, money: 0 }; } result.designers[designerName].total += 1; result.designers[designerName].money += price; if (isChecked) result.designers[designerName].checked += 1; result.totalOrders += 1; result.totalMoney += price; }); return result; }, [orders, skuMap, priceMap]);
 
@@ -175,21 +228,21 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
         </div>
 
         <div className="overflow-auto max-h-[calc(100vh-250px)] custom-scrollbar">
-          <table className="w-full text-left border-collapse text-sm relative">
+          <table className="w-full text-left border-collapse text-xs relative">
             <thead className="text-white font-bold text-center uppercase text-xs tracking-wider sticky top-0 z-20">
               <tr>
-                <th className="px-2 py-3 bg-[#1a4019] border-r border-gray-600 sticky top-0 z-20 w-10">
-                    <input type="checkbox" className="w-4 h-4 rounded border-gray-400 text-orange-600 focus:ring-orange-500 cursor-pointer" checked={selectedOrderIds.size > 0 && selectedOrderIds.size === sortedOrders.length} onChange={handleSelectAll} />
+                <th className="px-2 py-2 bg-[#1a4019] border-r border-gray-600 sticky top-0 z-20 w-8">
+                    <input type="checkbox" className="w-3 h-3 rounded border-gray-400 text-orange-600 focus:ring-orange-500 cursor-pointer" checked={selectedOrderIds.size > 0 && selectedOrderIds.size === sortedOrders.length} onChange={handleSelectAll} />
                 </th>
-                <th className="px-3 py-3 border-r border-gray-600 w-32 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-center gap-1 group cursor-pointer" onClick={() => setSortConfig({ key: 'date', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' })}>Date {sortConfig.key === 'date' && (sortConfig.direction === 'asc' ? <ArrowUp size={14}/> : <ArrowDown size={14}/>)}</div></th>
-                <th className="px-3 py-3 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>ID Order Etsy</span><button onClick={(e) => handleFilterClick(e, 'id')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['id']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
-                <th className="px-3 py-3 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>STORE</span><button onClick={(e) => handleFilterClick(e, 'storeName')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['storeName']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
-                <th className="px-3 py-3 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>SKU</span><button onClick={(e) => handleFilterClick(e, 'sku')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['sku']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
-                <th className="px-3 py-3 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-32 text-yellow-300"><div className="flex items-center justify-between gap-1"><span>Phân Loại</span><button onClick={(e) => handleFilterClick(e, 'category')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['category']?.length ? 'text-white' : 'text-yellow-600'}`}><Filter size={14} /></button></div></th>
-                <th className="px-3 py-3 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-32 text-green-300">Giá Tiền</th>
-                <th className="px-1 py-3 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-12 text-center text-blue-300"><div className="flex flex-col items-center"><span className="mb-1">CHK</span><button onClick={(e) => handleFilterClick(e, 'isDesignDone')} className={`p-0.5 rounded hover:bg-[#235221] ${columnFilters['isDesignDone']?.length ? 'text-white' : 'text-blue-400'}`}><Filter size={12} /></button></div></th>
-                <th className="px-3 py-3 border-r border-gray-600 w-48 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>Người xử lý</span><button onClick={(e) => handleFilterClick(e, 'handler')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['handler']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
-                <th className="px-3 py-3 border-l border-gray-600 w-48 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>Action Role</span><button onClick={(e) => handleFilterClick(e, 'actionRole')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['actionRole']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
+                <th className="px-2 py-2 border-r border-gray-600 w-24 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-center gap-1 group cursor-pointer" onClick={() => setSortConfig({ key: 'date', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' })}>Date {sortConfig.key === 'date' && (sortConfig.direction === 'asc' ? <ArrowUp size={14}/> : <ArrowDown size={14}/>)}</div></th>
+                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>ID Order Etsy</span><button onClick={(e) => handleFilterClick(e, 'id')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['id']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
+                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>STORE</span><button onClick={(e) => handleFilterClick(e, 'storeName')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['storeName']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
+                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>SKU</span><button onClick={(e) => handleFilterClick(e, 'sku')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['sku']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
+                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-32 text-yellow-300"><div className="flex items-center justify-between gap-1"><span>Phân Loại</span><button onClick={(e) => handleFilterClick(e, 'category')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['category']?.length ? 'text-white' : 'text-yellow-600'}`}><Filter size={14} /></button></div></th>
+                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-32 text-green-300">Giá Tiền</th>
+                <th className="px-1 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-10 text-center text-blue-300"><div className="flex flex-col items-center"><span className="mb-1">CHK</span><button onClick={(e) => handleFilterClick(e, 'isDesignDone')} className={`p-0.5 rounded hover:bg-[#235221] ${columnFilters['isDesignDone']?.length ? 'text-white' : 'text-blue-400'}`}><Filter size={12} /></button></div></th>
+                <th className="px-2 py-2 border-r border-gray-600 w-32 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>Người xử lý</span><button onClick={(e) => handleFilterClick(e, 'handler')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['handler']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
+                <th className="px-2 py-2 border-l border-gray-600 w-32 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>Action Role</span><button onClick={(e) => handleFilterClick(e, 'actionRole')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['actionRole']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -200,16 +253,16 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                   const isUpdating = updatingIds.has(order.id);
                   return (
                       <tr key={order.id + idx} className={`hover:bg-gray-50 border-b border-gray-200 text-gray-800 transition-colors ${selectedOrderIds.has(order.id) ? 'bg-indigo-50' : ''}`}>
-                          <td className="px-2 py-3 border-r text-center align-middle"><input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" checked={selectedOrderIds.has(order.id)} onChange={() => handleSelectRow(order.id)} /></td>
-                          <td className="px-2 py-3 border-r text-center whitespace-nowrap text-gray-600">{formatDateDisplay(order.date)}</td>
-                          <td className="px-3 py-3 border-r font-semibold text-gray-900 whitespace-nowrap"><div className="flex justify-between items-center group gap-2"><span>{order.id}</span><button className="text-gray-400 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => navigator.clipboard.writeText(order.id)} title="Copy ID"><Copy size={12} /></button></div></td>
-                          <td className="px-3 py-3 border-r text-gray-700">{getStoreName(order.storeId)}</td>
-                          <td className="px-3 py-3 border-r font-mono text-xs text-gray-600">{order.sku}</td>
-                          <td className="px-3 py-3 border-r text-center font-medium text-indigo-600 bg-indigo-50/50">{category}</td>
-                          <td className="px-3 py-3 border-r text-center font-bold text-green-700 bg-green-50/50">{formatPrice(price)}</td>
-                          <td className="px-1 py-1 border-r text-center align-middle bg-blue-50/30">{isUpdating ? (<div className="flex justify-center"><Loader2 size={16} className="animate-spin text-blue-500" /></div>) : (<button onClick={() => handleDesignerToggle(order)} disabled={!canCheckDesign} className={`p-1 rounded focus:outline-none transition-colors ${!canCheckDesign ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-100'}`} title={canCheckDesign ? "Check hoàn thành và Lưu sheet" : "Bạn không có quyền check"}>{order.isDesignDone ? <CheckSquare size={18} className="text-blue-600" /> : <Square size={18} className="text-gray-300" />}</button>)}</td>
-                          <td className="px-3 py-3 border-r text-center text-xs text-gray-600 font-medium whitespace-nowrap bg-gray-50/50"><div className="flex items-center justify-center gap-1.5"><UserCircle size={14} className="text-gray-400"/>{order.handler}</div></td>
-                          <td className="px-3 py-3 border-l text-center bg-gray-50/30 font-bold text-orange-600">{order.actionRole}</td>
+                          <td className="px-2 py-2 border-r text-center align-middle"><input type="checkbox" className="w-3 h-3 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" checked={selectedOrderIds.has(order.id)} onChange={() => handleSelectRow(order.id)} /></td>
+                          <td className="px-2 py-2 border-r text-center whitespace-nowrap text-gray-600">{formatDateDisplay(order.date)}</td>
+                          <td className="px-2 py-2 border-r font-semibold text-gray-900 whitespace-nowrap"><div className="flex justify-between items-center group gap-1"><span>{order.id}</span><button className="text-gray-400 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => navigator.clipboard.writeText(order.id)} title="Copy ID"><Copy size={10} /></button></div></td>
+                          <td className="px-2 py-2 border-r text-gray-700">{getStoreName(order.storeId)}</td>
+                          <td className="px-2 py-2 border-r font-mono text-[10px] text-gray-600">{order.sku}</td>
+                          <td className="px-2 py-2 border-r text-center font-medium text-indigo-600 bg-indigo-50/50">{category}</td>
+                          <td className="px-2 py-2 border-r text-center font-bold text-green-700 bg-green-50/50">{formatPrice(price)}</td>
+                          <td className="px-1 py-1 border-r text-center align-middle bg-blue-50/30">{isUpdating ? (<div className="flex justify-center"><Loader2 size={14} className="animate-spin text-blue-500" /></div>) : (<button onClick={() => handleDesignerToggle(order)} disabled={!canCheckDesign} className={`p-1 rounded focus:outline-none transition-colors ${!canCheckDesign ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-100'}`} title={canCheckDesign ? "Check hoàn thành và Lưu sheet" : "Bạn không có quyền check"}>{order.isDesignDone ? <CheckSquare size={16} className="text-blue-600" /> : <Square size={16} className="text-gray-300" />}</button>)}</td>
+                          <td className="px-2 py-2 border-r text-center text-[10px] text-gray-600 font-medium whitespace-nowrap bg-gray-50/50"><div className="flex items-center justify-center gap-1.5"><UserCircle size={12} className="text-gray-400"/>{order.handler}</div></td>
+                          <td className="px-2 py-2 border-l text-center bg-gray-50/30 font-bold text-orange-600">{order.actionRole}</td>
                       </tr>
                   );
               }))}

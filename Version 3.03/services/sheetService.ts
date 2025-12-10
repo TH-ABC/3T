@@ -130,6 +130,11 @@ export const sheetService = {
     return await callAPI('fulfillOrder', 'POST', { fileId, ...order });
   },
 
+  // NEW: Sync Fulfillment Status from Export Sheet
+  syncFulfillment: async (fileId: string): Promise<any> => {
+    return await callAPI('syncFulfillment', 'POST', { fileId });
+  },
+
   addOrder: async (order: Order, fileId?: string): Promise<any> => {
     return await callAPI('addOrder', 'POST', { ...order, isDesignDone: order.isDesignDone || false, fileId });
   },

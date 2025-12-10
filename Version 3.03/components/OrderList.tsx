@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Search, RefreshCw, Copy, ExternalLink, Calendar, FileSpreadsheet, ChevronLeft, ChevronRight, UserCircle, CheckSquare, Square, Loader2, AlertTriangle, Filter, ArrowDownAZ, ArrowUpAZ, Truck, Settings2, CheckCircle, Package, TrendingUp, Clock, FilePlus, PenTool, X } from 'lucide-react';
+import { Search, RefreshCw, Copy, ExternalLink, Calendar, FileSpreadsheet, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, UserCircle, CheckSquare, Square, Loader2, AlertTriangle, Filter, ArrowDownAZ, ArrowUpAZ, Truck, Settings2, CheckCircle, Package, TrendingUp, Clock, FilePlus, PenTool, X, RefreshCcw, CreditCard, LocateFixed } from 'lucide-react';
 import { sheetService } from '../services/sheetService';
 import { Order, Store, User } from '../types';
 
@@ -147,6 +147,10 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
   // --- BATCH SELECTION STATE ---
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
+  const [isSyncingFF, setIsSyncingFF] = useState(false);
+
+  // --- UI STATE ---
+  const [isStatsExpanded, setIsStatsExpanded] = useState(true);
 
   // System modal state
   const [sysModal, setSysModal] = useState<SystemModalState>({ isOpen: false, type: 'alert', title: '', message: '' });
@@ -200,20 +204,76 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
 
   // --- STATS CALCULATION ---
   const storeStats = useMemo(() => {
-      const stats: Record<string, { name: string, totalOrders: number, totalQty: number, fulfilled: number, hasTracking: number, paid: number, designDone: number }> = {};
+      const stats: Record<string, { 
+          name: string, 
+          totalOrders: number, 
+          totalQty: number, 
+          fulfilled: number, 
+          hasTracking: number, 
+          paid: number, 
+          designDone: number,
+          daily: Record<string, number> 
+      }> = {};
+
       orders.forEach(order => {
           const storeId = order.storeId;
           const storeName = getStoreName(storeId);
           const qty = Number(order.quantity) || 1;
-          if (!stats[storeId]) stats[storeId] = { name: storeName, totalOrders: 0, totalQty: 0, fulfilled: 0, hasTracking: 0, paid: 0, designDone: 0 };
+          
+          if (!stats[storeId]) {
+              stats[storeId] = { 
+                  name: storeName, 
+                  totalOrders: 0, 
+                  totalQty: 0, 
+                  fulfilled: 0, 
+                  hasTracking: 0, 
+                  paid: 0, 
+                  designDone: 0,
+                  daily: {} 
+              };
+          }
+          
+          // Totals
           stats[storeId].totalOrders += 1;
           stats[storeId].totalQty += qty;
+          
           if (order.isFulfilled) stats[storeId].fulfilled += 1;
           if (order.tracking && String(order.tracking).trim() !== '') stats[storeId].hasTracking += 1;
           if (order.isChecked) stats[storeId].paid += 1;
           if (order.isDesignDone) stats[storeId].designDone += 1;
+
+          // Daily Breakdown
+          let dateKey = 'Unknown';
+          if (order.date) {
+              const parts = order.date.split(/[-T :]/); 
+              if (parts.length >= 3) {
+                  // Assuming standard format YYYY-MM-DD or DD/MM/YYYY
+                  if (parts[0].length === 4) { // YYYY-MM-DD
+                      dateKey = `${parts[2]}/${parts[1]}`; // DD/MM
+                  } else { // DD/MM/YYYY or MM/DD/YYYY - Trying simple approach
+                      dateKey = `${parts[0]}/${parts[1]}`; // DD/MM
+                  }
+              }
+          }
+          
+          if (!stats[storeId].daily[dateKey]) stats[storeId].daily[dateKey] = 0;
+          stats[storeId].daily[dateKey] += 1; // Counting Orders per day
       });
-      return Object.values(stats).sort((a, b) => b.totalOrders - a.totalOrders);
+
+      // Convert to array and sort
+      return Object.values(stats).sort((a, b) => b.totalOrders - a.totalOrders).map(stat => {
+          // Sort daily keys
+          const sortedDaily = Object.entries(stat.daily).sort((a, b) => {
+              // rough sort by date string DD/MM
+              const [d1, m1] = a[0].split('/').map(Number);
+              const [d2, m2] = b[0].split('/').map(Number);
+              if (isNaN(d1) || isNaN(m1)) return 1;
+              if (isNaN(d2) || isNaN(m2)) return -1;
+              if (m1 !== m2) return m1 - m2;
+              return d1 - d2;
+          });
+          return { ...stat, dailySorted: sortedDaily };
+      });
   }, [orders, stores]);
 
   const loadData = async (monthToFetch: string) => {
@@ -343,8 +403,23 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
 
   // --- FILTER UI ---
   const handleColumnSort = (key: keyof Order, direction: 'asc' | 'desc') => { setSortConfig({ key, direction }); setActiveFilterColumn(null); };
-  const getUniqueValues = (key: string): string[] => { const values = new Set<string>(); orders.forEach(o => { let val = ''; if(key==='storeName') val=getStoreName(o.storeId); else if(key==='isFulfilled') val=o.isFulfilled?"Fulfilled":"Chưa"; else if(key==='isDesignDone') val=o.isDesignDone?"Done":"Pending"; else val=String(o[key as keyof Order]||''); if(val) values.add(val); }); return Array.from(values).sort() as string[]; };
+  
+  const getUniqueValues = (key: string): string[] => { 
+    const values = new Set<string>(); 
+    orders.forEach(o => { 
+      let val = ''; 
+      if(key==='storeName') val=getStoreName(o.storeId); 
+      else if(key==='isFulfilled') val=o.isFulfilled?"Fulfilled":"Chưa"; 
+      else if(key==='isDesignDone') val=o.isDesignDone?"Done":"Pending"; 
+      else val=String(o[key as keyof Order]||''); 
+      if(val) values.add(val); 
+    }); 
+    return Array.from(values).sort(); 
+  };
+  
   const handleFilterValueChange = (col: string, val: string) => { const cur = columnFilters[col] || []; const next = cur.includes(val) ? cur.filter(v => v !== val) : [...cur, val]; setColumnFilters({ ...columnFilters, [col]: next }); };
+  const handleClearFilter = (columnKey: string) => setColumnFilters({ ...columnFilters, [columnKey]: [] });
+  const handleSelectAllFilter = (columnKey: string, values: string[]) => setColumnFilters({ ...columnFilters, [columnKey]: values });
   
   const showMessage = (title: string, message: string, type: SystemModalState['type'] = 'alert', onConfirm?: () => void) => { setSysModal({ isOpen: true, title, message, type, onConfirm }); };
   const closeMessage = () => setSysModal(prev => ({ ...prev, isOpen: false }));
@@ -384,12 +459,61 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
         if (onProcessEnd) onProcessEnd(); 
     } 
   };
+
+  const handleSyncFulfillment = async () => {
+      if (!currentFileId) return;
+      setIsSyncingFF(true);
+      if (onProcessStart) onProcessStart();
+      try {
+          const result = await sheetService.syncFulfillment(currentFileId);
+          if (result && result.success) {
+              showMessage('Thành công', `Đã đồng bộ ${result.updatedCount || 0} đơn hàng từ Fulfillment_Export.`, 'success');
+              loadData(selectedMonth); // Refresh data
+          } else {
+              showMessage('Lỗi', result.error || 'Có lỗi xảy ra khi đồng bộ.', 'error');
+          }
+      } catch (e) {
+          showMessage('Lỗi', 'Không thể kết nối đến server.', 'error');
+      } finally {
+          setIsSyncingFF(false);
+          if (onProcessEnd) onProcessEnd();
+      }
+  };
   
   const handleMonthChange = (step: number) => { const [year, month] = selectedMonth.split('-').map(Number); const date = new Date(year, month - 1 + step, 1); setSelectedMonth(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`); };
   const [currentYearStr, currentMonthStr] = selectedMonth.split('-');
 
-  // Filter Popup Render (Simplified for brevity)
-  const renderFilterPopup = () => { if (!activeFilterColumn || !filterPopupPos) return null; const col = activeFilterColumn; const vals = getUniqueValues(col === 'storeName' ? 'storeName' : col === 'isFulfilled' ? 'isFulfilled' : col === 'isDesignDone' ? 'isDesignDone' : col) as string[]; const display = vals.filter(v => v.toLowerCase().includes(filterSearchTerm.toLowerCase())); const selected = columnFilters[col]; return ( <div ref={filterPopupRef} className="fixed bg-white rounded-lg shadow-xl border border-gray-200 z-[100] flex flex-col w-72" style={{ top: filterPopupPos.top, left: filterPopupPos.left }}> <div className="p-2 border-b border-gray-100"><input type="text" placeholder="Tìm..." className="w-full px-2 py-1 text-sm border rounded" value={filterSearchTerm} onChange={(e) => setFilterSearchTerm(e.target.value)} autoFocus /></div> <div className="flex-1 overflow-y-auto max-h-60 p-2 space-y-1 custom-scrollbar"> {display.map((val, idx) => ( <label key={idx} className="flex items-center gap-2 px-2 py-1 hover:bg-gray-50 rounded cursor-pointer text-sm"> <input type="checkbox" checked={!selected || selected.includes(val)} onChange={() => handleFilterValueChange(col, val)} /> <span>{val || '(Trống)'}</span> </label> ))} </div> </div> ); };
+  const renderFilterPopup = () => { 
+    if (!activeFilterColumn || !filterPopupPos) return null; 
+    const col = activeFilterColumn; 
+    const vals = getUniqueValues(col === 'storeName' ? 'storeName' : col === 'isFulfilled' ? 'isFulfilled' : col === 'isDesignDone' ? 'isDesignDone' : col); 
+    const display = vals.filter(v => v.toLowerCase().includes(filterSearchTerm.toLowerCase())); 
+    const selected = columnFilters[col]; 
+    
+    return ( 
+      <div ref={filterPopupRef} className="fixed bg-white rounded-lg shadow-xl border border-gray-200 z-[100] flex flex-col w-72 animate-fade-in" style={{ top: filterPopupPos.top, left: filterPopupPos.left }}> 
+        <div className="p-2 border-b border-gray-100 space-y-1">
+          <button onClick={() => { setSortConfig({ key: col as keyof Order, direction: 'asc' }); setActiveFilterColumn(null); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 rounded text-gray-700 font-medium"><ArrowDownAZ size={16} /> Sắp xếp A - Z</button> 
+          <button onClick={() => { setSortConfig({ key: col as keyof Order, direction: 'desc' }); setActiveFilterColumn(null); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 rounded text-gray-700 font-medium"><ArrowUpAZ size={16} /> Sắp xếp Z - A</button> 
+        </div>
+        <div className="p-2 border-b border-gray-100 bg-gray-50">
+            <input type="text" placeholder="Tìm..." className="w-full px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-orange-500 outline-none" value={filterSearchTerm} onChange={(e) => setFilterSearchTerm(e.target.value)} autoFocus />
+        </div> 
+        <div className="flex-1 overflow-y-auto max-h-60 p-2 space-y-1 custom-scrollbar"> 
+            {display.map((val, idx) => ( 
+                <label key={idx} className="flex items-center gap-2 px-2 py-1 hover:bg-gray-50 rounded cursor-pointer text-sm"> 
+                    <input type="checkbox" checked={!selected || selected.includes(val as string)} onChange={() => handleFilterValueChange(col, val as string)} className="rounded border-gray-300 text-orange-600 focus:ring-orange-500" /> 
+                    <span>{val || '(Trống)'}</span> 
+                </label> 
+            ))} 
+        </div> 
+        <div className="p-2 border-t border-gray-100 flex justify-between bg-gray-50 rounded-b-lg"> 
+          <button onClick={() => handleSelectAllFilter(col, vals as string[])} className="text-xs text-blue-600 font-bold px-2 py-1 hover:bg-blue-50 rounded">Chọn tất cả</button> 
+          <button onClick={() => handleClearFilter(col)} className="text-xs text-red-500 font-bold px-2 py-1 hover:bg-red-50 rounded">Bỏ chọn</button> 
+        </div> 
+      </div> 
+    ); 
+  };
 
   return (
     <div className="flex flex-col h-full bg-gray-100 relative">
@@ -407,7 +531,17 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
                         <button onClick={() => handleMonthChange(1)} className="p-1.5 hover:bg-white rounded-md text-gray-500"><ChevronRight size={16} /></button>
                     </div>
                     <button onClick={() => loadData(selectedMonth)} className={`p-2 rounded-full hover:bg-gray-100 text-gray-500 ${loading ? 'animate-spin text-orange-500' : ''}`}><RefreshCw size={18} /></button>
-                    {currentFileId ? (<a href={`https://docs.google.com/spreadsheets/d/${currentFileId}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-white border border-green-500 text-green-600 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-green-50 shadow-sm"><FileSpreadsheet size={16} /><span>Mở Sheet</span></a>) : (<button onClick={handleCreateFile} disabled={loading} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white shadow-sm"><FilePlus size={16} /><span>Tạo Sheet</span></button>)}
+                    {currentFileId ? (
+                        <>
+                            <a href={`https://docs.google.com/spreadsheets/d/${currentFileId}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-white border border-green-500 text-green-600 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-green-50 shadow-sm"><FileSpreadsheet size={16} /><span>Mở Sheet</span></a>
+                            <button onClick={handleSyncFulfillment} disabled={isSyncingFF} className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-sm transition-colors">
+                                {isSyncingFF ? <Loader2 size={16} className="animate-spin" /> : <RefreshCcw size={16} />}
+                                <span>Đồng bộ FF</span>
+                            </button>
+                        </>
+                    ) : (
+                        <button onClick={handleCreateFile} disabled={loading} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white shadow-sm"><FilePlus size={16} /><span>Tạo Sheet</span></button>
+                    )}
                 </div>
                 <div className="flex items-center gap-3 w-full lg:w-auto justify-end">
                     <div className="relative flex-1 lg:w-64"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} /><input type="text" placeholder="Tìm ID, SKU, Tracking..." className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm w-full focus:ring-2 focus:ring-orange-500 outline-none shadow-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div>
@@ -419,41 +553,98 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
             </div>
         </div>
 
-        {/* --- STORE STATS --- */}
-        <div className="bg-white border-b border-gray-200 p-4 overflow-x-auto custom-scrollbar">
-            <h3 className="text-xs font-bold text-gray-500 uppercase mb-3 flex items-center gap-2"><TrendingUp size={14} className="text-orange-500"/> Thống Kê Theo Store (Tháng {currentMonthStr})</h3>
-            <div className="flex gap-4 min-w-max pb-2">
-                {storeStats.map((stat, idx) => (
-                    <div key={idx} className="bg-gray-50 border border-gray-200 rounded-lg p-3 w-64 shadow-sm flex flex-col justify-between">
-                        <div className="mb-2"><h4 className="font-bold text-gray-800 text-sm truncate" title={stat.name}>{stat.name}</h4><div className="text-[10px] text-gray-400">Items: {stat.totalQty}</div></div>
-                        <div className="flex justify-between items-end"><div className="text-center"><div className="text-xs text-gray-500 mb-0.5">Tổng</div><span className="text-lg font-bold text-gray-800">{stat.totalOrders}</span></div><div className="h-8 w-px bg-gray-200 mx-1"></div><div className="text-center"><div className="text-xs text-blue-600 mb-0.5 font-medium">Paid</div><span className="text-lg font-bold text-blue-600">{stat.paid}</span></div><div className="h-8 w-px bg-gray-200 mx-1"></div><div className="text-center"><div className="text-xs text-indigo-600 mb-0.5 font-medium">Design</div><span className="text-lg font-bold text-indigo-600">{stat.designDone}</span></div></div>
-                    </div>
-                ))}
+        {/* --- STORE STATS (REDESIGNED GRID) --- */}
+        <div className="p-4 bg-gray-50 border-b border-gray-200 overflow-x-auto custom-scrollbar">
+            <div className="flex justify-between items-center mb-3">
+                <h3 className="text-xs font-bold text-gray-500 uppercase flex items-center gap-2">
+                    <TrendingUp size={14} className="text-orange-500"/> Thống Kê Theo Store (Tháng {currentMonthStr})
+                </h3>
+                <button
+                    onClick={() => setIsStatsExpanded(!isStatsExpanded)}
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                    title={isStatsExpanded ? "Thu gọn" : "Mở rộng"}
+                >
+                    {isStatsExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                </button>
             </div>
+            {isStatsExpanded && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                    {storeStats.map((stat, idx) => {
+                        const paidPercent = stat.totalOrders > 0 ? Math.round((stat.paid / stat.totalOrders) * 100) : 0;
+                        return (
+                            <div key={idx} className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 hover:shadow-md transition-shadow relative overflow-hidden">
+                                <div className="flex justify-between items-start mb-2 pb-2 border-b border-gray-100">
+                                    <h4 className="font-bold text-gray-800 text-sm truncate max-w-[70%]" title={stat.name}>{stat.name}</h4>
+                                    <span className="bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full font-bold">{stat.totalOrders} đơn</span>
+                                </div>
+                                
+                                <div className="grid grid-cols-3 gap-2 text-center mb-3">
+                                    <div className="bg-blue-50 rounded p-1.5 flex flex-col items-center">
+                                        <div className="text-[10px] text-blue-500 uppercase font-semibold flex items-center gap-1"><CreditCard size={10}/> Paid</div>
+                                        <div className="text-sm font-bold text-blue-700">{stat.paid}</div>
+                                    </div>
+                                    <div className="bg-amber-50 rounded p-1.5 flex flex-col items-center">
+                                        <div className="text-[10px] text-amber-500 uppercase font-semibold flex items-center gap-1"><LocateFixed size={10}/> Track</div>
+                                        <div className="text-sm font-bold text-amber-700">{stat.hasTracking}</div>
+                                    </div>
+                                    <div className="bg-green-50 rounded p-1.5 flex flex-col items-center">
+                                        <div className="text-[10px] text-green-500 uppercase font-semibold flex items-center gap-1"><Truck size={10}/> FF</div>
+                                        <div className="text-sm font-bold text-green-700">{stat.fulfilled}</div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-1 mb-2">
+                                    <div className="flex justify-between text-[10px] text-gray-500">
+                                        <span>Tiến độ Paid</span>
+                                        <span className="font-bold">{paidPercent}%</span>
+                                    </div>
+                                    <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                                        <div className="bg-blue-500 h-1.5 rounded-full transition-all duration-500" style={{ width: `${paidPercent}%` }}></div>
+                                    </div>
+                                </div>
+
+                                {/* Daily Breakdown */}
+                                <div className="mt-3 pt-2 border-t border-dashed border-gray-200">
+                                    <div className="text-[10px] text-gray-400 mb-1 flex items-center gap-1"><Clock size={10}/> Chi tiết ngày (Date Order)</div>
+                                    <div className="flex gap-1 overflow-x-auto pb-1 custom-scrollbar">
+                                        {stat.dailySorted.map(([date, count]) => (
+                                            <div key={date} className="flex-shrink-0 bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5 flex flex-col items-center min-w-[36px]">
+                                                <span className="text-[9px] text-gray-500 font-medium whitespace-nowrap">{date}</span>
+                                                <span className="text-[10px] font-bold text-gray-800 leading-none">{count}</span>
+                                            </div>
+                                        ))}
+                                        {stat.dailySorted.length === 0 && <span className="text-[10px] text-gray-400 italic">Chưa có đơn</span>}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
         </div>
 
         {/* --- MAIN TABLE --- */}
-        <div className="flex-1 overflow-auto custom-scrollbar relative max-h-[calc(100vh-300px)] pb-16">
-             <table className="w-full text-left border-collapse text-sm relative">
+        <div className="flex-1 overflow-auto custom-scrollbar relative max-h-[calc(100vh-350px)] pb-16">
+             <table className="w-full text-left border-collapse text-xs relative">
                 <thead className="bg-gray-50 text-gray-600 font-semibold sticky top-0 z-30 shadow-sm">
                     <tr>
-                         <th className="px-2 py-3 sticky top-0 bg-gray-100 border-b border-gray-200 w-10 text-center z-30">
-                             <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer" checked={selectedOrderIds.size > 0 && selectedOrderIds.size === sortedOrders.length} onChange={handleSelectAll} />
+                         <th className="px-2 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 w-8 text-center z-30">
+                             <input type="checkbox" className="w-3 h-3 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer" checked={selectedOrderIds.size > 0 && selectedOrderIds.size === sortedOrders.length} onChange={handleSelectAll} />
                          </th>
                          {/* Other Columns... */}
-                         {visibleColumns['lastModified'] && <th className="px-3 py-3 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-32 cursor-pointer" onClick={() => handleColumnSort('lastModified', sortConfig.direction === 'asc' ? 'desc' : 'asc')}>Date List</th>}
-                         {visibleColumns['date'] && <th className="px-3 py-3 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-32 cursor-pointer" onClick={() => handleColumnSort('date', sortConfig.direction === 'asc' ? 'desc' : 'asc')}>Date Order</th>}
-                         {visibleColumns['id'] && <th className="px-3 py-3 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-40">ID Order</th>}
-                         {visibleColumns['storeName'] && <th className="px-3 py-3 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-40 cursor-pointer" onClick={(e) => {setActiveFilterColumn('storeName'); setFilterPopupPos({top: e.currentTarget.getBoundingClientRect().bottom, left: e.currentTarget.getBoundingClientRect().left, alignRight: false})}}>Store <Filter size={12} className="inline ml-1 text-gray-400" /></th>}
-                         {visibleColumns['sku'] && <th className="px-3 py-3 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-48">SKU</th>}
-                         {visibleColumns['quantity'] && <th className="px-3 py-3 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-16 text-center">Qty</th>}
-                         {visibleColumns['tracking'] && <th className="px-3 py-3 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-40">Tracking</th>}
-                         {visibleColumns['checkbox'] && <th className="px-2 py-3 sticky top-0 bg-gray-100 border-b border-gray-200 text-center w-12 z-30"><div className="flex flex-col items-center"><CheckSquare size={16} className="text-blue-500" /><span className="text-[10px] text-blue-600 font-bold uppercase mt-0.5">Pay</span></div></th>}
-                         {visibleColumns['designCheck'] && <th className="px-2 py-3 sticky top-0 bg-gray-100 border-b border-gray-200 text-center w-12 z-30 bg-indigo-50"><div className="flex flex-col items-center"><PenTool size={16} className="text-indigo-500" /><span className="text-[10px] text-indigo-600 font-bold uppercase mt-0.5">Design</span></div></th>}
-                         {visibleColumns['status'] && <th className="px-3 py-3 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-32 text-center">Status</th>}
-                         {visibleColumns['handler'] && <th className="px-3 py-3 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-32">Handler</th>}
-                         {visibleColumns['actionRole'] && <th className="px-3 py-3 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-32">Role</th>}
-                         {visibleColumns['isFulfilled'] && <th className="px-3 py-3 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-24 text-center">FF</th>}
+                         {visibleColumns['lastModified'] && <th className="px-2 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-24 cursor-pointer" onClick={() => handleColumnSort('lastModified', sortConfig.direction === 'asc' ? 'desc' : 'asc')}>Date List</th>}
+                         {visibleColumns['date'] && <th className="px-2 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-24 cursor-pointer" onClick={() => handleColumnSort('date', sortConfig.direction === 'asc' ? 'desc' : 'asc')}>Date Order</th>}
+                         {visibleColumns['id'] && <th className="px-2 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-32">ID Order</th>}
+                         {visibleColumns['storeName'] && <th className="px-2 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-32 cursor-pointer" onClick={(e) => {setActiveFilterColumn('storeName'); setFilterPopupPos({top: e.currentTarget.getBoundingClientRect().bottom, left: e.currentTarget.getBoundingClientRect().left, alignRight: false})}}>Store <Filter size={10} className="inline ml-1 text-gray-400" /></th>}
+                         {visibleColumns['sku'] && <th className="px-2 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-40">SKU</th>}
+                         {visibleColumns['quantity'] && <th className="px-2 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-12 text-center">Qty</th>}
+                         {visibleColumns['tracking'] && <th className="px-2 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-32">Tracking</th>}
+                         {visibleColumns['checkbox'] && <th className="px-1 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 text-center w-10 z-30"><div className="flex flex-col items-center"><CheckSquare size={14} className="text-blue-500" /><span className="text-[9px] text-blue-600 font-bold uppercase mt-0.5">Pay</span></div></th>}
+                         {visibleColumns['designCheck'] && <th className="px-1 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 text-center w-10 z-30 bg-indigo-50"><div className="flex flex-col items-center"><PenTool size={14} className="text-indigo-500" /><span className="text-[9px] text-indigo-600 font-bold uppercase mt-0.5">Design</span></div></th>}
+                         {visibleColumns['status'] && <th className="px-2 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-24 text-center">Status</th>}
+                         {visibleColumns['handler'] && <th className="px-2 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-24">Handler</th>}
+                         {visibleColumns['actionRole'] && <th className="px-2 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-24">Role</th>}
+                         {visibleColumns['isFulfilled'] && <th className="px-2 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-16 text-center">FF</th>}
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 bg-white">
@@ -463,20 +654,20 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
                         const isUpdating = updatingOrderIds.has(order.id);
                         return (
                             <tr key={order.id + idx} className={`hover:bg-blue-50/30 transition-colors group ${selectedOrderIds.has(order.id) ? 'bg-orange-50' : ''}`}>
-                                <td className="px-2 py-3 text-center border-r border-gray-100"><input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer" checked={selectedOrderIds.has(order.id)} onChange={() => handleSelectRow(order.id)} /></td>
-                                {visibleColumns['lastModified'] && <td className="px-3 py-3 text-xs text-gray-500 whitespace-nowrap border-r border-gray-100">{formatDateDisplay(order.lastModified || order.date)}</td>}
-                                {visibleColumns['date'] && <td className="px-3 py-3 text-xs font-medium text-gray-700 whitespace-nowrap border-r border-gray-100">{formatDateOnly(order.date)}</td>}
-                                {visibleColumns['id'] && <td className="px-3 py-3 border-r border-gray-100"><div className="flex items-center gap-2"><span className="font-bold text-gray-800 text-xs">{order.id}</span><button onClick={() => navigator.clipboard.writeText(order.id)} className="text-gray-300 hover:text-blue-500 opacity-0 group-hover:opacity-100"><Copy size={12} /></button></div></td>}
-                                {visibleColumns['storeName'] && <td className="px-3 py-3 border-r border-gray-100"><span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium whitespace-nowrap ${getStoreBadgeStyle(getStoreName(order.storeId))}`}>{getStoreName(order.storeId)}</span></td>}
-                                {visibleColumns['sku'] && <td className="px-3 py-3 border-r border-gray-100"><div className="text-xs font-mono text-gray-700 truncate max-w-[12rem]" title={order.sku}>{order.sku}</div></td>}
-                                {visibleColumns['quantity'] && <td className="px-3 py-3 text-center font-bold text-gray-800 border-r border-gray-100">{order.quantity}</td>}
-                                {visibleColumns['tracking'] && <td className="px-3 py-3 border-r border-gray-100">{order.tracking ? <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">{order.tracking}</span> : <span className="text-xs text-gray-400 italic">---</span>}</td>}
-                                {visibleColumns['checkbox'] && <td className="px-2 py-3 text-center border-r border-gray-100">{isUpdating ? <Loader2 size={16} className="animate-spin text-orange-500 mx-auto" /> : <button onClick={() => handleToggleCheckbox(order)} className={`hover:scale-110 transition-transform ${order.isChecked ? 'text-blue-600' : 'text-gray-300'}`}>{order.isChecked ? <CheckSquare size={18} /> : <Square size={18} />}</button>}</td>}
-                                {visibleColumns['designCheck'] && <td className="px-2 py-3 text-center border-r border-gray-100 bg-indigo-50/30">{isUpdating ? <Loader2 size={16} className="animate-spin text-indigo-500 mx-auto" /> : <button onClick={() => handleToggleDesignDone(order)} className={`hover:scale-110 transition-transform ${order.isDesignDone ? 'text-indigo-600' : 'text-gray-300'}`}>{order.isDesignDone ? <CheckSquare size={18} /> : <Square size={18} />}</button>}</td>}
-                                {visibleColumns['status'] && <td className="px-3 py-3 text-center border-r border-gray-100"><span className={`text-[10px] uppercase font-bold px-2 py-1 rounded border ${order.status === 'Fulfilled' ? 'bg-green-100 text-green-700 border-green-200' : order.status === 'Cancelled' ? 'bg-red-100 text-red-700 border-red-200' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>{order.status || 'Pending'}</span></td>}
-                                {visibleColumns['handler'] && <td className="px-3 py-3 border-r border-gray-100 text-xs">{order.handler}</td>}
-                                {visibleColumns['actionRole'] && <td className="px-3 py-3 border-r border-gray-100"><span className={`text-[10px] px-2 py-0.5 rounded border ${getRoleBadgeStyle(order.actionRole)}`}>{order.actionRole}</span></td>}
-                                {visibleColumns['isFulfilled'] && <td className="px-3 py-3 text-center border-r border-gray-100">{order.isFulfilled ? <Truck size={18} className="text-green-600 mx-auto" /> : <div className="w-4 h-4 rounded-full border border-gray-300 mx-auto"></div>}</td>}
+                                <td className="px-2 py-2 text-center border-r border-gray-100"><input type="checkbox" className="w-3 h-3 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer" checked={selectedOrderIds.has(order.id)} onChange={() => handleSelectRow(order.id)} /></td>
+                                {visibleColumns['lastModified'] && <td className="px-2 py-2 text-[10px] text-gray-500 whitespace-nowrap border-r border-gray-100">{formatDateDisplay(order.lastModified || order.date)}</td>}
+                                {visibleColumns['date'] && <td className="px-2 py-2 text-[10px] font-medium text-gray-700 whitespace-nowrap border-r border-gray-100">{formatDateOnly(order.date)}</td>}
+                                {visibleColumns['id'] && <td className="px-2 py-2 border-r border-gray-100"><div className="flex items-center gap-1"><span className="font-bold text-gray-800 text-[10px] truncate max-w-[8rem]" title={order.id}>{order.id}</span><button onClick={() => navigator.clipboard.writeText(order.id)} className="text-gray-300 hover:text-blue-500 opacity-0 group-hover:opacity-100"><Copy size={10} /></button></div></td>}
+                                {visibleColumns['storeName'] && <td className="px-2 py-2 border-r border-gray-100"><span className={`text-[9px] px-1.5 py-0.5 rounded-full border font-medium whitespace-nowrap ${getStoreBadgeStyle(getStoreName(order.storeId))}`}>{getStoreName(order.storeId)}</span></td>}
+                                {visibleColumns['sku'] && <td className="px-2 py-2 border-r border-gray-100"><div className="text-[10px] font-mono text-gray-700 truncate max-w-[10rem]" title={order.sku}>{order.sku}</div></td>}
+                                {visibleColumns['quantity'] && <td className="px-2 py-2 text-center font-bold text-gray-800 border-r border-gray-100">{order.quantity}</td>}
+                                {visibleColumns['tracking'] && <td className="px-2 py-2 border-r border-gray-100">{order.tracking ? <span className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded truncate max-w-[8rem] block" title={order.tracking}>{order.tracking}</span> : <span className="text-[10px] text-gray-400 italic">---</span>}</td>}
+                                {visibleColumns['checkbox'] && <td className="px-1 py-2 text-center border-r border-gray-100">{isUpdating ? <Loader2 size={14} className="animate-spin text-orange-500 mx-auto" /> : <button onClick={() => handleToggleCheckbox(order)} className={`hover:scale-110 transition-transform ${order.isChecked ? 'text-blue-600' : 'text-gray-300'}`}>{order.isChecked ? <CheckSquare size={16} /> : <Square size={16} />}</button>}</td>}
+                                {visibleColumns['designCheck'] && <td className="px-1 py-2 text-center border-r border-gray-100 bg-indigo-50/30">{isUpdating ? <Loader2 size={14} className="animate-spin text-indigo-500 mx-auto" /> : <button onClick={() => handleToggleDesignDone(order)} className={`hover:scale-110 transition-transform ${order.isDesignDone ? 'text-indigo-600' : 'text-gray-300'}`}>{order.isDesignDone ? <CheckSquare size={16} /> : <Square size={16} />}</button>}</td>}
+                                {visibleColumns['status'] && <td className="px-2 py-2 text-center border-r border-gray-100"><span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border ${order.status === 'Fulfilled' ? 'bg-green-100 text-green-700 border-green-200' : order.status === 'Cancelled' ? 'bg-red-100 text-red-700 border-red-200' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>{order.status || 'Pending'}</span></td>}
+                                {visibleColumns['handler'] && <td className="px-2 py-2 border-r border-gray-100 text-[10px] truncate max-w-[5rem]" title={order.handler}>{order.handler}</td>}
+                                {visibleColumns['actionRole'] && <td className="px-2 py-2 border-r border-gray-100"><span className={`text-[9px] px-1.5 py-0.5 rounded border truncate max-w-[5rem] block ${getRoleBadgeStyle(order.actionRole)}`} title={order.actionRole}>{order.actionRole}</span></td>}
+                                {visibleColumns['isFulfilled'] && <td className="px-2 py-2 text-center border-r border-gray-100">{order.isFulfilled ? <Truck size={16} className="text-green-600 mx-auto" /> : <div className="w-3 h-3 rounded-full border border-gray-300 mx-auto"></div>}</td>}
                             </tr>
                         );
                     })}
