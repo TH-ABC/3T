@@ -24,8 +24,6 @@ async function callAPI(action: string, method: string = 'POST', data: any = {}):
   }
 
   // PATCH: Sửa lỗi Backend Google Apps Script
-  // Nguyên nhân: Hàm 'getOrders' của BE chỉ đọc e.parameter.month (trên URL) mà bỏ qua postData.month (trong Body).
-  // Giải pháp: Khi gọi 'getOrders', ta gắn thủ công tham số month lên URL để BE nhận diện đúng tháng được chọn.
   let fetchUrl = API_URL;
   if (action === 'getOrders' && data.month) {
      const separator = fetchUrl.includes('?') ? '&' : '?';
@@ -99,19 +97,40 @@ export const sheetService = {
     return await callAPI('updateOrder', 'POST', { fileId, orderId, field, value });
   },
 
+  // NEW: Hàm cập nhật trạng thái Designer và lưu sang sheet riêng
+  updateDesignerStatus: async (fileId: string, order: Order, sheetName: string, isDone: boolean): Promise<any> => {
+    return await callAPI('updateDesignerStatus', 'POST', { 
+        fileId, 
+        order, 
+        sheetName, 
+        isDone 
+    });
+  },
+
+  // NEW: BATCH UPDATE cho Order (Cột Checkbox, Fulfilled...)
+  batchUpdateOrder: async (fileId: string, orderIds: string[], field: string, value: any): Promise<any> => {
+    return await callAPI('batchUpdateOrder', 'POST', {
+        fileId,
+        orderIds,
+        field,
+        value: value ? "TRUE" : "FALSE"
+    });
+  },
+
+  // NEW: BATCH UPDATE cho Designer (Đồng bộ sheet con)
+  batchUpdateDesigner: async (fileId: string, orderIds: string[], value: any): Promise<any> => {
+    return await callAPI('batchUpdateDesigner', 'POST', {
+        fileId,
+        orderIds,
+        value: value ? "TRUE" : "FALSE"
+    });
+  },
+
   fulfillOrder: async (fileId: string, order: Order): Promise<any> => {
-    // Spread order properties to top level for Backend to read (Backend uses postData.id, postData.productName, etc.)
     return await callAPI('fulfillOrder', 'POST', { fileId, ...order });
   },
 
-  updateOrderBatch: async (fileId: string, orderId: string, data: Partial<Order>): Promise<any> => {
-    // Action name in Backend is 'updateOrderRow', not 'updateOrderBatch'
-    return await callAPI('updateOrderRow', 'POST', { fileId, orderId, data });
-  },
-
   addOrder: async (order: Order, fileId?: string): Promise<any> => {
-    // Spread order properties to top level for Backend to read (Backend uses postData.id, postData.sku, etc.)
-    // Ensure isDesignDone is included
     return await callAPI('addOrder', 'POST', { ...order, isDesignDone: order.isDesignDone || false, fileId });
   },
 
@@ -135,8 +154,8 @@ export const sheetService = {
     return await callAPI('addRole', 'POST', { name, level });
   },
 
-  updateUser: async (username: string, role?: string, status?: string): Promise<any> => {
-    return await callAPI('updateUser', 'POST', { username, role, status });
+  updateUser: async (username: string, role?: string, status?: string, permissions?: any): Promise<any> => {
+    return await callAPI('updateUser', 'POST', { username, role, status, permissions });
   },
 
   getStoreHistory: async (storeId: string): Promise<StoreHistoryItem[]> => {

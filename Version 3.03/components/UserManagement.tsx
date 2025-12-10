@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { sheetService } from '../services/sheetService';
 import { User, Role } from '../types';
-import { UserPlus, Save, CheckCircle, AlertCircle, Loader2, Mail, Phone, User as UserIcon, Lock, Shield, UserCog, List, Settings, ToggleLeft, ToggleRight } from 'lucide-react';
+import { UserPlus, Save, CheckCircle, AlertCircle, Loader2, Mail, Phone, User as UserIcon, Lock, Shield, List, Settings, ToggleLeft, ToggleRight } from 'lucide-react';
 
 const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
@@ -113,6 +113,29 @@ const UserManagement: React.FC = () => {
       try { await sheetService.updateUser(username, undefined, newStatus); } catch (e) { loadData(); }
   };
 
+  const handleTogglePermission = async (user: User) => {
+      const currentVal = user.permissions?.canManageSku || false;
+      const newVal = !currentVal;
+      
+      // Optimistic Update
+      const updatedUsers = users.map(u => 
+        u.username === user.username 
+            ? { ...u, permissions: { ...u.permissions, canManageSku: newVal } } 
+            : u
+      );
+      setUsers(updatedUsers);
+
+      try {
+          // Send updated permissions to backend
+          await sheetService.updateUser(user.username, undefined, undefined, { canManageSku: newVal });
+      } catch (e) {
+          console.error(e);
+          // Revert on error
+          loadData(); 
+          alert("Lỗi cập nhật quyền hạn.");
+      }
+  };
+
   const inputClass = "w-full pl-10 pr-3 py-2 border border-gray-600 rounded-md focus:ring-orange-500 focus:border-orange-500 text-sm bg-slate-700 text-white placeholder-gray-400";
   const selectClass = "w-full pl-10 pr-3 py-2 border border-gray-600 rounded-md focus:ring-orange-500 focus:border-orange-500 text-sm bg-slate-700 text-white";
 
@@ -157,12 +180,13 @@ const UserManagement: React.FC = () => {
                             <th className="px-6 py-4">Họ và tên</th>
                             <th className="px-6 py-4">Vai trò (Role)</th>
                             <th className="px-6 py-4 text-center">Trạng thái</th>
+                            <th className="px-6 py-4 text-center">Quyền hạn</th>
                             <th className="px-6 py-4">Liên hệ</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-sm">
                         {loading ? (
-                            <tr><td colSpan={5} className="p-8 text-center text-gray-500">Đang tải danh sách...</td></tr>
+                            <tr><td colSpan={6} className="p-8 text-center text-gray-500">Đang tải danh sách...</td></tr>
                         ) : (
                             users.map((user) => (
                                 <tr key={user.username} className="hover:bg-gray-50">
@@ -190,6 +214,15 @@ const UserManagement: React.FC = () => {
                                             <option value="Active">Active</option>
                                             <option value="Inactive">Locked</option>
                                         </select>
+                                    </td>
+                                    {/* Permission Toggle Column */}
+                                    <td className="px-6 py-4 text-center">
+                                        <div className="flex flex-col items-center gap-1">
+                                            <button onClick={() => handleTogglePermission(user)} className={`transition-colors ${user.permissions?.canManageSku ? 'text-blue-600' : 'text-gray-300'}`}>
+                                                {user.permissions?.canManageSku ? <ToggleRight size={28} /> : <ToggleLeft size={28} />}
+                                            </button>
+                                            <span className="text-[10px] text-gray-500">QL SKU/Giá</span>
+                                        </div>
                                     </td>
                                     <td className="px-6 py-4 text-xs text-gray-500">
                                         <div>{user.email}</div>

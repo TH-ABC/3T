@@ -1,0 +1,694 @@
+
+/* 
+================================================================================
+HƯỚNG DẪN CÀI ĐẶT TRÊN GOOGLE APPS SCRIPT
+================================================================================
+Bước 1: Xóa toàn bộ code cũ trong dự án Apps Script của bạn.
+Bước 2: Tạo 3 file script mới có tên: Main.gs, Logic.gs, Utils.gs
+Bước 3: Copy code tương ứng bên dưới vào từng file.
+================================================================================
+*/
+
+// ============================================================================
+// FILE 1: Main.gs
+// (Chứa Hằng số, doGet, doPost và bộ điều hướng Router)
+// ============================================================================
+
+const SHEET_STORES = 'Stores';
+const SHEET_USERS = 'Users';
+const SHEET_UNITS = 'Units';
+const SHEET_ROLES = 'Roles';
+const SHEET_LOGS = 'AccessLogs';
+const SHEET_DAILY = 'DailyStats';
+const SHEET_STORE_HISTORY = 'StoreHistory';
+const SHEET_FILE_INDEX = 'FileIndex';
+const SHEET_PL_SKU = 'PL SKU';
+const SHEET_PRICES = 'PriceMap';
+
+function doGet(e) { return handleRequest(e); }
+function doPost(e) { return handleRequest(e); }
+
+function handleRequest(e) {
+  const lock = LockService.getScriptLock();
+  lock.tryLock(30000); // Wait 30s
+  
+  try {
+    let action = e.parameter.action;
+    let postData = null;
+    
+    if (e.postData && e.postData.contents) {
+      try { 
+        postData = JSON.parse(e.postData.contents); 
+      } catch (err) { 
+        postData = {}; 
+      }
+      if (!action && postData.action) action = postData.action;
+    }
+
+    let result = {};
+
+    // --- 1. ORDER & FILE MANAGEMENT ---
+    if (action === 'getOrders') {
+      let month = e.parameter.month || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM');
+      result = getOrdersFromMonthFile(month);
+    } 
+    else if (action === 'createMonthFile') {
+      const month = postData.month;
+      if (!month) return returnJSON({success:false, error:'Missing month'});
+      result = handleCreateMonthFile(month);
+    }
+    else if (action === 'addOrder') {
+      result = handleAddOrder(postData);
+    }
+    else if (action === 'updateOrderRow') {
+      result = updateOrderRow(postData.fileId, postData.orderId, postData.data);
+    }
+    else if (action === 'updateOrder') {
+      result = updateOrderSingle(postData.fileId, postData.orderId, postData.field, postData.value);
+    }
+    else if (action === 'fulfillOrder') {
+      result = handleFulfillOrder(postData);
+    }
+    // --- BATCH UPDATES (NEW) ---
+    else if (action === 'batchUpdateOrder') {
+      result = handleBatchUpdateOrder(postData);
+    }
+    
+    // --- 2. DESIGNER SPECIFIC ---
+    else if (action === 'updateDesignerStatus') {
+      result = updateDesignerStatus(e);
+    }
+    else if (action === 'batchUpdateDesigner') {
+      result = handleBatchUpdateDesigner(postData);
+    }
+
+    // --- 3. PRODUCT & SKU & PRICE ---
+    else if (action === 'getSkuMappings') {
+      result = getSkuMappings();
+    }
+    else if (action === 'updateSkuCategory') {
+      result = handleUpdateSkuCategory(postData.sku, postData.category);
+    }
+    else if (action === 'getPriceMappings') {
+      result = getPriceMappings();
+    }
+    else if (action === 'updateCategoryPrice') {
+      result = handleUpdateCategoryPrice(postData.category, postData.price);
+    }
+
+    // --- 4. STORE & STATS ---
+    else if (action === 'getStores') result = getData(SHEET_STORES);
+    else if (action === 'addStore') result = addRow(SHEET_STORES, [postData.id, postData.name, postData.url, postData.region||"", postData.status||"LIVE", 0, 0]);
+    else if (action === 'deleteStore') result = deleteRow(SHEET_STORES, postData.id);
+    else if (action === 'getDailyStats') result = getData(SHEET_DAILY);
+    else if (action === 'getStoreHistory') result = getStoreHistory(postData.storeId);
+    else if (action === 'debugSnapshot') { autoRecordDailyStats(true); result = { success: true, message: "Done." }; } 
+
+    // --- 5. USER & AUTH ---
+    else if (action === 'getUsers') result = getUsers();
+    else if (action === 'login') result = handleLogin(postData.username, postData.password, postData.ip);
+    else if (action === 'createUser') result = createUser(postData.username, postData.password, postData.fullName, postData.role, postData.email, postData.phone, postData.permissions);
+    else if (action === 'updateUser') result = updateUser(postData.username, postData.role, postData.status, postData.permissions);
+    else if (action === 'changePassword') result = handleChangePassword(postData.username, postData.oldPass, postData.newPass);
+    else if (action === 'getRoles') result = getData(SHEET_ROLES);
+    else if (action === 'addRole') result = addRow(SHEET_ROLES, [postData.role, postData.level]);
+
+    // --- 6. SYSTEM UTILS ---
+    else if (action === 'getUnits') result = getSimpleList(SHEET_UNITS);
+    else if (action === 'addUnit') result = addSimpleRow(SHEET_UNITS, postData.unit);
+    else if (action === 'parseAddress') result = parseShippingInfo(postData.rawText);
+
+    return returnJSON(result);
+
+  } catch (err) {
+    return returnJSON({ success: false, error: err.toString() });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+
+// ============================================================================
+// FILE 2: Logic.gs
+// (Chứa toàn bộ logic nghiệp vụ)
+// ============================================================================
+
+// --- BATCH LOGIC (NEW) ---
+
+function handleBatchUpdateOrder(data) {
+    // Used for standard fields like 'isChecked' (Pay)
+    var fileId = data.fileId;
+    var orderIds = data.orderIds; // Array of IDs
+    var field = data.field;       // e.g., 'isChecked'
+    var value = data.value;       // "TRUE" or "FALSE"
+
+    if (!fileId || !orderIds || orderIds.length === 0) return { success: false, error: "Missing data" };
+
+    var ss = SpreadsheetApp.openById(fileId);
+    var sheet = ss.getSheets()[0];
+    var dataValues = sheet.getDataRange().getValues();
+    
+    // Find column index
+    var colIndex = -1;
+    var map = { 'isChecked': 12, 'isDesignDone': 13, 'isFulfilled': 28 }; // Default indexes (0-based)
+    
+    // Try to find dynamically
+    var headers = dataValues[0];
+    for (var i = 0; i < headers.length; i++) {
+        var h = String(headers[i]).toLowerCase().trim();
+        if (field === 'isChecked' && (h === 'checked' || h === 'paid')) colIndex = i;
+        if (field === 'isDesignDone' && (h === 'design done' || h === 'design')) colIndex = i;
+        if (field === 'isFulfilled' && (h === 'is fulfilled' || h === 'fulfilled')) colIndex = i;
+    }
+    if (colIndex === -1 && map[field] !== undefined) colIndex = map[field];
+    if (colIndex === -1) return { success: false, error: "Column not found" };
+
+    // Find Row Indices (A1 Notation)
+    var rangesToUpdate = [];
+    var idColIndex = 1; // Default ID col is B
+    for(var i=0; i<headers.length; i++) {
+        var h = String(headers[i]).toLowerCase().trim();
+        if(h==='orderid' || h==='id') { idColIndex = i; break; }
+    }
+
+    // Optimization: Create a Set for faster lookup
+    var idSet = {};
+    for(var i=0; i<orderIds.length; i++) idSet[String(orderIds[i])] = true;
+
+    for (var r = 1; r < dataValues.length; r++) {
+        var rowId = String(dataValues[r][idColIndex]);
+        if (idSet[rowId]) {
+            // A1 Notation: Column letter + Row number
+            // Simple way: convert index to A1. 
+            // Better: just use sheet.getRangeList([R1C1, R2C2]) but getRangeList takes A1.
+            // Let's use getRange(row, col) logic but gather ranges.
+            rangesToUpdate.push(sheet.getRange(r + 1, colIndex + 1).getA1Notation());
+        }
+    }
+
+    if (rangesToUpdate.length > 0) {
+        sheet.getRangeList(rangesToUpdate).setValue(value);
+    }
+
+    return { success: true, count: rangesToUpdate.length };
+}
+
+function handleBatchUpdateDesigner(data) {
+    // Update Design Status across Main, Designer, and Designer Online sheets
+    var fileId = data.fileId;
+    var orderIds = data.orderIds;
+    var isDone = data.value === "TRUE" || data.value === true;
+    var valStr = isDone ? "TRUE" : "FALSE";
+
+    if (!fileId || !orderIds || orderIds.length === 0) return { success: false };
+
+    var ss = SpreadsheetApp.openById(fileId);
+    var idSet = {};
+    for(var k=0; k<orderIds.length; k++) idSet[String(orderIds[k])] = true;
+
+    var sheetsToProcess = [ss.getSheets()[0], ss.getSheetByName("Designer"), ss.getSheetByName("Designer Online")];
+
+    sheetsToProcess.forEach(function(sheet) {
+        if (!sheet) return;
+        var sData = sheet.getDataRange().getValues();
+        if (sData.length < 2) return;
+
+        // Find ID col and Design col
+        var idIdx = -1;
+        var designIdx = -1;
+        var headers = sData[0];
+
+        for(var i=0; i<headers.length; i++) {
+            var h = String(headers[i]).toLowerCase().trim();
+            if(h==='orderid' || h==='id' || h==='order id') idIdx = i;
+            if(h==='design done' || h==='design') designIdx = i;
+        }
+
+        // Fallbacks
+        if(idIdx === -1 && sheet.getName() !== "Designer" && sheet.getName() !== "Designer Online") idIdx = 1; // Main sheet default B
+        if(idIdx === -1 && (sheet.getName() === "Designer" || sheet.getName() === "Designer Online")) idIdx = 2; // Sub sheet default C
+        
+        if(designIdx === -1 && sheet.getName() !== "Designer" && sheet.getName() !== "Designer Online") designIdx = 13; // Main sheet default N
+        if(designIdx === -1 && (sheet.getName() === "Designer" || sheet.getName() === "Designer Online")) designIdx = 9; // Sub sheet default J
+
+        if(idIdx > -1 && designIdx > -1) {
+            var ranges = [];
+            for(var r=1; r<sData.length; r++) {
+                var rowId = String(sData[r][idIdx]);
+                if(idSet[rowId]) {
+                    ranges.push(sheet.getRange(r+1, designIdx+1).getA1Notation());
+                }
+            }
+            if(ranges.length > 0) {
+                sheet.getRangeList(ranges).setValue(valStr);
+            }
+        }
+    });
+
+    return { success: true };
+}
+
+// --- SINGLE UPDATE LOGIC (EXISTING) ---
+
+function updateDesignerStatus(e) {
+  try {
+    var data = JSON.parse(e.postData.contents);
+    var fileId = data.fileId;
+    var sheetName = data.sheetName; 
+    var order = data.order;
+    var isDone = data.isDone;
+
+    var ss = SpreadsheetApp.openById(fileId);
+
+    // 1. CẬP NHẬT SHEET CHÍNH
+    var mainSheet = ss.getSheets()[0]; 
+    var mainData = mainSheet.getDataRange().getValues();
+    var idColIndex = -1;
+    var designDoneColIndex = -1;
+    var headers = mainData[0];
+    for (var i = 0; i < headers.length; i++) {
+       var h = String(headers[i]).toLowerCase().trim();
+       if (h === "orderid" || h === "id" || h === "order id") idColIndex = i;
+       if (h === "design done" || h === "design") designDoneColIndex = i;
+    }
+    if (idColIndex === -1) idColIndex = 1; 
+    if (designDoneColIndex === -1) designDoneColIndex = 13;
+    
+    if (idColIndex > -1 && designDoneColIndex > -1) {
+       for (var r = 1; r < mainData.length; r++) {
+          if (String(mainData[r][idColIndex]) == String(order.id)) {
+              mainSheet.getRange(r + 1, designDoneColIndex + 1).setValue(isDone ? "TRUE" : "FALSE");
+              break;
+          }
+       }
+    }
+
+    // 2. XỬ LÝ SHEET ĐÍCH
+    var targetSheets = [];
+    if (sheetName === "Designer" || sheetName === "Designer Online") {
+        targetSheets.push(sheetName);
+    } else {
+        targetSheets.push("Designer");
+        targetSheets.push("Designer Online");
+    }
+
+    targetSheets.forEach(function(sName) {
+        var tSheet = ss.getSheetByName(sName);
+        if (tSheet) {
+            var tData = tSheet.getDataRange().getValues();
+            for (var j = 1; j < tData.length; j++) {
+                if (String(tData[j][2]) == String(order.id)) { 
+                    tSheet.getRange(j + 1, 10).setValue(isDone ? "TRUE" : "FALSE");
+                }
+            }
+        } else if (sName === sheetName) {
+            tSheet = ss.insertSheet(sName);
+            tSheet.appendRow(["Timestamp", "Date Order", "OrderID", "Store", "SKU", "Type", "Status", "Handler", "Note", "Design Done", "Action Role"]);
+            tSheet.getRange("A1:K1").setFontWeight("bold").setBackground("#f3f4f6");
+            tSheet.setFrozenRows(1);
+            var timestamp = new Date();
+            var rowData = [timestamp, order.date, order.id, order.storeId, order.sku, order.type || "", order.status || "", order.handler || "", order.note || "", isDone ? "TRUE" : "FALSE", order.actionRole || ""];
+            tSheet.appendRow(rowData);
+        }
+    });
+
+    return { success: true };
+  } catch (err) { return { success: false, error: err.toString() }; }
+}
+
+function getOrdersFromMonthFile(month) {
+  let fileId = getFileIdForMonth(month);
+  if (!fileId) return { orders: [], fileId: null };
+  try {
+    const ss = SpreadsheetApp.openById(fileId);
+    const sheet = ss.getSheets()[0]; 
+    const data = sheet.getDataRange().getValues();
+    if (data.length <= 1) return { orders: [], fileId: fileId };
+    data.shift(); 
+    
+    // MAPPING DỮ LIỆU CẬP NHẬT CỘT 13 (Design Done)
+    const orders = data.map(row => ({
+      date: formatDate(row[0]), id: row[1], storeId: row[2], type: row[3], sku: row[4], quantity: row[5], tracking: row[6], link: row[7], status: row[8], note: row[9],
+      handler: row[10] || "", actionRole: row[11] || "", 
+      isChecked: row[12] === "TRUE" || row[12] === true, // Cột M: Paid/Checked
+      isDesignDone: row[13] === "TRUE" || row[13] === true, // Cột N: Design Done (Mới)
+      shippingName: row[14] || "", shippingFirstName: row[15] || "", shippingLastName: row[16] || "", shippingAddress1: row[17] || "", shippingAddress2: row[18] || "",
+      shippingCity: row[19] || "", shippingProvince: row[20] || "", shippingZip: row[21] || "", shippingCountry: row[22] || "", shippingPhone: row[23] || "",
+      productName: row[24] || "", itemSku: row[25] || "", urlMockup: row[26] || "", mockupType: row[27] || "", isFulfilled: row[28] === "TRUE" || row[28] === true,
+      urlArtworkFront: row[29] || "", urlArtworkBack: row[30] || ""
+    }));
+    return { orders: orders, fileId: fileId };
+  } catch (e) { return { orders: [], fileId: null, error: "File deleted or inaccessible" }; }
+}
+
+function handleAddOrder(postData) {
+    let month = postData.month;
+    if (!month && postData.date) month = postData.date.substring(0, 7);
+    if (!month) month = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM');
+    let ship = {
+        name: postData.shippingName || "", firstName: postData.shippingFirstName || "", lastName: postData.shippingLastName || "",
+        address1: postData.shippingAddress1 || "", address2: postData.shippingAddress2 || "",
+        city: postData.shippingCity || "", province: postData.shippingProvince || "", zip: postData.shippingZip || "", 
+        country: postData.shippingCountry || "", phone: postData.shippingPhone || ""
+    };
+    if (postData.rawShipping) {
+        const parsed = parseShippingInfo(postData.rawShipping);
+        if (parsed.success) { ship = parsed.data; if (!ship.name) ship.name = (ship.firstName + " " + ship.lastName).trim(); }
+    } 
+    const rowData = [
+        postData.date, postData.id, postData.storeId, postData.type || "", postData.sku, postData.quantity || 1, 
+        postData.tracking || "", postData.link || "", postData.status || "Pending", postData.note || "", 
+        postData.user || "", postData.actionRole || "", 
+        postData.isChecked ? "TRUE" : "FALSE", // Col M (12)
+        postData.isDesignDone ? "TRUE" : "FALSE", // Col N (13) - NEW
+        ship.name, ship.firstName, ship.lastName, ship.address1, ship.address2, ship.city, ship.province, ship.zip, ship.country, ship.phone,
+        postData.productName || "", postData.itemSku || "", postData.urlMockup || "", postData.mockupType || "", "FALSE",
+        postData.urlArtworkFront || "", postData.urlArtworkBack || ""
+    ];
+    return addOrderToMonthFile(month, rowData);
+}
+
+function addOrderToMonthFile(month, rowData) {
+  let fileId = getFileIdForMonth(month);
+  let ss;
+  if (fileId) { try { ss = SpreadsheetApp.openById(fileId); } catch (e) { fileId = null; } }
+  if (!fileId) { fileId = createNewMonthFile(month); ss = SpreadsheetApp.openById(fileId); }
+  const sheet = ss.getSheets()[0];
+  sheet.appendRow(rowData);
+  return { success: true, fileId: fileId, month: month };
+}
+
+function handleCreateMonthFile(month) {
+    let fileId = getFileIdForMonth(month);
+    if (fileId) {
+         try { SpreadsheetApp.openById(fileId); return { success: true, message: 'File exists', fileId: fileId }; }
+         catch(e) { fileId = createNewMonthFile(month); return { success: true, message: 'File recreated', fileId: fileId }; }
+    } else {
+         fileId = createNewMonthFile(month);
+         return { success: true, message: 'File created', fileId: fileId };
+    }
+}
+
+function createNewMonthFile(month) {
+  const fileName = `OMS_Orders_${month}`;
+  const newSS = SpreadsheetApp.create(fileName);
+  const fileId = newSS.getId();
+  const sheet = newSS.getSheets()[0];
+  const headers = [
+    'Date', 'OrderID', 'Store', 'DonVi', 'SKU', 'Quantity', 'Tracking', 'Link', 'Status', 'Note', 'Handler', 'ActionRole', 
+    'Checked', 'Design Done', // Cột Design Done mới (Index 13)
+    'Ship Name', 'F.Name', 'L.Name', 'Address1', 'Address2', 'City', 'State', 'Zip', 'Country', 'Phone',
+    'Product Name', 'Item SKU', 'URL Mockup', 'Mockup Type', 'Is Fulfilled', 'URL Artwork Front', 'URL Artwork Back'
+  ];
+  sheet.appendRow(headers);
+  sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#1a4019").setFontColor("white");
+  sheet.setFrozenRows(1);
+  const masterSS = SpreadsheetApp.getActiveSpreadsheet();
+  let indexSheet = masterSS.getSheetByName(SHEET_FILE_INDEX);
+  if(!indexSheet) { indexSheet = masterSS.insertSheet(SHEET_FILE_INDEX); indexSheet.appendRow(['Month', 'FileID', 'FileName', 'CreatedDate']); }
+  const data = indexSheet.getDataRange().getValues();
+  let existingRowIndex = -1;
+  for(let i=1; i<data.length; i++) {
+     let rowMonth = data[i][0];
+     if (rowMonth instanceof Date) rowMonth = Utilities.formatDate(rowMonth, Session.getScriptTimeZone(), 'yyyy-MM');
+     if (String(rowMonth) === String(month)) { existingRowIndex = i + 1; break; }
+  }
+  if (existingRowIndex > 0) indexSheet.getRange(existingRowIndex, 2).setValue(fileId);
+  else indexSheet.appendRow([month, fileId, fileName, new Date()]);
+  return fileId;
+}
+
+function handleFulfillOrder(postData) {
+    const fileId = postData.fileId;
+    const orderId = postData.id;
+    if (!fileId) return { success: false, error: 'Missing File ID' };
+    const exportResult = fulfillOrderToSheet(fileId, postData);
+    if (exportResult.success && orderId) updateOrderSingle(fileId, orderId, 'isFulfilled', "TRUE");
+    return exportResult;
+}
+
+function fulfillOrderToSheet(fileId, data) {
+  try {
+    const ss = SpreadsheetApp.openById(fileId);
+    const sheetName = "Fulfillment_Export";
+    let sheet = ss.getSheetByName(sheetName);
+    const headers = [
+      "Order_ID", "Product_name", "Item_sku", "Quantity", "Shipping_service", "First_name", "Last_name", "Shipping_address1", "Shipping_address2",
+      "Shipping_city", "Shipping_zip", "Shipping_province", "Shipping_country", "Shipping_phone", 
+      "URL_artwork_front", "URL_artwork_back", "URL_mockup", "Variant_ID", "Note",
+      "Shipping_email", "Made_location", "URL_artwork_right", "URL_artwork_left", "URL_artwork_hood", "URL_artwork_bothsides", "URL_artwork_sleeve_right", "URL_artwork_sleeve_left", "TikTok_Label_Url", "TikTok_Order_Ship_By"
+    ];
+    if (!sheet) { sheet = ss.insertSheet(sheetName); sheet.appendRow(headers); sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#000000").setFontColor("#ffffff"); sheet.setFrozenRows(1); }
+    const row = [
+      data.id || "", data.productName || "", data.itemSku || "", data.quantity || 1, "", 
+      data.shippingFirstName || "", data.shippingLastName || "", data.shippingAddress1 || "",
+      data.shippingAddress2 || "", data.shippingCity || "", data.shippingZip || "", 
+      data.shippingProvince || "", data.shippingCountry || "", data.shippingPhone || "",
+      data.urlArtworkFront || "", data.urlArtworkBack || "", data.urlMockup || "", "", data.mockupType || "", 
+      "", "", "", "", "", "", "", "", "", ""
+    ];
+    sheet.appendRow(row);
+    return { success: true };
+  } catch (e) { return { success: false, error: e.toString() }; }
+}
+
+function updateOrderRow(fileId, orderId, updates) {
+  if (!fileId) return { success: false };
+  try {
+    const ss = SpreadsheetApp.openById(fileId);
+    const sheet = ss.getSheets()[0];
+    const data = sheet.getDataRange().getValues();
+    let rowIndex = -1;
+    for (let i = 1; i < data.length; i++) if (String(data[i][1]) === String(orderId)) { rowIndex = i + 1; break; }
+    if (rowIndex > 0) {
+      const map = {
+        'date':0, 'id':1, 'storeId':2, 'type':3, 'sku':4, 'quantity':5, 'tracking':6, 'link':7, 'status':8, 'note':9, 'handler':10, 'actionRole':11, 
+        'isChecked':12, 
+        'isDesignDone': 13, // New
+        'shippingName':14, 'shippingFirstName':15, 'shippingLastName':16, 'shippingAddress1':17, 'shippingAddress2':18, 'shippingCity':19, 'shippingProvince':20, 'shippingZip':21, 'shippingCountry':22, 'shippingPhone':23,
+        'productName': 24, 'itemSku': 25, 'urlMockup': 26, 'mockupType': 27, 'isFulfilled': 28, 'urlArtworkFront': 29, 'urlArtworkBack': 30
+      };
+      for (const [key, val] of Object.entries(updates)) {
+        if (map.hasOwnProperty(key)) {
+          let valueToSet = val;
+          if (key === 'isChecked' || key === 'isFulfilled' || key === 'isDesignDone') valueToSet = (val === true || val === "TRUE") ? "TRUE" : "FALSE";
+          sheet.getRange(rowIndex, map[key] + 1).setValue(valueToSet);
+        }
+      }
+      return { success: true };
+    }
+    return { success: false, error: 'Order not found' };
+  } catch (e) { return { success: false, error: e.toString() }; }
+}
+
+function updateOrderSingle(fileId, orderId, field, value) { 
+    const updates = {}; 
+    updates[field] = value; 
+    return updateOrderRow(fileId, orderId, updates); 
+}
+
+function getSkuMappings() {
+  const sheet = getSheet(SHEET_PL_SKU);
+  if (sheet.getLastRow() === 0) { sheet.appendRow(['STT', 'SKU', 'Phân Loại']); return []; }
+  const data = sheet.getDataRange().getValues();
+  data.shift();
+  return data.map(r => ({ sku: String(r[1] || '').trim(), category: String(r[2] || '').trim() })).filter(item => item.sku !== '');
+}
+
+function handleUpdateSkuCategory(sku, category) {
+    if (!sku || !category) return { success: false, error: 'Thiếu SKU hoặc Category' };
+    const sheet = getSheet(SHEET_PL_SKU);
+    const data = sheet.getDataRange().getValues();
+    let found = false;
+    let rowIndex = -1;
+    for (let i = 1; i < data.length; i++) {
+        if (String(data[i][1]).trim().toLowerCase() === String(sku).trim().toLowerCase()) {
+            rowIndex = i + 1; found = true; break;
+        }
+    }
+    if (found) { sheet.getRange(rowIndex, 3).setValue(category); return { success: true, message: 'Updated' }; } 
+    else { const lastRow = sheet.getLastRow(); sheet.appendRow([lastRow, sku, category]); return { success: true, message: 'Created' }; }
+}
+
+function getPriceMappings() {
+   const sheet = getSheet(SHEET_PRICES);
+   const data = sheet.getDataRange().getValues();
+   if (data.length <= 1) return [];
+   data.shift();
+   return data.map(r => ({ category: String(r[0]), price: Number(r[1]) || 0 }));
+}
+
+function handleUpdateCategoryPrice(category, price) {
+   const sheet = getSheet(SHEET_PRICES);
+   const data = sheet.getDataRange().getValues();
+   let found = false;
+   for (let i = 1; i < data.length; i++) {
+      if (String(data[i][0]).trim().toLowerCase() === String(category).trim().toLowerCase()) {
+         sheet.getRange(i + 1, 2).setValue(price); found = true; break;
+      }
+   }
+   if (!found) sheet.appendRow([category, price]);
+   return { success: true };
+}
+
+function autoRecordDailyStats(isDebug = false) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const storeSheet = getSheet(SHEET_STORES);
+  const stores = storeSheet.getDataRange().getValues();
+  stores.shift(); 
+  let totalListing = 0;
+  let totalSale = 0;
+  let recordDate = new Date();
+  if (isDebug) recordDate.setDate(recordDate.getDate() - 1); 
+  const dateStr = Utilities.formatDate(recordDate, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  const historySheet = getSheet(SHEET_STORE_HISTORY);
+  stores.forEach(row => {
+     const storeId = row[0];
+     const listing = Number(row[5] || 0);
+     const sale = Number(row[6] || 0);
+     totalListing += listing;
+     totalSale += sale;
+     historySheet.appendRow([dateStr, storeId, listing, sale]);
+  });
+  const dailySheet = getSheet(SHEET_DAILY);
+  const existingData = dailySheet.getDataRange().getValues();
+  let exists = false;
+  for(let i=1; i<existingData.length; i++) {
+     let d = formatDate(existingData[i][0]).substring(0, 10);
+     if (d === dateStr) { exists = true; break; }
+  }
+  if (!exists) dailySheet.appendRow([dateStr, totalListing, totalSale]);
+}
+
+function getStoreHistory(id) {
+    const s = getSheet(SHEET_STORE_HISTORY);
+    const d = s.getDataRange().getValues();
+    d.shift();
+    return d.filter(r => String(r[1]) == String(id)).map(r => ({
+        date: formatDate(r[0]), sale: r[3], listing: r[2]
+    }));
+}
+
+function getUsers() {
+    const s = getSheet(SHEET_USERS);
+    const d = s.getDataRange().getValues();
+    d.shift(); 
+    return d.map(r => {
+        let perms = {};
+        try { perms = JSON.parse(r[7] || '{}'); } catch(e) {}
+        return { username: r[0], password: r[1], fullName: r[2], role: r[3], email: r[4], phone: r[5], status: r[6]||'Active', permissions: perms };
+    });
+}
+
+function handleLogin(u,p,ip){
+    const s=getSheet(SHEET_USERS);
+    const d=s.getDataRange().getValues();
+    for(let i=1;i<d.length;i++) {
+        if(String(d[i][0])==String(u) && String(d[i][1])==String(p)){
+            const st=d[i][6]||'Active';
+            if(st!=='Active') return {success:false, error:'Account Locked'};
+            getSheet(SHEET_LOGS).appendRow([new Date(),u,'LOGIN',ip]);
+            let perms = {};
+            try { perms = JSON.parse(d[i][7] || '{}'); } catch(e) {}
+            return { success:true, user:{ username:d[i][0], fullName:d[i][2], role:d[i][3], email:d[i][4], phone:d[i][5], status:st, permissions: perms } };
+        }
+    }
+    return {success:false, error:'Invalid Credentials'};
+}
+
+function createUser(u,p,f,r,e,ph,perms){
+    const s=getSheet(SHEET_USERS);
+    const d=s.getDataRange().getValues();
+    for(let i=1;i<d.length;i++) if(d[i][0]==u) return {success:false, error:'Username Exists'};
+    const permString = perms ? JSON.stringify(perms) : '{}';
+    s.appendRow([u,p,f,r,e||'',ph||'','Active', permString]);
+    return {success:true};
+}
+
+function updateUser(u,r,st,perms){
+    const s=getSheet(SHEET_USERS);
+    const d=s.getDataRange().getValues();
+    for(let i=1;i<d.length;i++) {
+        if(d[i][0]==u){
+            if(r) s.getRange(i+1,4).setValue(r);
+            if(st) s.getRange(i+1,7).setValue(st);
+            if(perms) s.getRange(i+1,8).setValue(JSON.stringify(perms));
+            return {success:true};
+        }
+    }
+    return {success:false};
+}
+
+function handleChangePassword(u,o,n){
+    const s=getSheet(SHEET_USERS);
+    const d=s.getDataRange().getValues();
+    for(let i=1;i<d.length;i++) {
+        if(d[i][0]==u && d[i][1]==o){ s.getRange(i+1,2).setValue(n); return {success:true}; }
+    }
+    return {success:false, error: 'Old password incorrect'};
+}
+
+
+// ============================================================================
+// FILE 3: Utils.gs
+// (Chứa các hàm hỗ trợ chung: Xử lý Sheet, Date, Format JSON)
+// ============================================================================
+
+function returnJSON(data) { 
+    return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON); 
+}
+
+function getSheet(n) {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let s = ss.getSheetByName(n);
+    if(!s){
+        s = ss.insertSheet(n);
+        if(n === SHEET_STORES) s.appendRow(['ID','Name','URL','Region','Status','Listing','Sale']);
+        else if(n === SHEET_USERS) s.appendRow(['Username','Password','FullName','Role','Email','Phone','Status','Permissions']);
+        else if(n === SHEET_UNITS) s.appendRow(['UnitName']);
+        else if(n === SHEET_ROLES) s.appendRow(['RoleName','Level']);
+        else if(n === SHEET_LOGS) s.appendRow(['Time','User','Action','IP']);
+        else if(n === SHEET_DAILY) s.appendRow(['Date','TotalListing','TotalSale']);
+        else if(n === SHEET_STORE_HISTORY) s.appendRow(['Date','StoreID','Listing','Sale']);
+        else if(n === SHEET_PL_SKU) s.appendRow(['STT', 'SKU', 'Phân Loại']);
+        else if(n === SHEET_PRICES) s.appendRow(['Category', 'Price']);
+    }
+    return s;
+}
+
+function getFileIdForMonth(month) { 
+    const masterSS = SpreadsheetApp.getActiveSpreadsheet(); 
+    let indexSheet = masterSS.getSheetByName(SHEET_FILE_INDEX); 
+    if (!indexSheet) { 
+        indexSheet = masterSS.insertSheet(SHEET_FILE_INDEX); 
+        indexSheet.appendRow(['Month', 'FileID', 'FileName', 'CreatedDate']); 
+        return null; 
+    } 
+    const data = indexSheet.getDataRange().getValues(); 
+    for (let i = 1; i < data.length; i++) { 
+        let rowMonth = data[i][0]; 
+        if (rowMonth instanceof Date) rowMonth = Utilities.formatDate(rowMonth, Session.getScriptTimeZone(), 'yyyy-MM'); 
+        if (String(rowMonth) === String(month)) return data[i][1]; 
+    } 
+    return null; 
+}
+
+function formatDate(d) { try { return Utilities.formatDate(new Date(d), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss'); } catch(e) { return d; } }
+
+function getData(n){
+    const s = getSheet(n);
+    const d = s.getDataRange().getValues();
+    d.shift(); 
+    return d.map(r => {
+        if(n === SHEET_STORES) return {id:r[0], name:r[1], url:r[2], region:r[3], status:r[4], listing:r[5]||0, sale:r[6]||0};
+        if(n === SHEET_ROLES) return {name:r[0], level:r[1]};
+        if(n === SHEET_DAILY) return {date:formatDate(r[0]), totalListing:r[1]||0, totalSale:r[2]||0};
+        return {};
+    });
+}
+
+function addRow(n, r) { getSheet(n).appendRow(r); return {success:true}; }
+function deleteRow(n, id) { const s = getSheet(n); const d = s.getDataRange().getValues(); for(let i=d.length-1; i>=1; i--) { if(String(d[i][0]) == String(id)) { s.deleteRow(i+1); return {success:true}; } } return {error:'Not found'}; }
+function getSimpleList(n) { const s = getSheet(n); const d = s.getDataRange().getValues(); let l = []; for(let i=1; i<d.length; i++) if(d[i][0]) l.push(d[i][0]); return l; }
+function addSimpleRow(n, v) { const s = getSheet(n); s.appendRow([v]); return {success:true}; }
+function parseShippingInfo(text) { return {success:true, data:{}}; }
