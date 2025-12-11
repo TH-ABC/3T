@@ -365,7 +365,7 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
       if (!currentFileId) return;
       if (selectedOrderIds.size === 0) return;
 
-      const idsToUpdate = Array.from(selectedOrderIds);
+      const idsToUpdate = Array.from(selectedOrderIds) as string[];
       const isPaidAction = actionType === 'paid' || actionType === 'unpaid';
       const isDesignAction = actionType === 'design_done' || actionType === 'design_pending';
       const newValue = actionType === 'paid' || actionType === 'design_done';
