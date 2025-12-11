@@ -17,7 +17,7 @@ import {
   Key,
   PenTool
 } from 'lucide-react';
-import { User } from '../types';
+import { User, ViewScope, UserPermissions } from '../types';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -35,58 +35,67 @@ const Sidebar: React.FC<SidebarProps> = ({
   isOpen, setIsOpen, currentTab, setCurrentTab, user, onLogout, onChangePassword,
   isDesktopCollapsed, setIsDesktopCollapsed 
 }) => {
-  const role = (user.role || '').toLowerCase();
-  const isDesignerOnline = role === 'designer online';
-  const isDesigner = role === 'designer';
+  
+  // Helper to determine visibility based on Permissions OR Role Fallback
+  const hasAccess = (module: keyof UserPermissions | 'users'): boolean => {
+      if (user.role === 'admin') return true;
+      
+      // Admin-only module (User Management)
+      if (module === 'users') return false; 
+
+      const perm = user.permissions?.[module as keyof UserPermissions];
+      if (perm) return perm !== 'none';
+
+      // Fallback for legacy users without specific permissions
+      const role = (user.role || '').toLowerCase();
+      
+      if (module === 'dashboard') return true; // Default everyone sees dashboard unless explicit 'none'
+      if (module === 'orders') return role !== 'designer' && role !== 'designer online'; // Default logic
+      if (module === 'designer') return role === 'designer' || role === 'leader';
+      if (module === 'designerOnline') return role === 'designer online' || role === 'leader';
+      if (module === 'customers') return true; // Default visible
+      if (module === 'finance') return role === 'leader' || role === 'admin'; // Default restricted
+      if (module === 'system') return role === 'admin';
+      
+      return false;
+  };
+
+  // Check permissions for specific tabs
+  const showDashboard = hasAccess('dashboard');
+  const showOrders = hasAccess('orders');
+  const showDesigner = hasAccess('designer');
+  const showDesignerOnline = hasAccess('designerOnline');
+  const showCustomers = hasAccess('customers');
+  const showFinance = hasAccess('finance');
+  const showSystem = hasAccess('system');
+  const showUsers = hasAccess('users'); // Only Admin
 
   let menuGroups = [
     {
       title: 'NGHIỆP VỤ',
       items: [
-        { id: 'dashboard', label: 'Trang chủ', icon: <LayoutDashboard size={20} /> },
-        { id: 'orders', label: 'Quản lý Đơn hàng', icon: <ShoppingCart size={20} /> },
-        { id: 'designer_online', label: 'Designer Online', icon: <Palette size={20} /> },
-        { id: 'designer', label: 'Designer', icon: <PenTool size={20} /> },
-        { id: 'customers', label: 'Khách hàng', icon: <Users size={20} /> },
+        { id: 'dashboard', label: 'Trang chủ', icon: <LayoutDashboard size={20} />, visible: showDashboard },
+        { id: 'orders', label: 'Quản lý Đơn hàng', icon: <ShoppingCart size={20} />, visible: showOrders },
+        { id: 'designer_online', label: 'Designer Online', icon: <Palette size={20} />, visible: showDesignerOnline },
+        { id: 'designer', label: 'Designer', icon: <PenTool size={20} />, visible: showDesigner },
+        { id: 'customers', label: 'Khách hàng', icon: <Users size={20} />, visible: showCustomers },
       ]
     },
     {
       title: 'TÀI CHÍNH',
       items: [
-        { id: 'finance', label: 'Sổ Quỹ (Thu - Chi)', icon: <Wallet size={20} /> },
-        { id: 'reports', label: 'Báo Cáo Lãi Lỗ', icon: <FileText size={20} /> },
+        { id: 'finance', label: 'Sổ Quỹ (Thu - Chi)', icon: <Wallet size={20} />, visible: showFinance },
+        { id: 'reports', label: 'Báo Cáo Lãi Lỗ', icon: <FileText size={20} />, visible: showFinance },
       ]
     },
     {
       title: 'HỆ THỐNG',
       items: [
-        ...(user.role === 'admin' ? [
-          { id: 'users', label: 'Quản lý Tài khoản', icon: <UserCog size={20} /> }
-        ] : []),
-        { id: 'settings', label: 'Cấu hình Google Sheet', icon: <Settings size={20} /> },
+        { id: 'users', label: 'Quản lý Tài khoản', icon: <UserCog size={20} />, visible: showUsers },
+        { id: 'settings', label: 'Cấu hình Google Sheet', icon: <Settings size={20} />, visible: showSystem },
       ]
     }
   ];
-
-  // Nếu là Designer Online, chỉ hiển thị đúng 1 menu
-  if (isDesignerOnline) {
-    menuGroups = [{
-      title: 'NGHIỆP VỤ',
-      items: [
-        { id: 'designer_online', label: 'Designer Online', icon: <Palette size={20} /> }
-      ]
-    }];
-  }
-
-  // Nếu là Designer thường, chỉ hiển thị đúng 1 menu mới tạo
-  if (isDesigner) {
-    menuGroups = [{
-      title: 'NGHIỆP VỤ',
-      items: [
-        { id: 'designer', label: 'Designer', icon: <PenTool size={20} /> }
-      ]
-    }];
-  }
 
   return (
     <>
@@ -132,46 +141,51 @@ const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Menu Items */}
         <div className="flex-1 overflow-y-auto py-4 custom-scrollbar overflow-x-hidden">
-          {menuGroups.map((group, idx) => (
-            <div key={idx} className="mb-6">
-              {!isDesktopCollapsed ? (
-                <h3 className="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 transition-opacity duration-300 whitespace-nowrap">
-                  {group.title}
-                </h3>
-              ) : (
-                <div className="h-px bg-gray-700 mx-4 mb-4 mt-2"></div>
-              )}
-              <ul>
-                {group.items.map((item) => (
-                  <li key={item.id} className="relative group">
-                    <button
-                      onClick={() => {
-                        setCurrentTab(item.id);
-                        if (window.innerWidth < 1024) setIsOpen(false);
-                      }}
-                      className={`
-                        w-full flex items-center py-3 text-sm font-medium transition-colors border-l-4
-                        ${isDesktopCollapsed ? 'justify-center px-0' : 'px-4'}
-                        ${currentTab === item.id 
-                          ? 'bg-slate-700 border-orange-500 text-white' 
-                          : 'border-transparent text-gray-400 hover:bg-slate-800 hover:text-white'}
-                      `}
-                      title={isDesktopCollapsed ? item.label : ''}
-                    >
-                      <span className={`${isDesktopCollapsed ? '' : 'mr-3'}`}>{item.icon}</span>
-                      {!isDesktopCollapsed && <span className="whitespace-nowrap">{item.label}</span>}
-                    </button>
-                    {/* Tooltip for collapsed state */}
-                    {isDesktopCollapsed && (
-                      <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity shadow-lg border border-gray-700">
-                        {item.label}
-                      </div>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+          {menuGroups.map((group, idx) => {
+            const visibleItems = group.items.filter(i => i.visible !== false);
+            if (visibleItems.length === 0) return null;
+
+            return (
+              <div key={idx} className="mb-6">
+                {!isDesktopCollapsed ? (
+                  <h3 className="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 transition-opacity duration-300 whitespace-nowrap">
+                    {group.title}
+                  </h3>
+                ) : (
+                  <div className="h-px bg-gray-700 mx-4 mb-4 mt-2"></div>
+                )}
+                <ul>
+                  {visibleItems.map((item) => (
+                    <li key={item.id} className="relative group">
+                      <button
+                        onClick={() => {
+                          setCurrentTab(item.id);
+                          if (window.innerWidth < 1024) setIsOpen(false);
+                        }}
+                        className={`
+                          w-full flex items-center py-3 text-sm font-medium transition-colors border-l-4
+                          ${isDesktopCollapsed ? 'justify-center px-0' : 'px-4'}
+                          ${currentTab === item.id 
+                            ? 'bg-slate-700 border-orange-500 text-white' 
+                            : 'border-transparent text-gray-400 hover:bg-slate-800 hover:text-white'}
+                        `}
+                        title={isDesktopCollapsed ? item.label : ''}
+                      >
+                        <span className={`${isDesktopCollapsed ? '' : 'mr-3'}`}>{item.icon}</span>
+                        {!isDesktopCollapsed && <span className="whitespace-nowrap">{item.label}</span>}
+                      </button>
+                      {/* Tooltip for collapsed state */}
+                      {isDesktopCollapsed && (
+                        <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity shadow-lg border border-gray-700">
+                          {item.label}
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
         </div>
 
         {/* User Profile / Footer */}

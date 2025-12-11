@@ -10,9 +10,6 @@ const getCurrentLocalMonth = () => {
     return `${year}-${month}`;
 };
 
-const ROLE_HIERARCHY: Record<string, number> = { 'admin': 1, 'leader': 2, 'idea': 3, 'support': 4, 'designer': 5, 'designer online': 5 };
-const getRoleLevel = (role: string): number => { return ROLE_HIERARCHY[(role || '').toLowerCase().trim()] || 99; };
-
 interface DesignerListProps { user: User; onProcessStart?: () => void; onProcessEnd?: () => void; }
 
 export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart, onProcessEnd }) => {
@@ -46,8 +43,8 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
   const [skuMessage, setSkuMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   
   const currentYear = new Date().getFullYear();
-  const yearsList = Array.from({ length: 11 }, (_, i) => currentYear - 5 + i);
   const monthsList = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
+  const yearsList = Array.from({ length: 5 }, (_, i) => String(currentYear - 2 + i));
 
   const getStoreName = (id: string) => { const store = stores.find(s => String(s.id) === String(id) || s.name === id); return store ? store.name : id; };
 
@@ -73,16 +70,55 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
           setDataError({ message: `Lỗi Dữ Liệu: Bạn chọn tháng ${monthToFetch} nhưng hệ thống trả về dữ liệu tháng ${actualMonth}.`, detail: `Nguyên nhân: File ID trong sheet "FileIndex" sai.`, fileId: orderResult.fileId });
           setCurrentFileId(orderResult.fileId);
       }
+      
+      const currentUsername = (user.username || '').toLowerCase().trim();
       const userRole = (user.role || '').toLowerCase().trim();
-      const currentUsername = user.username.toLowerCase().trim();
-      const filteredOrders = ordersInMonth.filter(o => {
-          const actionRoleRaw = (o.actionRole || '').toLowerCase().trim();
-          if (actionRoleRaw === 'designer') return true;
-          const assignedUser = usersData.find((u: User) => u.username.toLowerCase() === actionRoleRaw);
-          if (assignedUser && (assignedUser.role || '').toLowerCase() === 'designer') return true;
-          if (userRole === 'designer' && actionRoleRaw === currentUsername) return true;
-          return false;
-      });
+      
+      // Determine permissions
+      let filteredOrders = ordersInMonth;
+      if (userRole !== 'admin') {
+          const scope = user.permissions?.designer;
+          
+          if (!scope) {
+              // LEGACY Fallback: Filter logic based on role
+              filteredOrders = ordersInMonth.filter(o => {
+                  const actionRoleRaw = (o.actionRole || '').toLowerCase().trim();
+                  if (actionRoleRaw === 'designer') return true;
+                  // If assigned user is a designer role, check visibility
+                  const assignedUser = usersData.find((u: User) => u.username.toLowerCase() === actionRoleRaw);
+                  if (assignedUser && (assignedUser.role || '').toLowerCase() === 'designer') return true;
+                  // If current user is designer, only show own
+                  if (userRole === 'designer' && actionRoleRaw === currentUsername) return true;
+                  // Leaders see all
+                  if (userRole.includes('leader')) return true;
+                  return false;
+              });
+          } else if (scope === 'none') {
+              filteredOrders = [];
+          } else if (scope === 'own') {
+              // View Own: Filter by actionRole match
+              filteredOrders = ordersInMonth.filter(o => (o.actionRole || '').toLowerCase().trim() === currentUsername);
+          } else {
+              // scope === 'all'
+              filteredOrders = ordersInMonth.filter(o => {
+                  const actionRoleRaw = (o.actionRole || '').toLowerCase().trim();
+                  if (actionRoleRaw === 'designer') return true;
+                  const assignedUser = usersData.find((u: User) => u.username.toLowerCase() === actionRoleRaw);
+                  if (assignedUser && (assignedUser.role || '').toLowerCase() === 'designer') return true;
+                  return false;
+              });
+          }
+      } else {
+          // Admin View: Similar to "All" but broad
+           filteredOrders = ordersInMonth.filter(o => {
+              const actionRoleRaw = (o.actionRole || '').toLowerCase().trim();
+              if (actionRoleRaw === 'designer') return true;
+              const assignedUser = usersData.find((u: User) => u.username.toLowerCase() === actionRoleRaw);
+              if (assignedUser && (assignedUser.role || '').toLowerCase() === 'designer') return true;
+              return false;
+          });
+      }
+
       setOrders(filteredOrders);
     } catch (e) { if (selectedMonthRef.current === monthToFetch) console.error(e); } finally { if (selectedMonthRef.current === monthToFetch) setLoading(false); }
   };
@@ -139,7 +175,7 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
           ))} 
         </div> 
         <div className="p-2 border-t border-gray-100 flex justify-between bg-gray-50 rounded-b-lg"> 
-          <button onClick={() => handleSelectAllFilter(columnKey, uniqueValues as string[])} className="text-xs text-blue-600 font-bold px-2 py-1 hover:bg-blue-50 rounded">Chọn tất cả</button> 
+          <button onClick={() => handleSelectAllFilter(columnKey, uniqueValues)} className="text-xs text-blue-600 font-bold px-2 py-1 hover:bg-blue-50 rounded">Chọn tất cả</button> 
           <button onClick={() => handleClearFilter(columnKey)} className="text-xs text-red-500 font-bold px-2 py-1 hover:bg-red-50 rounded">Bỏ chọn</button> 
         </div> 
       </div> 
@@ -154,11 +190,29 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
   const handleDesignerToggle = async (order: Order) => { if (!currentFileId) return; if (updatingIds.has(order.id)) return; const newValue = !order.isDesignDone; if (onProcessStart) onProcessStart(); setUpdatingIds(prev => new Set(prev).add(order.id)); setOrders(prev => prev.map(o => o.id === order.id ? { ...o, isDesignDone: newValue } : o)); try { await sheetService.updateDesignerStatus(currentFileId, order, "Designer", newValue); } catch (error) { setOrders(prev => prev.map(o => o.id === order.id ? { ...o, isDesignDone: !newValue } : o)); alert('Lỗi cập nhật trạng thái'); } finally { setUpdatingIds(prev => { const newSet = new Set(prev); newSet.delete(order.id); return newSet; }); if (onProcessEnd) onProcessEnd(); } };
 
   const [currentYearStr, currentMonthStr] = selectedMonth.split('-');
-  const userLevel = getRoleLevel(user.role);
-  const canManageSku = userLevel === 1 || user.permissions?.canManageSku === true; 
-  const canCheckDesign = userLevel <= 5; 
+  const canManageSku = user.role === 'admin' || user.permissions?.canManageSku === true; 
+  // Determine if user can check items. Admin/Leader/Support can. 
+  // Designers can check their OWN.
+  // We can use the viewScope for this too, or stick to role + simple ownership logic for Action.
+  const canCheckDesign = user.role === 'admin' || user.role === 'leader' || user.role === 'support' || (user.permissions?.designer !== 'none');
 
-  const filteredOrders = orders.filter(o => { const matchesSearch = ((o.id ? String(o.id).toLowerCase() : '').includes(searchTerm.toLowerCase()) || (o.sku ? String(o.sku).toLowerCase() : '').includes(searchTerm.toLowerCase()) || (o.storeId ? getStoreName(o.storeId).toLowerCase() : '').includes(searchTerm.toLowerCase()) || (o.handler ? String(o.handler).toLowerCase() : '').includes(searchTerm.toLowerCase()) || (o.actionRole ? String(o.actionRole).toLowerCase() : '').includes(searchTerm.toLowerCase())); if (!matchesSearch) return false; for (const [key, val] of Object.entries(columnFilters)) { const selectedValues = val as string[]; if (!selectedValues || selectedValues.length === 0) continue; let cellValue = ''; if (key === 'storeName') cellValue = getStoreName(o.storeId); else if (key === 'category') cellValue = skuMap[o.sku.toLowerCase().trim()] || '(Chưa phân loại)'; else if (key === 'isDesignDone') cellValue = o.isDesignDone ? "Đã xong" : "Chưa xong"; else cellValue = String(o[key as keyof Order] || ''); if (!selectedValues.includes(cellValue)) return false; } return true; });
+  const filteredOrders = orders.filter(o => { 
+    const matchesSearch = ((o.id ? String(o.id).toLowerCase() : '').includes(searchTerm.toLowerCase()) || (o.sku ? String(o.sku).toLowerCase() : '').includes(searchTerm.toLowerCase()) || (o.storeId ? getStoreName(o.storeId).toLowerCase() : '').includes(searchTerm.toLowerCase()) || (o.handler ? String(o.handler).toLowerCase() : '').includes(searchTerm.toLowerCase()) || (o.actionRole ? String(o.actionRole).toLowerCase() : '').includes(searchTerm.toLowerCase())); 
+    if (!matchesSearch) return false; 
+    
+    // Explicitly iterate over object entries without casting in the loop head
+    for (const [key, val] of Object.entries(columnFilters)) { 
+        const selectedValues = val as string[];
+        if (!selectedValues || selectedValues.length === 0) continue; 
+        let cellValue = ''; 
+        if (key === 'storeName') cellValue = getStoreName(o.storeId); 
+        else if (key === 'category') cellValue = skuMap[o.sku.toLowerCase().trim()] || '(Chưa phân loại)'; 
+        else if (key === 'isDesignDone') cellValue = o.isDesignDone ? "Đã xong" : "Chưa xong"; 
+        else cellValue = String(o[key as keyof Order] || ''); 
+        if (!selectedValues.includes(cellValue)) return false; 
+    } 
+    return true; 
+  });
   const sortedOrders = filteredOrders.map((item, index) => ({ item, index })).sort((a, b) => { if (sortConfig.key === 'date') { const dateA = new Date(a.item.date || '').getTime(); const dateB = new Date(b.item.date || '').getTime(); const validA = !isNaN(dateA); const validB = !isNaN(dateB); if (!validA && !validB) return 0; if (!validA) return 1; if (!validB) return -1; if (dateA !== dateB) { return sortConfig.direction === 'asc' ? dateA - dateB : dateB - dateA; } return a.index - b.index; } const valA = String((a.item as any)[sortConfig.key] || ''); const valB = String((b.item as any)[sortConfig.key] || ''); if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1; if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1; return 0; }).map(x => x.item);
   const PRICE_CATEGORIES = ['Loại 1', 'Loại 2', 'Loại 3', 'Loại 4'];
 
@@ -168,7 +222,7 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
   const handleBatchAction = async (actionType: 'design_done' | 'design_pending') => {
       if (!currentFileId) return;
       if (selectedOrderIds.size === 0) return;
-      const idsToUpdate = Array.from(selectedOrderIds);
+      const idsToUpdate = Array.from(selectedOrderIds) as string[];
       const newValue = actionType === 'design_done';
       setIsBatchProcessing(true);
       if (onProcessStart) onProcessStart();

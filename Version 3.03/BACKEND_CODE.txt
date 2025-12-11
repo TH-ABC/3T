@@ -69,11 +69,11 @@ function handleRequest(e) {
     else if (action === 'fulfillOrder') {
       result = handleFulfillOrder(postData);
     }
-    // --- BATCH UPDATES (NEW) ---
+    // --- BATCH UPDATES ---
     else if (action === 'batchUpdateOrder') {
       result = handleBatchUpdateOrder(postData);
     }
-    // --- FULFILLMENT SYNC (NEW) ---
+    // --- FULFILLMENT SYNC ---
     else if (action === 'syncFulfillment') {
       result = handleSyncFulfillment(postData.fileId);
     }
@@ -137,7 +137,7 @@ function handleRequest(e) {
 // (Chứa toàn bộ logic nghiệp vụ)
 // ============================================================================
 
-// --- SYNC FULFILLMENT LOGIC (UPDATED FOR CORRECT COLUMN) ---
+// --- SYNC FULFILLMENT LOGIC ---
 function handleSyncFulfillment(fileId) {
     if (!fileId) return { success: false, error: "Missing File ID" };
     
@@ -150,13 +150,12 @@ function handleSyncFulfillment(fileId) {
         
         // 1. Get Exported Order IDs
         var exportData = exportSheet.getDataRange().getValues();
-        if (exportData.length <= 1) return { success: true, updatedCount: 0 }; // Empty export sheet
+        if (exportData.length <= 1) return { success: true, updatedCount: 0 }; 
         
         // Assuming Order_ID is Column A (Index 0) in Fulfillment_Export
         var exportedIds = {};
         for(var i=1; i<exportData.length; i++) {
             var rawId = String(exportData[i][0]);
-            // Only take number data to avoid missing orders due to formatting
             var oid = rawId.replace(/\D/g, ''); 
             if(oid) exportedIds[oid] = true;
         }
@@ -167,7 +166,7 @@ function handleSyncFulfillment(fileId) {
         
         // Find columns
         var idIdx = -1;
-        var ffIdx = -1; // isFulfilled
+        var ffIdx = -1; 
         
         for(var i=0; i<headers.length; i++) {
             var h = String(headers[i]).toLowerCase().trim();
@@ -182,11 +181,9 @@ function handleSyncFulfillment(fileId) {
         var rangesToUpdate = [];
         for(var r=1; r<mainData.length; r++) {
             var rawRowId = String(mainData[r][idIdx]);
-            // Only take number data for comparison
             var rowId = rawRowId.replace(/\D/g, '');
             var currentStatus = mainData[r][ffIdx];
             
-            // If ID exists in export AND current status is NOT TRUE
             if(rowId && exportedIds[rowId] && (currentStatus !== true && currentStatus !== "TRUE")) {
                 rangesToUpdate.push(mainSheet.getRange(r+1, ffIdx+1).getA1Notation());
             }
@@ -206,11 +203,10 @@ function handleSyncFulfillment(fileId) {
 // --- BATCH LOGIC ---
 
 function handleBatchUpdateOrder(data) {
-    // Used for standard fields like 'isChecked' (Pay)
     var fileId = data.fileId;
-    var orderIds = data.orderIds; // Array of IDs
-    var field = data.field;       // e.g., 'isChecked'
-    var value = data.value;       // "TRUE" or "FALSE"
+    var orderIds = data.orderIds; 
+    var field = data.field;       
+    var value = data.value;       
 
     if (!fileId || !orderIds || orderIds.length === 0) return { success: false, error: "Missing data" };
 
@@ -220,9 +216,8 @@ function handleBatchUpdateOrder(data) {
     
     // Find column index
     var colIndex = -1;
-    var map = { 'isChecked': 12, 'isDesignDone': 13, 'isFulfilled': 27 }; // Fixed map
+    var map = { 'isChecked': 12, 'isDesignDone': 13, 'isFulfilled': 27 };
     
-    // Try to find dynamically
     var headers = dataValues[0];
     for (var i = 0; i < headers.length; i++) {
         var h = String(headers[i]).toLowerCase().trim();
@@ -233,15 +228,13 @@ function handleBatchUpdateOrder(data) {
     if (colIndex === -1 && map[field] !== undefined) colIndex = map[field];
     if (colIndex === -1) return { success: false, error: "Column not found" };
 
-    // Find Row Indices (A1 Notation)
     var rangesToUpdate = [];
-    var idColIndex = 1; // Default ID col is B
+    var idColIndex = 1; 
     for(var i=0; i<headers.length; i++) {
         var h = String(headers[i]).toLowerCase().trim();
         if(h==='orderid' || h==='id') { idColIndex = i; break; }
     }
 
-    // Optimization: Create a Set for faster lookup
     var idSet = {};
     for(var i=0; i<orderIds.length; i++) idSet[String(orderIds[i])] = true;
 
@@ -260,7 +253,6 @@ function handleBatchUpdateOrder(data) {
 }
 
 function handleBatchUpdateDesigner(data) {
-    // Update Design Status across Main, Designer, and Designer Online sheets
     var fileId = data.fileId;
     var orderIds = data.orderIds;
     var isDone = data.value === "TRUE" || data.value === true;
@@ -279,7 +271,6 @@ function handleBatchUpdateDesigner(data) {
         var sData = sheet.getDataRange().getValues();
         if (sData.length < 2) return;
 
-        // Find ID col and Design col
         var idIdx = -1;
         var designIdx = -1;
         var headers = sData[0];
@@ -290,12 +281,11 @@ function handleBatchUpdateDesigner(data) {
             if(h==='design done' || h==='design') designIdx = i;
         }
 
-        // Fallbacks
-        if(idIdx === -1 && sheet.getName() !== "Designer" && sheet.getName() !== "Designer Online") idIdx = 1; // Main sheet default B
-        if(idIdx === -1 && (sheet.getName() === "Designer" || sheet.getName() === "Designer Online")) idIdx = 2; // Sub sheet default C
+        if(idIdx === -1 && sheet.getName() !== "Designer" && sheet.getName() !== "Designer Online") idIdx = 1;
+        if(idIdx === -1 && (sheet.getName() === "Designer" || sheet.getName() === "Designer Online")) idIdx = 2;
         
-        if(designIdx === -1 && sheet.getName() !== "Designer" && sheet.getName() !== "Designer Online") designIdx = 13; // Main sheet default N
-        if(designIdx === -1 && (sheet.getName() === "Designer" || sheet.getName() === "Designer Online")) designIdx = 9; // Sub sheet default J
+        if(designIdx === -1 && sheet.getName() !== "Designer" && sheet.getName() !== "Designer Online") designIdx = 13;
+        if(designIdx === -1 && (sheet.getName() === "Designer" || sheet.getName() === "Designer Online")) designIdx = 9;
 
         if(idIdx > -1 && designIdx > -1) {
             var ranges = [];
@@ -313,8 +303,6 @@ function handleBatchUpdateDesigner(data) {
 
     return { success: true };
 }
-
-// --- SINGLE UPDATE LOGIC (EXISTING) ---
 
 function updateDesignerStatus(e) {
   try {
@@ -392,34 +380,29 @@ function getOrdersFromMonthFile(month) {
     if (data.length <= 1) return { orders: [], fileId: fileId };
     data.shift(); 
     
-    // MAPPING DỮ LIỆU CHÍNH XÁC (Đã chỉnh sửa theo Screenshot)
-    // 0: Date, 1: ID, 2: Store, 3: DonVi, 4: SKU, 5: Qty, 6: Track, 7: Link, 8: Status, 9: Note, 10: Handler, 11: ActionRole
-    // 12: Checked, 13: Design
-    // 14: F.Name (Cột O trong ảnh), 15: L.Name, 16: Addr1, 17: Addr2, 18: City, 19: State, 20: Zip, 21: Country, 22: Phone
-    // 23: Product Name (X), 24: Item SKU (Y), 25: URL Mockup (Z), 26: Mockup Type (AA)
-    // 27: Is Fulfilled (AB), 28: URL Artwork Front (AC), 29: URL Artwork Back (AD)
-
+    // MAPPING DỮ LIỆU
+    // ... (Giữ nguyên logic mapping như cũ) ...
     const orders = data.map(row => ({
       date: formatDate(row[0]), id: row[1], storeId: row[2], type: row[3], sku: row[4], quantity: row[5], tracking: row[6], link: row[7], status: row[8], note: row[9],
       handler: row[10] || "", actionRole: row[11] || "", 
       isChecked: row[12] === "TRUE" || row[12] === true, 
       isDesignDone: row[13] === "TRUE" || row[13] === true,
-      shippingFirstName: row[14] || "", // O
-      shippingLastName: row[15] || "", // P
-      shippingAddress1: row[16] || "", // Q
-      shippingAddress2: row[17] || "", // R
-      shippingCity: row[18] || "", // S
-      shippingProvince: row[19] || "", // T
-      shippingZip: row[20] || "", // U
-      shippingCountry: row[21] || "", // V
-      shippingPhone: row[22] || "", // W
-      productName: row[23] || "", // X
-      itemSku: row[24] || "", // Y
-      urlMockup: row[25] || "", // Z
-      mockupType: row[26] || "", // AA
-      isFulfilled: row[27] === "TRUE" || row[27] === true, // AB
-      urlArtworkFront: row[28] || "", // AC
-      urlArtworkBack: row[29] || ""  // AD
+      shippingFirstName: row[14] || "", 
+      shippingLastName: row[15] || "", 
+      shippingAddress1: row[16] || "", 
+      shippingAddress2: row[17] || "", 
+      shippingCity: row[18] || "", 
+      shippingProvince: row[19] || "", 
+      shippingZip: row[20] || "", 
+      shippingCountry: row[21] || "", 
+      shippingPhone: row[22] || "", 
+      productName: row[23] || "", 
+      itemSku: row[24] || "", 
+      urlMockup: row[25] || "", 
+      mockupType: row[26] || "", 
+      isFulfilled: row[27] === "TRUE" || row[27] === true, 
+      urlArtworkFront: row[28] || "", 
+      urlArtworkBack: row[29] || ""  
     }));
     return { orders: orders, fileId: fileId };
   } catch (e) { return { orders: [], fileId: null, error: "File deleted or inaccessible" }; }
@@ -478,7 +461,6 @@ function createNewMonthFile(month) {
   const newSS = SpreadsheetApp.create(fileName);
   const fileId = newSS.getId();
   const sheet = newSS.getSheets()[0];
-  // Removed "Ship Name" to match current structure
   const headers = [
     'Date', 'OrderID', 'Store', 'DonVi', 'SKU', 'Quantity', 'Tracking', 'Link', 'Status', 'Note', 'Handler', 'ActionRole', 
     'Checked', 'Design Done', 
@@ -654,6 +636,8 @@ function getStoreHistory(id) {
     }));
 }
 
+// --- USER MANAGEMENT & AUTH ---
+
 function getUsers() {
     const s = getSheet(SHEET_USERS);
     const d = s.getDataRange().getValues();
@@ -685,6 +669,8 @@ function createUser(u,p,f,r,e,ph,perms){
     const s=getSheet(SHEET_USERS);
     const d=s.getDataRange().getValues();
     for(let i=1;i<d.length;i++) if(d[i][0]==u) return {success:false, error:'Username Exists'};
+    
+    // Explicitly handle permissions stringification
     const permString = perms ? JSON.stringify(perms) : '{}';
     s.appendRow([u,p,f,r,e||'',ph||'','Active', permString]);
     return {success:true};
@@ -697,6 +683,7 @@ function updateUser(u,r,st,perms){
         if(d[i][0]==u){
             if(r) s.getRange(i+1,4).setValue(r);
             if(st) s.getRange(i+1,7).setValue(st);
+            // Update permissions in Column H (8th column)
             if(perms) s.getRange(i+1,8).setValue(JSON.stringify(perms));
             return {success:true};
         }
@@ -729,6 +716,7 @@ function getSheet(n) {
     if(!s){
         s = ss.insertSheet(n);
         if(n === SHEET_STORES) s.appendRow(['ID','Name','URL','Region','Status','Listing','Sale']);
+        // Ensure 'Permissions' column is added for new installs
         else if(n === SHEET_USERS) s.appendRow(['Username','Password','FullName','Role','Email','Phone','Status','Permissions']);
         else if(n === SHEET_UNITS) s.appendRow(['UnitName']);
         else if(n === SHEET_ROLES) s.appendRow(['RoleName','Level']);

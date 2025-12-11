@@ -10,7 +10,7 @@ import StoreDetail from './components/StoreDetail';
 import { DesignerOnlineList } from './components/DesignerOnlineList';
 import { DesignerList } from './components/DesignerList';
 import ChangePasswordModal from './components/ChangePasswordModal';
-import { User, Store } from './types';
+import { User, Store, UserPermissions } from './types';
 
 function App() {
   // Khởi tạo user từ localStorage nếu có
@@ -38,10 +38,27 @@ function App() {
   useEffect(() => {
     if (user) {
       const role = (user.role || '').toLowerCase();
-      if (role === 'designer online') {
-        setCurrentTab('designer_online');
-      } else if (role === 'designer') {
-        setCurrentTab('designer');
+      // Only redirect if no specific permissions set AND role is restricted
+      // If permissions exist, let Sidebar handle visibility and user choose
+      const hasSpecificPermissions = user.permissions && Object.keys(user.permissions).length > 0;
+      
+      if (!hasSpecificPermissions) {
+          if (role === 'designer online') {
+            setCurrentTab('designer_online');
+          } else if (role === 'designer') {
+            setCurrentTab('designer');
+          }
+      } else {
+          // If has permission but current tab is dashboard (default), verify if they can access it
+          // Check if dashboard is forbidden
+          if (user.permissions?.dashboard === 'none') {
+              // Find first available tab
+              if(user.permissions?.orders !== 'none') setCurrentTab('orders');
+              else if(user.permissions?.designerOnline !== 'none') setCurrentTab('designer_online');
+              else if(user.permissions?.designer !== 'none') setCurrentTab('designer');
+              else if(user.permissions?.customers !== 'none') setCurrentTab('customers');
+              else if(user.permissions?.finance !== 'none') setCurrentTab('finance');
+          }
       }
     }
   }, [user]);
@@ -69,15 +86,8 @@ function App() {
     localStorage.setItem('oms_user_session', JSON.stringify(userData));
     setUser(userData);
     
-    // Auto redirect based on role
-    const role = (userData.role || '').toLowerCase();
-    if (role === 'designer online') {
-        setCurrentTab('designer_online');
-    } else if (role === 'designer') {
-        setCurrentTab('designer');
-    } else {
-        setCurrentTab('dashboard');
-    }
+    // Auto redirect logic handled by useEffect above
+    setCurrentTab('dashboard');
   };
 
   // Hàm xử lý đăng xuất
@@ -111,40 +121,86 @@ function App() {
   const handleProcessStart = () => setPendingUpdates(prev => prev + 1);
   const handleProcessEnd = () => setPendingUpdates(prev => Math.max(0, prev - 1));
 
+  // Determine Access based on Permissions
+  const canAccess = (module: keyof UserPermissions | 'users') => {
+      if (user.role === 'admin') return true;
+      if (module === 'users') return false; // Admin only
+
+      const perm = user.permissions?.[module as keyof UserPermissions];
+      if (perm) return perm !== 'none';
+      
+      // Fallback
+      const role = (user.role || '').toLowerCase();
+      if (module === 'dashboard') return true;
+      if (module === 'orders') return role !== 'designer' && role !== 'designer online';
+      if (module === 'designer') return role === 'designer' || role === 'leader';
+      if (module === 'designerOnline') return role === 'designer online' || role === 'leader';
+      if (module === 'customers') return true;
+      if (module === 'finance') return role === 'leader';
+      if (module === 'system') return role === 'admin'; // Fallback for settings
+      return false;
+  };
+
   const renderContent = () => {
     switch (currentTab) {
       case 'dashboard':
-        if ((user.role || '').toLowerCase() === 'designer online' || (user.role || '').toLowerCase() === 'designer') return null; // Security fallback
+        if (!canAccess('dashboard')) return <div className="p-6">Bạn không có quyền truy cập Trang chủ.</div>;
         if (selectedStore) {
             return <StoreDetail store={selectedStore} onBack={() => setSelectedStore(null)} />;
         }
         return <Dashboard user={user} onSelectStore={setSelectedStore} />;
       case 'orders':
-        if ((user.role || '').toLowerCase() === 'designer online' || (user.role || '').toLowerCase() === 'designer') return null; // Security fallback
+        if (!canAccess('orders')) return <div className="p-6">Bạn không có quyền truy cập.</div>;
         return <OrderList 
             user={user} 
             onProcessStart={handleProcessStart} 
             onProcessEnd={handleProcessEnd} 
         />;
       case 'designer_online':
+        if (!canAccess('designerOnline')) return <div className="p-6">Bạn không có quyền truy cập.</div>;
         return <DesignerOnlineList 
             user={user}
             onProcessStart={handleProcessStart}
             onProcessEnd={handleProcessEnd}
         />;
       case 'designer':
+        if (!canAccess('designer')) return <div className="p-6">Bạn không có quyền truy cập.</div>;
         return <DesignerList 
             user={user}
             onProcessStart={handleProcessStart}
             onProcessEnd={handleProcessEnd}
         />;
+      case 'customers':
+        if (!canAccess('customers')) return <div className="p-6">Bạn không có quyền truy cập.</div>;
+        return (
+          <div className="flex flex-col items-center justify-center h-full text-gray-400">
+            <p className="text-lg font-medium">Quản lý Khách Hàng</p>
+            <p className="text-sm">Chức năng đang phát triển.</p>
+          </div>
+        );
+      case 'finance':
+      case 'reports':
+        if (!canAccess('finance')) return <div className="p-6">Bạn không có quyền truy cập Tài chính.</div>;
+        return (
+          <div className="flex flex-col items-center justify-center h-full text-gray-400">
+            <p className="text-lg font-medium">Tài Chính & Báo Cáo</p>
+            <p className="text-sm">Chức năng đang phát triển.</p>
+          </div>
+        );
+      case 'settings':
+        if (!canAccess('system')) return <div className="p-6">Bạn không có quyền truy cập Cấu hình.</div>;
+        return (
+          <div className="flex flex-col items-center justify-center h-full text-gray-400">
+            <p className="text-lg font-medium">Cấu hình Hệ thống</p>
+            <p className="text-sm">Chức năng đang phát triển.</p>
+          </div>
+        );
       case 'users':
         return user.role === 'admin' ? <UserManagement /> : <div className="p-6">Bạn không có quyền truy cập.</div>;
       default:
         return (
           <div className="flex flex-col items-center justify-center h-full text-gray-400">
-            <p className="text-lg font-medium">Chức năng đang phát triển</p>
-            <p className="text-sm">Vui lòng quay lại sau.</p>
+            <p className="text-lg font-medium">404 - Không tìm thấy trang</p>
           </div>
         );
     }

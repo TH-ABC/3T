@@ -1,5 +1,4 @@
 
-
 export enum OrderStatus {
   PENDING = 'Pending',
   FULFILLED = 'Fulfilled',
@@ -92,6 +91,19 @@ export interface DailyRevenue {
 }
 
 // --- AUTH TYPES ---
+export type ViewScope = 'all' | 'own' | 'none';
+
+export interface UserPermissions {
+  canManageSku?: boolean;
+  dashboard?: ViewScope;      // New
+  orders?: ViewScope;
+  designer?: ViewScope;
+  designerOnline?: ViewScope;
+  customers?: ViewScope;      // New
+  finance?: ViewScope;        // New (Sổ quỹ + Báo cáo)
+  system?: ViewScope;         // New (Cấu hình hệ thống)
+}
+
 export interface User {
   username: string;
   fullName: string;
@@ -99,9 +111,7 @@ export interface User {
   email?: string;
   phone?: string;
   status?: 'Active' | 'Inactive' | string;
-  permissions?: {
-    canManageSku?: boolean;
-  };
+  permissions?: UserPermissions;
 }
 
 export interface Role {

@@ -62,20 +62,6 @@ const formatDateOnly = (dateStr: string) => {
     } catch (e) { return dateStr; }
 };
 
-const ROLE_HIERARCHY: Record<string, number> = {
-    'admin': 1,
-    'leader': 2,
-    'idea': 3,
-    'support': 4,
-    'designer': 5,
-    'designer online': 5
-};
-
-const getRoleLevel = (role: string): number => {
-    return ROLE_HIERARCHY[(role || '').toLowerCase().trim()] || 99;
-};
-
-// --- HELPER FOR STORE COLORS ---
 const getStoreBadgeStyle = (storeName: string) => {
     const colors = [
         'bg-blue-100 text-blue-800 border-blue-200',
@@ -95,7 +81,6 @@ const getStoreBadgeStyle = (storeName: string) => {
     return colors[index];
 };
 
-// --- HELPER FOR ROLE STYLES ---
 const getRoleBadgeStyle = (role: string) => {
     const r = (role || '').toLowerCase().trim();
     if (r === 'admin') {
@@ -184,7 +169,6 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
   };
 
   const currentYear = new Date().getFullYear();
-  const yearsList = Array.from({ length: 11 }, (_, i) => currentYear - 5 + i);
   const monthsList = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
 
   useEffect(() => {
@@ -282,12 +266,30 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
       const orderResult = await sheetService.getOrders(monthToFetch);
       if (selectedMonthRef.current !== monthToFetch) return;
       const rawOrders = orderResult.orders || [];
-      const validOrders = rawOrders.filter(o => o.id && String(o.id).trim() !== '' && o.date && String(o.date).trim().startsWith(monthToFetch));
-      if (rawOrders.length > 0 && validOrders.length === 0) {
-          const sampleDate = rawOrders[0].date;
-          const actualMonth = sampleDate ? sampleDate.substring(0, 7) : 'Không xác định';
-          setDataError({ message: `Cảnh báo: Bạn đang chọn Tháng ${monthToFetch} nhưng dữ liệu tải về thuộc Tháng ${actualMonth}.`, detail: `Vui lòng kiểm tra nội dung File Sheet nguồn.`, fileId: orderResult.fileId });
-          setOrders(rawOrders.filter(o => o.id && String(o.id).trim() !== ''));
+      
+      // --- PERMISSION FILTERING ---
+      let filteredByPerm = rawOrders;
+      if (user && user.role !== 'admin') {
+          const scope = user.permissions?.orders;
+          // Fallback logic if permission is undefined (backward compatibility)
+          if (!scope) {
+              // Legacy logic: Most roles see all orders except maybe external designers?
+              // Assuming default 'all' for standard internal roles
+          } else if (scope === 'none') {
+              filteredByPerm = [];
+          } else if (scope === 'own') {
+              const username = (user.username || '').toLowerCase().trim();
+              filteredByPerm = rawOrders.filter(o => 
+                  (o.handler || '').toLowerCase().trim() === username ||
+                  (o.actionRole || '').toLowerCase().trim() === username
+              );
+          }
+      }
+
+      const validOrders = filteredByPerm.filter(o => o.id && String(o.id).trim() !== '' && o.date && String(o.date).trim().startsWith(monthToFetch));
+      if (filteredByPerm.length > 0 && validOrders.length === 0) {
+          // Just a warning if month mismatch from Sheet
+          setOrders(filteredByPerm.filter(o => o.id && String(o.id).trim() !== ''));
           setCurrentFileId(orderResult.fileId); 
       } else {
           setOrders(validOrders);
@@ -508,7 +510,7 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
             ))} 
         </div> 
         <div className="p-2 border-t border-gray-100 flex justify-between bg-gray-50 rounded-b-lg"> 
-          <button onClick={() => handleSelectAllFilter(col, vals as string[])} className="text-xs text-blue-600 font-bold px-2 py-1 hover:bg-blue-50 rounded">Chọn tất cả</button> 
+          <button onClick={() => handleSelectAllFilter(col, vals)} className="text-xs text-blue-600 font-bold px-2 py-1 hover:bg-blue-50 rounded">Chọn tất cả</button> 
           <button onClick={() => handleClearFilter(col)} className="text-xs text-red-500 font-bold px-2 py-1 hover:bg-red-50 rounded">Bỏ chọn</button> 
         </div> 
       </div> 
