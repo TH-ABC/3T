@@ -39,6 +39,10 @@ export interface Order {
   items?: OrderItem[]; // Support multiple items per order
   isFulfilled?: boolean; // New Fulfilled Status
   isDesignDone?: boolean; // New Designer Check Status
+  
+  // New Fields from PW sheet
+  itemName?: string;
+  netPrice?: string | number;
 
   // --- SHIPPING INFO (Hidden on UI, saved to Sheet) ---
   rawShipping?: string; // Raw text to be parsed by backend
@@ -144,6 +148,24 @@ export interface StoreHistoryItem {
 export interface SkuMapping {
   sku: string;
   category: string;
+}
+
+// --- FINANCE TYPES ---
+export interface FinanceTransaction {
+  id: string;
+  date: string;
+  category: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  totalAmount: number;
+  payer: string;
+  note: string;
+}
+
+export interface FinanceMeta {
+  categories: string[];
+  payers: string[];
 }
 
 // --- SYSTEM TYPES ---

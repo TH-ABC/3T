@@ -15,6 +15,17 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [error, setError] = useState('');
   const [showConfigHelp, setShowConfigHelp] = useState(false);
 
+  const getClientIP = async (): Promise<string> => {
+    try {
+      const response = await fetch('https://api.ipify.org?format=json');
+      const data = await response.json();
+      return data.ip || '';
+    } catch (e) {
+      console.warn("Could not fetch IP address:", e);
+      return '';
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username || !password) {
@@ -27,7 +38,12 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setShowConfigHelp(false);
 
     try {
-      const response = await sheetService.login(username, password);
+      // 1. Lấy IP người dùng trước khi login
+      const ip = await getClientIP();
+      
+      // 2. Gửi request login kèm IP
+      const response = await sheetService.login(username, password, ip);
+      
       if (response.success && response.user) {
         onLogin(response.user);
       } else {

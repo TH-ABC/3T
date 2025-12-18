@@ -1,5 +1,5 @@
 
-import { Order, Store, User, DashboardMetrics, DailyStat, StoreHistoryItem, SkuMapping, Role, AuthResponse } from '../types';
+import { Order, Store, User, DashboardMetrics, DailyStat, StoreHistoryItem, SkuMapping, Role, AuthResponse, FinanceTransaction, FinanceMeta } from '../types';
 
 // ============================================================================
 // CẤU HÌNH KẾT NỐI GOOGLE SHEET
@@ -20,6 +20,8 @@ async function callAPI(action: string, method: string = 'POST', data: any = {}):
     if (action === 'getPriceMappings') return [];
     if (action === 'getStoreHistory') return [];
     if (action === 'getOrders') return { orders: [], fileId: null };
+    if (action === 'getFinance') return { transactions: [], fileId: null };
+    if (action === 'getFinanceMeta') return { categories: [], payers: [] };
     return { success: false, error: 'API URL not configured in services/sheetService.ts' };
   }
 
@@ -97,7 +99,6 @@ export const sheetService = {
     return await callAPI('updateOrder', 'POST', { fileId, orderId, field, value });
   },
 
-  // NEW: Hàm cập nhật trạng thái Designer và lưu sang sheet riêng
   updateDesignerStatus: async (fileId: string, order: Order, sheetName: string, isDone: boolean): Promise<any> => {
     return await callAPI('updateDesignerStatus', 'POST', { 
         fileId, 
@@ -107,7 +108,6 @@ export const sheetService = {
     });
   },
 
-  // NEW: BATCH UPDATE cho Order (Cột Checkbox, Fulfilled...)
   batchUpdateOrder: async (fileId: string, orderIds: string[], field: string, value: any): Promise<any> => {
     return await callAPI('batchUpdateOrder', 'POST', {
         fileId,
@@ -117,7 +117,6 @@ export const sheetService = {
     });
   },
 
-  // NEW: BATCH UPDATE cho Designer (Đồng bộ sheet con)
   batchUpdateDesigner: async (fileId: string, orderIds: string[], value: any): Promise<any> => {
     return await callAPI('batchUpdateDesigner', 'POST', {
         fileId,
@@ -130,7 +129,6 @@ export const sheetService = {
     return await callAPI('fulfillOrder', 'POST', { fileId, ...order });
   },
 
-  // NEW: Sync Fulfillment Status from Export Sheet
   syncFulfillment: async (fileId: string): Promise<any> => {
     return await callAPI('syncFulfillment', 'POST', { fileId });
   },
@@ -143,8 +141,8 @@ export const sheetService = {
     return await callAPI('addUnit', 'POST', { name });
   },
 
-  login: async (username: string, password: string): Promise<AuthResponse> => {
-    return await callAPI('login', 'POST', { username, password });
+  login: async (username: string, password: string, ip?: string): Promise<AuthResponse> => {
+    return await callAPI('login', 'POST', { username, password, ip });
   },
 
   getRoles: async (): Promise<Role[]> => {
@@ -175,7 +173,6 @@ export const sheetService = {
     return await callAPI('updateSkuCategory', 'POST', { sku, category });
   },
 
-  // --- PRICE MAPPING ---
   getPriceMappings: async (): Promise<{category: string, price: number}[]> => {
     return await callAPI('getPriceMappings', 'GET');
   },
@@ -186,5 +183,26 @@ export const sheetService = {
 
   changePassword: async (username: string, oldPass: string, newPass: string): Promise<any> => {
     return await callAPI('changePassword', 'POST', { username, oldPass, newPass });
+  },
+
+  // --- FINANCE MODULE ---
+  getFinance: async (year: string): Promise<{ transactions: FinanceTransaction[], fileId: string | null }> => {
+    return await callAPI('getFinance', 'POST', { year });
+  },
+
+  addFinance: async (year: string, transaction: Partial<FinanceTransaction>): Promise<any> => {
+    return await callAPI('addFinance', 'POST', { year, transaction });
+  },
+
+  createFinanceFile: async (year: string): Promise<any> => {
+    return await callAPI('createFinanceFile', 'POST', { year });
+  },
+
+  getFinanceMeta: async (): Promise<FinanceMeta> => {
+    return await callAPI('getFinanceMeta', 'GET');
+  },
+
+  addFinanceMeta: async (type: 'category' | 'payer', value: string): Promise<any> => {
+    return await callAPI('addFinanceMeta', 'POST', { type, value });
   }
 };

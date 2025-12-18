@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Search, RefreshCw, Copy, ExternalLink, Calendar, FileSpreadsheet, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, UserCircle, CheckSquare, Square, Loader2, AlertTriangle, Filter, ArrowDownAZ, ArrowUpAZ, Truck, Settings2, CheckCircle, Package, TrendingUp, Clock, FilePlus, PenTool, X, RefreshCcw, CreditCard, LocateFixed } from 'lucide-react';
+import { Search, RefreshCw, Copy, ExternalLink, Calendar, FileSpreadsheet, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, UserCircle, CheckSquare, Square, Loader2, AlertTriangle, Filter, ArrowDownAZ, ArrowUpAZ, Truck, Settings2, CheckCircle, Package, TrendingUp, Clock, FilePlus, PenTool, X, RefreshCcw, CreditCard, LocateFixed, ShoppingBag, DollarSign } from 'lucide-react';
 import { sheetService } from '../services/sheetService';
 import { Order, Store, User } from '../types';
 
@@ -144,28 +145,31 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
   const [showColumnSelector, setShowColumnSelector] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(() => {
       try {
-          const saved = localStorage.getItem('oms_visible_columns_v3');
+          const saved = localStorage.getItem('oms_visible_columns_v4');
           return saved ? JSON.parse(saved) : {
-              lastModified: true, date: true, id: true, storeName: true, type: true, sku: true, 
-              quantity: true, tracking: true, checkbox: true, designCheck: true, link: true, 
-              status: true, note: true, handler: true, actionRole: true, isFulfilled: true
+              date: true, id: true, storeName: true, sku: true, 
+              quantity: true, tracking: true, itemName: true, netPrice: true,
+              status: true, handler: true, actionRole: true, 
+              isFulfilled: true, checkbox: true, designCheck: true
           };
       } catch {
           return {
-              lastModified: true, date: true, id: true, storeName: true, type: true, sku: true, 
-              quantity: true, tracking: true, checkbox: true, designCheck: true, link: true, 
-              status: true, note: true, handler: true, actionRole: true, isFulfilled: true
+              date: true, id: true, storeName: true, sku: true, 
+              quantity: true, tracking: true, itemName: true, netPrice: true,
+              status: true, handler: true, actionRole: true, 
+              isFulfilled: true, checkbox: true, designCheck: true
           };
       }
   });
 
-  useEffect(() => { localStorage.setItem('oms_visible_columns_v3', JSON.stringify(visibleColumns)); }, [visibleColumns]);
+  useEffect(() => { localStorage.setItem('oms_visible_columns_v4', JSON.stringify(visibleColumns)); }, [visibleColumns]);
   const toggleColumn = (key: string) => setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
 
   const columnLabels: Record<string, string> = {
-      lastModified: 'Date List', date: 'Date Order', id: 'ID Order', storeName: 'Store', type: 'Loại',
-      sku: 'SKU', quantity: 'Qty', tracking: 'Tracking', checkbox: 'Paid', designCheck: 'Design Done',
-      link: 'Link', status: 'Trạng Thái', note: 'Note', handler: 'Handler', actionRole: 'Role', isFulfilled: 'Fulfill'
+      date: 'Date Order', id: 'ID Order', storeName: 'Store',
+      sku: 'SKU', quantity: 'Qty', tracking: 'Tracking', itemName: 'Item Name', netPrice: 'Net Price',
+      status: 'Trạng Thái', handler: 'Handler', actionRole: 'Role', isFulfilled: 'Fulfill',
+      checkbox: 'Paid', designCheck: 'Design Done'
   };
 
   const currentYear = new Date().getFullYear();
@@ -251,6 +255,7 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
               // rough sort by date string DD/MM
               const [d1, m1] = a[0].split('/').map(Number);
               const [d2, m2] = b[0].split('/').map(Number);
+              // Fixed typo iNaN to isNaN
               if (isNaN(d1) || isNaN(m1)) return 1;
               if (isNaN(d2) || isNaN(m2)) return -1;
               if (m1 !== m2) return m1 - m2;
@@ -271,10 +276,7 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
       let filteredByPerm = rawOrders;
       if (user && user.role !== 'admin') {
           const scope = user.permissions?.orders;
-          // Fallback logic if permission is undefined (backward compatibility)
           if (!scope) {
-              // Legacy logic: Most roles see all orders except maybe external designers?
-              // Assuming default 'all' for standard internal roles
           } else if (scope === 'none') {
               filteredByPerm = [];
           } else if (scope === 'own') {
@@ -288,7 +290,6 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
 
       const validOrders = filteredByPerm.filter(o => o.id && String(o.id).trim() !== '' && o.date && String(o.date).trim().startsWith(monthToFetch));
       if (filteredByPerm.length > 0 && validOrders.length === 0) {
-          // Just a warning if month mismatch from Sheet
           setOrders(filteredByPerm.filter(o => o.id && String(o.id).trim() !== ''));
           setCurrentFileId(orderResult.fileId); 
       } else {
@@ -308,7 +309,8 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
             (o.sku ? String(o.sku).toLowerCase() : '').includes(searchTerm.toLowerCase()) ||
             (o.tracking ? String(o.tracking).toLowerCase() : '').includes(searchTerm.toLowerCase()) ||
             (o.storeId ? getStoreName(o.storeId).toLowerCase() : '').includes(searchTerm.toLowerCase()) ||
-            (o.handler ? String(o.handler).toLowerCase() : '').includes(searchTerm.toLowerCase())
+            (o.handler ? String(o.handler).toLowerCase() : '').includes(searchTerm.toLowerCase()) ||
+            (o.itemName ? String(o.itemName).toLowerCase() : '').includes(searchTerm.toLowerCase())
         );
         if (!matchesSearch) return false;
         for (const [key, val] of Object.entries(columnFilters)) {
@@ -318,7 +320,7 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
             if (key === 'storeName') cellValue = getStoreName(o.storeId);
             else if (key === 'isFulfilled') cellValue = o.isFulfilled ? "Fulfilled" : "Chưa";
             else if (key === 'isDesignDone') cellValue = o.isDesignDone ? "Done" : "Pending";
-            else cellValue = String(o[key as keyof Order] || ''); // @ts-ignore
+            else cellValue = String(o[key as keyof Order] || ''); 
             if (!selectedValues.includes(cellValue)) return false;
         }
         return true;
@@ -328,17 +330,16 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
   const sortedOrders = useMemo(() => {
     return filteredOrders.sort((a, b) => {
         const key = sortConfig.key;
-        // @ts-ignore
-        const valA = a[key]; // @ts-ignore
-        const valB = b[key];
+        const valA = a[key as keyof Order];
+        const valB = b[key as keyof Order];
         if (key === 'date') {
             const dateA = new Date(String(valA || '')).getTime();
             const dateB = new Date(String(valB || '')).getTime();
             if (!isNaN(dateA) && !isNaN(dateB) && dateA !== dateB) return sortConfig.direction === 'asc' ? dateA - dateB : dateB - dateA;
         } 
         else {
-            if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
-            if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+            if (valA! < valB!) return sortConfig.direction === 'asc' ? -1 : 1;
+            if (valA! > valB!) return sortConfig.direction === 'asc' ? 1 : -1;
         }
         return 0;
     });
@@ -382,7 +383,6 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
                   showMessage('Thành công', `Đã cập nhật ${idsToUpdate.length} đơn hàng.`, 'success');
               }
           } else if (isDesignAction) {
-              // Batch update for Designer needs to sync with sub-sheets
               result = await sheetService.batchUpdateDesigner(currentFileId, idsToUpdate, newValue);
               if (result.success) {
                   setOrders(prev => prev.map(o => idsToUpdate.includes(o.id) ? { ...o, isDesignDone: newValue } : o));
@@ -391,8 +391,7 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
           }
           
           if (!result?.success) throw new Error(result?.error || "Unknown error");
-          
-          setSelectedOrderIds(new Set()); // Clear selection after success
+          setSelectedOrderIds(new Set()); 
 
       } catch (error) {
           console.error(error);
@@ -469,8 +468,15 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
       try {
           const result = await sheetService.syncFulfillment(currentFileId);
           if (result && result.success) {
-              showMessage('Thành công', `Đã đồng bộ ${result.updatedCount || 0} đơn hàng từ Fulfillment_Export.`, 'success');
-              loadData(selectedMonth); // Refresh data
+              const newCount = result.newCount || 0;
+              const totalMatched = result.updatedCount || 0;
+              
+              showMessage(
+                'Đồng bộ Hoàn tất', 
+                `Đã check đồng bộ tiếp theo cho: ${newCount} đơn hàng mới.\n(Tổng số đơn khớp trong file: ${totalMatched})`, 
+                'success'
+              );
+              loadData(selectedMonth); 
           } else {
               showMessage('Lỗi', result.error || 'Có lỗi xảy ra khi đồng bộ.', 'error');
           }
@@ -555,7 +561,7 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
             </div>
         </div>
 
-        {/* --- STORE STATS (REDESIGNED GRID) --- */}
+        {/* --- STORE STATS --- */}
         <div className="p-4 bg-gray-50 border-b border-gray-200 overflow-x-auto custom-scrollbar">
             <div className="flex justify-between items-center mb-3">
                 <h3 className="text-xs font-bold text-gray-500 uppercase flex items-center gap-2">
@@ -564,7 +570,6 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
                 <button
                     onClick={() => setIsStatsExpanded(!isStatsExpanded)}
                     className="text-gray-400 hover:text-gray-600 transition-colors"
-                    title={isStatsExpanded ? "Thu gọn" : "Mở rộng"}
                 >
                     {isStatsExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                 </button>
@@ -579,7 +584,6 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
                                     <h4 className="font-bold text-gray-800 text-sm truncate max-w-[70%]" title={stat.name}>{stat.name}</h4>
                                     <span className="bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full font-bold">{stat.totalOrders} đơn</span>
                                 </div>
-                                
                                 <div className="grid grid-cols-3 gap-2 text-center mb-3">
                                     <div className="bg-blue-50 rounded p-1.5 flex flex-col items-center">
                                         <div className="text-[10px] text-blue-500 uppercase font-semibold flex items-center gap-1"><CreditCard size={10}/> Paid</div>
@@ -594,7 +598,6 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
                                         <div className="text-sm font-bold text-green-700">{stat.fulfilled}</div>
                                     </div>
                                 </div>
-
                                 <div className="space-y-1 mb-2">
                                     <div className="flex justify-between text-[10px] text-gray-500">
                                         <span>Tiến độ Paid</span>
@@ -604,8 +607,6 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
                                         <div className="bg-blue-500 h-1.5 rounded-full transition-all duration-500" style={{ width: `${paidPercent}%` }}></div>
                                     </div>
                                 </div>
-
-                                {/* Daily Breakdown */}
                                 <div className="mt-3 pt-2 border-t border-dashed border-gray-200">
                                     <div className="text-[10px] text-gray-400 mb-1 flex items-center gap-1"><Clock size={10}/> Chi tiết ngày (Date Order)</div>
                                     <div className="flex gap-1 overflow-x-auto pb-1 custom-scrollbar">
@@ -615,7 +616,6 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
                                                 <span className="text-[10px] font-bold text-gray-800 leading-none">{count}</span>
                                             </div>
                                         ))}
-                                        {stat.dailySorted.length === 0 && <span className="text-[10px] text-gray-400 italic">Chưa có đơn</span>}
                                     </div>
                                 </div>
                             </div>
@@ -633,20 +633,20 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
                          <th className="px-2 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 w-8 text-center z-30">
                              <input type="checkbox" className="w-3 h-3 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer" checked={selectedOrderIds.size > 0 && selectedOrderIds.size === sortedOrders.length} onChange={handleSelectAll} />
                          </th>
-                         {/* Other Columns... */}
-                         {visibleColumns['lastModified'] && <th className="px-2 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-24 cursor-pointer" onClick={() => handleColumnSort('lastModified', sortConfig.direction === 'asc' ? 'desc' : 'asc')}>Date List</th>}
                          {visibleColumns['date'] && <th className="px-2 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-24 cursor-pointer" onClick={() => handleColumnSort('date', sortConfig.direction === 'asc' ? 'desc' : 'asc')}>Date Order</th>}
                          {visibleColumns['id'] && <th className="px-2 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-32">ID Order</th>}
                          {visibleColumns['storeName'] && <th className="px-2 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-32 cursor-pointer" onClick={(e) => {setActiveFilterColumn('storeName'); setFilterPopupPos({top: e.currentTarget.getBoundingClientRect().bottom, left: e.currentTarget.getBoundingClientRect().left, alignRight: false})}}>Store <Filter size={10} className="inline ml-1 text-gray-400" /></th>}
-                         {visibleColumns['sku'] && <th className="px-2 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-40">SKU</th>}
+                         {visibleColumns['sku'] && <th className="px-2 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-24">SKU</th>}
                          {visibleColumns['quantity'] && <th className="px-2 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-12 text-center">Qty</th>}
-                         {visibleColumns['tracking'] && <th className="px-2 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-32">Tracking</th>}
-                         {visibleColumns['checkbox'] && <th className="px-1 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 text-center w-10 z-30"><div className="flex flex-col items-center"><CheckSquare size={14} className="text-blue-500" /><span className="text-[9px] text-blue-600 font-bold uppercase mt-0.5">Pay</span></div></th>}
-                         {visibleColumns['designCheck'] && <th className="px-1 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 text-center w-10 z-30 bg-indigo-50"><div className="flex flex-col items-center"><PenTool size={14} className="text-indigo-500" /><span className="text-[9px] text-indigo-600 font-bold uppercase mt-0.5">Design</span></div></th>}
+                         {visibleColumns['tracking'] && <th className="px-2 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-28">Tracking</th>}
+                         {visibleColumns['itemName'] && <th className="px-2 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-40">Item Name</th>}
+                         {visibleColumns['netPrice'] && <th className="px-2 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-24 text-right">Net Price</th>}
                          {visibleColumns['status'] && <th className="px-2 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-24 text-center">Status</th>}
                          {visibleColumns['handler'] && <th className="px-2 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-24">Handler</th>}
                          {visibleColumns['actionRole'] && <th className="px-2 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-24">Role</th>}
                          {visibleColumns['isFulfilled'] && <th className="px-2 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 z-30 w-16 text-center">FF</th>}
+                         {visibleColumns['checkbox'] && <th className="px-1 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 text-center w-10 z-30"><div className="flex flex-col items-center"><CheckSquare size={14} className="text-blue-500" /><span className="text-[9px] text-blue-600 font-bold uppercase mt-0.5">Pay</span></div></th>}
+                         {visibleColumns['designCheck'] && <th className="px-1 py-2 sticky top-0 bg-gray-100 border-b border-gray-200 text-center w-10 z-30"><div className="flex flex-col items-center"><PenTool size={14} className="text-indigo-500" /><span className="text-[9px] text-indigo-600 font-bold uppercase mt-0.5">Design</span></div></th>}
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 bg-white">
@@ -657,19 +657,20 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
                         return (
                             <tr key={order.id + idx} className={`hover:bg-blue-50/30 transition-colors group ${selectedOrderIds.has(order.id) ? 'bg-orange-50' : ''}`}>
                                 <td className="px-2 py-2 text-center border-r border-gray-100"><input type="checkbox" className="w-3 h-3 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer" checked={selectedOrderIds.has(order.id)} onChange={() => handleSelectRow(order.id)} /></td>
-                                {visibleColumns['lastModified'] && <td className="px-2 py-2 text-[10px] text-gray-500 whitespace-nowrap border-r border-gray-100">{formatDateDisplay(order.lastModified || order.date)}</td>}
                                 {visibleColumns['date'] && <td className="px-2 py-2 text-[10px] font-medium text-gray-700 whitespace-nowrap border-r border-gray-100">{formatDateOnly(order.date)}</td>}
                                 {visibleColumns['id'] && <td className="px-2 py-2 border-r border-gray-100"><div className="flex items-center gap-1"><span className="font-bold text-gray-800 text-[10px] truncate max-w-[8rem]" title={order.id}>{order.id}</span><button onClick={() => navigator.clipboard.writeText(order.id)} className="text-gray-300 hover:text-blue-500 opacity-0 group-hover:opacity-100"><Copy size={10} /></button></div></td>}
                                 {visibleColumns['storeName'] && <td className="px-2 py-2 border-r border-gray-100"><span className={`text-[9px] px-1.5 py-0.5 rounded-full border font-medium whitespace-nowrap ${getStoreBadgeStyle(getStoreName(order.storeId))}`}>{getStoreName(order.storeId)}</span></td>}
-                                {visibleColumns['sku'] && <td className="px-2 py-2 border-r border-gray-100"><div className="text-[10px] font-mono text-gray-700 truncate max-w-[10rem]" title={order.sku}>{order.sku}</div></td>}
+                                {visibleColumns['sku'] && <td className="px-2 py-2 border-r border-gray-100"><div className="text-[10px] font-mono text-gray-700 truncate max-w-[6rem]" title={order.sku}>{order.sku}</div></td>}
                                 {visibleColumns['quantity'] && <td className="px-2 py-2 text-center font-bold text-gray-800 border-r border-gray-100">{order.quantity}</td>}
-                                {visibleColumns['tracking'] && <td className="px-2 py-2 border-r border-gray-100">{order.tracking ? <span className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded truncate max-w-[8rem] block" title={order.tracking}>{order.tracking}</span> : <span className="text-[10px] text-gray-400 italic">---</span>}</td>}
-                                {visibleColumns['checkbox'] && <td className="px-1 py-2 text-center border-r border-gray-100">{isUpdating ? <Loader2 size={14} className="animate-spin text-orange-500 mx-auto" /> : <button onClick={() => handleToggleCheckbox(order)} className={`hover:scale-110 transition-transform ${order.isChecked ? 'text-blue-600' : 'text-gray-300'}`}>{order.isChecked ? <CheckSquare size={16} /> : <Square size={16} />}</button>}</td>}
-                                {visibleColumns['designCheck'] && <td className="px-1 py-2 text-center border-r border-gray-100 bg-indigo-50/30">{isUpdating ? <Loader2 size={14} className="animate-spin text-indigo-500 mx-auto" /> : <button onClick={() => handleToggleDesignDone(order)} className={`hover:scale-110 transition-transform ${order.isDesignDone ? 'text-indigo-600' : 'text-gray-300'}`}>{order.isDesignDone ? <CheckSquare size={16} /> : <Square size={16} />}</button>}</td>}
+                                {visibleColumns['tracking'] && <td className="px-2 py-2 border-r border-gray-100">{order.tracking ? <span className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded truncate max-w-[6rem] block" title={order.tracking}>{order.tracking}</span> : <span className="text-[10px] text-gray-400 italic">---</span>}</td>}
+                                {visibleColumns['itemName'] && <td className="px-2 py-2 border-r border-gray-100"><div className="text-[10px] text-gray-600 truncate max-w-[10rem]" title={order.itemName}><ShoppingBag size={10} className="inline mr-1 text-gray-400" /> {order.itemName || '---'}</div></td>}
+                                {visibleColumns['netPrice'] && <td className="px-2 py-2 border-r border-gray-100 text-right font-mono text-emerald-600 font-bold">{order.netPrice ? Number(order.netPrice).toLocaleString('en-US') : '0'}</td>}
                                 {visibleColumns['status'] && <td className="px-2 py-2 text-center border-r border-gray-100"><span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border ${order.status === 'Fulfilled' ? 'bg-green-100 text-green-700 border-green-200' : order.status === 'Cancelled' ? 'bg-red-100 text-red-700 border-red-200' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>{order.status || 'Pending'}</span></td>}
-                                {visibleColumns['handler'] && <td className="px-2 py-2 border-r border-gray-100 text-[10px] truncate max-w-[5rem]" title={order.handler}>{order.handler}</td>}
+                                {visibleColumns['handler'] && <td className="px-2 py-2 border-r border-gray-100 text-[10px] truncate max-w-[5rem] font-bold text-indigo-600" title={order.handler}>{order.handler || '---'}</td>}
                                 {visibleColumns['actionRole'] && <td className="px-2 py-2 border-r border-gray-100"><span className={`text-[9px] px-1.5 py-0.5 rounded border truncate max-w-[5rem] block ${getRoleBadgeStyle(order.actionRole)}`} title={order.actionRole}>{order.actionRole}</span></td>}
                                 {visibleColumns['isFulfilled'] && <td className="px-2 py-2 text-center border-r border-gray-100">{order.isFulfilled ? <Truck size={16} className="text-green-600 mx-auto" /> : <div className="w-3 h-3 rounded-full border border-gray-300 mx-auto"></div>}</td>}
+                                {visibleColumns['checkbox'] && <td className="px-1 py-2 text-center border-r border-gray-100">{isUpdating ? <Loader2 size={14} className="animate-spin text-orange-500 mx-auto" /> : <button onClick={() => handleToggleCheckbox(order)} className={`hover:scale-110 transition-transform ${order.isChecked ? 'text-blue-600' : 'text-gray-300'}`}>{order.isChecked ? <CheckSquare size={16} /> : <Square size={16} />}</button>}</td>}
+                                {visibleColumns['designCheck'] && <td className="px-1 py-2 text-center border-r border-gray-100">{isUpdating ? <Loader2 size={14} className="animate-spin text-indigo-500 mx-auto" /> : <button onClick={() => handleToggleDesignDone(order)} className={`hover:scale-110 transition-transform ${order.isDesignDone ? 'text-indigo-600' : 'text-gray-300'}`}>{order.isDesignDone ? <CheckSquare size={16} /> : <Square size={16} />}</button>}</td>}
                             </tr>
                         );
                     })}
@@ -682,8 +683,6 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
             <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-white rounded-full shadow-2xl border border-gray-200 px-6 py-3 flex items-center gap-4 z-50 animate-slide-in">
                 <span className="text-sm font-bold text-gray-700 whitespace-nowrap bg-gray-100 px-3 py-1 rounded-full">{selectedOrderIds.size} đã chọn</span>
                 <div className="h-6 w-px bg-gray-300"></div>
-                
-                {/* Pay Actions */}
                 <div className="flex gap-2">
                     <button onClick={() => handleBatchAction('paid')} disabled={isBatchProcessing} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-xs font-bold border border-blue-200">
                         {isBatchProcessing ? <Loader2 size={14} className="animate-spin" /> : <CheckSquare size={14} />} Đã Pay
@@ -692,10 +691,7 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
                         <Square size={14} /> Bỏ Pay
                     </button>
                 </div>
-
                 <div className="h-6 w-px bg-gray-300"></div>
-
-                {/* Design Actions */}
                 <div className="flex gap-2">
                     <button onClick={() => handleBatchAction('design_done')} disabled={isBatchProcessing} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg hover:bg-indigo-100 transition-colors text-xs font-bold border border-indigo-200">
                         {isBatchProcessing ? <Loader2 size={14} className="animate-spin" /> : <PenTool size={14} />} Design Xong
@@ -704,7 +700,6 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
                         <Square size={14} /> Chưa Design
                     </button>
                 </div>
-
                 <button onClick={() => setSelectedOrderIds(new Set())} className="ml-2 text-gray-400 hover:text-red-500 transition-colors" title="Hủy chọn">
                     <X size={20} />
                 </button>
@@ -722,7 +717,7 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
                             {sysModal.type === 'confirm' && <Package className="h-6 w-6 text-blue-600" />}
                         </div>
                         <h3 className="text-lg font-bold text-gray-900 mb-2">{sysModal.title}</h3>
-                        <p className="text-sm text-gray-500">{sysModal.message}</p>
+                        <p className="text-sm text-gray-500 whitespace-pre-line">{sysModal.message}</p>
                     </div>
                     <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse gap-2">
                         {sysModal.type === 'confirm' ? (<><button type="button" className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 sm:ml-3 sm:w-auto sm:text-sm" onClick={() => { sysModal.onConfirm?.(); closeMessage(); }}>Xác Nhận</button><button type="button" className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm" onClick={closeMessage}>Hủy</button></>) : (<button type="button" className="w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:w-auto sm:text-sm" onClick={closeMessage}>Đóng</button>)}

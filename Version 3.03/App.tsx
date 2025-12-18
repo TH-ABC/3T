@@ -9,6 +9,7 @@ import UserManagement from './components/UserManagement';
 import StoreDetail from './components/StoreDetail';
 import { DesignerOnlineList } from './components/DesignerOnlineList';
 import { DesignerList } from './components/DesignerList';
+import { FinanceBoard } from './components/FinanceBoard';
 import ChangePasswordModal from './components/ChangePasswordModal';
 import { User, Store, UserPermissions } from './types';
 
@@ -179,11 +180,13 @@ function App() {
           </div>
         );
       case 'finance':
-      case 'reports':
         if (!canAccess('finance')) return <div className="p-6">Bạn không có quyền truy cập Tài chính.</div>;
+        return <FinanceBoard />;
+      case 'reports':
+        if (!canAccess('finance')) return <div className="p-6">Bạn không có quyền truy cập Báo cáo.</div>;
         return (
           <div className="flex flex-col items-center justify-center h-full text-gray-400">
-            <p className="text-lg font-medium">Tài Chính & Báo Cáo</p>
+            <p className="text-lg font-medium">Báo Cáo Lãi Lỗ</p>
             <p className="text-sm">Chức năng đang phát triển.</p>
           </div>
         );

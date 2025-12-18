@@ -100,13 +100,11 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                   }
                   if (!isDesignerOnlineOrder) return false;
                   
-                  // View All for Leaders/Supports/Idea?
                   if (userRole.includes('leader')) return true;
 
-                  // View Own for Designer Online Role
                   if (userRole === 'designer online') { 
                       if (actionRoleRaw === currentUsername) return true; 
-                      if (actionRoleRaw === 'designer online') return true; // Unassigned pool
+                      if (actionRoleRaw === 'designer online') return true; 
                       return false; 
                   }
                   return false;
@@ -114,10 +112,8 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
           } else if (scope === 'none') {
               filteredOrders = [];
           } else if (scope === 'own') {
-              // View Own: Filter by actionRole match
               filteredOrders = ordersInMonth.filter(o => (o.actionRole || '').toLowerCase().trim() === currentUsername);
           } else {
-              // scope === 'all'
               filteredOrders = ordersInMonth.filter(o => {
                   const actionRoleRaw = (o.actionRole || '').toLowerCase().trim();
                   let isDesignerOnlineOrder = false;
@@ -130,7 +126,6 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
               });
           }
       } else {
-          // Admin View: All
           filteredOrders = ordersInMonth.filter(o => {
               const actionRoleRaw = (o.actionRole || '').toLowerCase().trim();
               let isDesignerOnlineOrder = false;
@@ -215,7 +210,64 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
     ); 
   };
 
-  const stats = useMemo<{ totalOrders: number; totalMoney: number; categories: Record<string, { total: number; checked: number; money: number }>; designers: Record<string, { total: number; checked: number; money: number }>; }>(() => { const result = { totalOrders: 0, totalMoney: 0, categories: { 'Loại 1': { total: 0, checked: 0, money: 0 }, 'Loại 2': { total: 0, checked: 0, money: 0 }, 'Loại 3': { total: 0, checked: 0, money: 0 }, 'Loại 4': { total: 0, checked: 0, money: 0 }, 'Khác': { total: 0, checked: 0, money: 0 } } as Record<string, { total: number; checked: number; money: number }>, designers: {} as Record<string, { total: number; checked: number; money: number }> }; orders.forEach(o => { const skuNorm = normalizeKey(o.sku); let rawCategory = skuMap[skuNorm] || 'Khác'; let category = rawCategory.trim(); const matchedCategory = PRICE_CATEGORIES.find(c => normalizeKey(c) === normalizeKey(category)); if (matchedCategory) category = matchedCategory; else category = 'Khác'; const price = getPriceForCategory(category); const isChecked = o.isDesignDone === true; const designerName = o.actionRole ? o.actionRole.trim() : 'Chưa Giao'; let catKey = category; if (!result.categories[catKey]) catKey = 'Khác'; const target = result.categories[catKey]; target.total += 1; target.money += price; if (isChecked) target.checked += 1; if (!result.designers[designerName]) { result.designers[designerName] = { total: 0, checked: 0, money: 0 }; } result.designers[designerName].total += 1; result.designers[designerName].money += price; if (isChecked) result.designers[designerName].checked += 1; result.totalOrders += 1; result.totalMoney += price; }); return result; }, [orders, skuMap, priceMap]);
+  // --- STATS CALCULATION (UPDATED) ---
+  const stats = useMemo<{ 
+      totalOrders: number; 
+      totalMoney: number; 
+      categories: Record<string, { total: number; checked: number; money: number }>; 
+      designers: Record<string, { total: number; checked: number; totalMoney: number; checkedMoney: number }>; 
+  }>(() => { 
+      const result = { 
+          totalOrders: 0, 
+          totalMoney: 0, 
+          categories: { 
+              'Loại 1': { total: 0, checked: 0, money: 0 }, 
+              'Loại 2': { total: 0, checked: 0, money: 0 }, 
+              'Loại 3': { total: 0, checked: 0, money: 0 }, 
+              'Loại 4': { total: 0, checked: 0, money: 0 }, 
+              'Khác': { total: 0, checked: 0, money: 0 } 
+          } as Record<string, { total: number; checked: number; money: number }>, 
+          designers: {} as Record<string, { total: number; checked: number; totalMoney: number; checkedMoney: number }> 
+      }; 
+      
+      orders.forEach(o => { 
+          const skuNorm = normalizeKey(o.sku); 
+          let rawCategory = skuMap[skuNorm] || 'Khác'; 
+          let category = rawCategory.trim(); 
+          const matchedCategory = PRICE_CATEGORIES.find(c => normalizeKey(c) === normalizeKey(category)); 
+          if (matchedCategory) category = matchedCategory; 
+          else category = 'Khác'; 
+          
+          const price = getPriceForCategory(category); 
+          const isChecked = o.isDesignDone === true; 
+          const designerName = o.actionRole ? o.actionRole.trim() : 'Chưa Giao'; 
+          
+          let catKey = category; 
+          if (!result.categories[catKey]) catKey = 'Khác'; 
+          
+          const target = result.categories[catKey]; 
+          target.total += 1; 
+          target.money += price; 
+          if (isChecked) target.checked += 1; 
+          
+          if (!result.designers[designerName]) { 
+              result.designers[designerName] = { total: 0, checked: 0, totalMoney: 0, checkedMoney: 0 }; 
+          } 
+          
+          result.designers[designerName].total += 1; 
+          result.designers[designerName].totalMoney += price; 
+          
+          if (isChecked) {
+              result.designers[designerName].checked += 1;
+              result.designers[designerName].checkedMoney += price;
+          }
+          
+          result.totalOrders += 1; 
+          result.totalMoney += price; 
+      }); 
+      
+      return result; 
+  }, [orders, skuMap, priceMap]);
 
   const formatDateDisplay = (dateStr: string) => { if (!dateStr) return ''; try { const parts = dateStr.split(/[-T :]/); if (parts.length >= 5) { const y = parts[0]; const m = parts[1]; const d = parts[2]; const hh = parts[3] || '00'; const mm = parts[4] || '00'; if (y.length === 4) return `${d}/${m}/${y} ${hh}:${mm}`; } return dateStr; } catch (e) { return dateStr; } };
   const handleMonthChange = (step: number) => { const [year, month] = selectedMonth.split('-').map(Number); const date = new Date(year, month - 1 + step, 1); const newYear = date.getFullYear(); const newMonth = String(date.getMonth() + 1).padStart(2, '0'); setSelectedMonth(`${newYear}-${newMonth}`); };
@@ -284,7 +336,38 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
             <h3 className="text-sm font-bold text-gray-700 uppercase mb-3 flex items-center gap-2"><DollarSign size={16} className="text-green-600"/> Tổng Hợp Tháng {currentMonthStr}/{currentYearStr}</h3>
             <div className="flex flex-col xl:flex-row gap-6">
                 <div className="flex-1"><div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-6 gap-3"><div className="bg-indigo-600 text-white rounded p-3 shadow-sm flex flex-col justify-center items-center text-center"><span className="text-xs opacity-80 uppercase tracking-wide">Tổng Đơn</span><span className="text-xl font-bold">{stats.totalOrders}</span></div><div className="bg-emerald-600 text-white rounded p-3 shadow-sm flex flex-col justify-center items-center text-center"><span className="text-xs opacity-80 uppercase tracking-wide">Tổng Tiền</span><span className="text-lg font-bold">{formatPrice(stats.totalMoney)}</span></div>{PRICE_CATEGORIES.map(cat => { const data = (stats.categories[cat] as { total: number; checked: number; money: number } | undefined) || { total: 0, checked: 0, money: 0 }; return (<div key={cat} className="bg-gray-50 border border-gray-200 rounded p-3 shadow-sm flex flex-col justify-between"><div className="flex justify-between items-start border-b border-gray-200 pb-1 mb-1"><span className="text-xs font-bold text-gray-700 uppercase">{cat}</span><span className="text-xs font-medium text-green-600">{formatPrice(data.money)}</span></div><div className="flex justify-between items-end"><div className="text-center"><div className="text-[10px] text-gray-400 uppercase">Đơn</div><div className="text-sm font-bold text-gray-800">{data.total}</div></div><div className="text-center"><div className="text-[10px] text-gray-400 uppercase">Check</div><div className="text-sm font-bold text-blue-600">{data.checked}</div></div></div></div>); })}</div></div>
-                <div className="flex-1 border-l border-gray-200 xl:pl-6 pt-4 xl:pt-0 border-t xl:border-t-0 mt-2 xl:mt-0"><h4 className="text-xs font-bold text-gray-500 uppercase mb-2 flex items-center gap-2"><Users size={14} /> Chi Tiết Theo Designer</h4><div className="overflow-x-auto custom-scrollbar max-h-[140px]"><table className="w-full text-left text-xs border-collapse"><thead className="bg-gray-50 text-gray-500 font-semibold sticky top-0"><tr><th className="px-3 py-2 border-b">Designer</th><th className="px-3 py-2 border-b text-center">Số lượng</th><th className="px-3 py-2 border-b text-center">Đã Check</th><th className="px-3 py-2 border-b text-right">Tạm tính</th></tr></thead><tbody className="divide-y divide-gray-100">{Object.entries(stats.designers).map(([name, data]: [string, { total: number; checked: number; money: number }]) => (<tr key={name} className="hover:bg-gray-50"><td className="px-3 py-2 font-medium text-gray-700 truncate max-w-[120px]" title={name}>{name}</td><td className="px-3 py-2 text-center text-gray-600">{data.total}</td><td className="px-3 py-2 text-center font-bold text-blue-600">{data.checked}</td><td className="px-3 py-2 text-right font-medium text-green-700">{data.money.toLocaleString('vi-VN')}</td></tr>))}{Object.keys(stats.designers).length === 0 && (<tr><td colSpan={4} className="px-3 py-4 text-center text-gray-400 italic">Chưa có dữ liệu designer.</td></tr>)}</tbody></table></div></div>
+                <div className="flex-1 border-l border-gray-200 xl:pl-6 pt-4 xl:pt-0 border-t xl:border-t-0 mt-2 xl:mt-0">
+                    <h4 className="text-xs font-bold text-gray-500 uppercase mb-2 flex items-center gap-2"><Users size={14} /> Chi Tiết Theo Designer</h4>
+                    <div className="overflow-x-auto custom-scrollbar max-h-[140px]">
+                        <table className="w-full text-left text-xs border-collapse">
+                            <thead className="bg-gray-50 text-gray-500 font-semibold sticky top-0">
+                                <tr>
+                                    <th className="px-2 py-2 border-b">Designer</th>
+                                    <th className="px-2 py-2 border-b text-center">SL</th>
+                                    <th className="px-2 py-2 border-b text-center">Check</th>
+                                    <th className="px-2 py-2 border-b text-right">Tạm tính</th>
+                                    <th className="px-2 py-2 border-b text-right">Đã Check</th>
+                                    <th className="px-2 py-2 border-b text-right">Còn Lại</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {Object.entries(stats.designers).map(([name, data]: [string, { total: number; checked: number; totalMoney: number; checkedMoney: number }]) => (
+                                    <tr key={name} className="hover:bg-gray-50">
+                                        <td className="px-2 py-2 font-medium text-gray-700 truncate max-w-[100px]" title={name}>{name}</td>
+                                        <td className="px-2 py-2 text-center text-gray-600">{data.total}</td>
+                                        <td className="px-2 py-2 text-center font-bold text-blue-600">{data.checked}</td>
+                                        <td className="px-2 py-2 text-right font-medium text-gray-700">{data.totalMoney.toLocaleString('vi-VN')}</td>
+                                        <td className="px-2 py-2 text-right font-medium text-green-600">{data.checkedMoney.toLocaleString('vi-VN')}</td>
+                                        <td className="px-2 py-2 text-right font-medium text-orange-600">{(data.totalMoney - data.checkedMoney).toLocaleString('vi-VN')}</td>
+                                    </tr>
+                                ))}
+                                {Object.keys(stats.designers).length === 0 && (
+                                    <tr><td colSpan={6} className="px-3 py-4 text-center text-gray-400 italic">Chưa có dữ liệu designer.</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
 

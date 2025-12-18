@@ -1,3 +1,4 @@
+
 import { GoogleGenAI } from "@google/genai";
 import { DashboardMetrics, DailyRevenue } from '../types';
 
@@ -27,10 +28,12 @@ export const geminiService = {
     `;
 
     try {
+      // Fixed: Updated model to 'gemini-3-flash-preview' for basic text tasks
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3-flash-preview',
         contents: prompt,
       });
+      // Correctly accessing .text property (not a method)
       return response.text;
     } catch (error) {
       console.error("Gemini Error:", error);

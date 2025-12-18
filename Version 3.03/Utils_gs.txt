@@ -1,0 +1,68 @@
+
+function returnJSON(data) { 
+    return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON); 
+}
+
+function getSheet(n) {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let s = ss.getSheetByName(n);
+    if(!s){
+        s = ss.insertSheet(n);
+        if(n === SHEET_STORES) s.appendRow(['ID','Name','URL','Region','Status','Listing','Sale']);
+        else if(n === SHEET_USERS) s.appendRow(['Username','Password','FullName','Role','Email','Phone','Status','Permissions']);
+        else if(n === SHEET_UNITS) s.appendRow(['UnitName']);
+        else if(n === SHEET_ROLES) s.appendRow(['RoleName','Level']);
+        else if(n === SHEET_LOGS) s.appendRow(['Time','User','Action','IP']);
+        else if(n === SHEET_DAILY) s.appendRow(['Date','TotalListing','TotalSale']);
+        else if(n === SHEET_STORE_HISTORY) s.appendRow(['Date','StoreID','Listing','Sale']);
+        else if(n === SHEET_PL_SKU) s.appendRow(['STT', 'SKU', 'Phân Loại']);
+        else if(n === SHEET_PRICES) s.appendRow(['Category', 'Price']);
+        else if(n === SHEET_FINANCE_META) {
+            s.appendRow(['Categories', 'Payers']);
+            s.appendRow(['Thu Tiền', 'Hoàng']);
+            s.appendRow(['Chi Tiền', 'A Tâm']);
+        }
+    }
+    return s;
+}
+
+function getFileIdForMonth(month) { 
+    const masterSS = SpreadsheetApp.getActiveSpreadsheet(); 
+    let indexSheet = masterSS.getSheetByName(SHEET_FILE_INDEX); 
+    if (!indexSheet) return null; 
+    const data = indexSheet.getDataRange().getValues(); 
+    for (let i = 1; i < data.length; i++) { 
+        let rowMonth = data[i][0]; 
+        if (rowMonth instanceof Date) rowMonth = Utilities.formatDate(rowMonth, Session.getScriptTimeZone(), 'yyyy-MM'); 
+        if (String(rowMonth) === String(month)) return data[i][1]; 
+    } 
+    return null; 
+}
+
+function formatDate(d) { try { return Utilities.formatDate(new Date(d), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss'); } catch(e) { return d; } }
+
+function getData(n){
+    const s = getSheet(n);
+    const d = s.getDataRange().getValues();
+    d.shift(); 
+    return d.map(r => {
+        if(n === SHEET_STORES) return {id:r[0], name:r[1], url:r[2], region:r[3], status:r[4], listing:r[5]||0, sale:r[6]||0};
+        if(n === SHEET_ROLES) return {name:r[0], level:r[1]};
+        if(n === SHEET_DAILY) return {date:formatDate(r[0]), totalListing:r[1]||0, totalSale:r[2]||0};
+        return {};
+    });
+}
+
+function addRow(n, r) { getSheet(n).appendRow(r); return {success:true}; }
+function deleteRow(n, id) { const s = getSheet(n); const d = s.getDataRange().getValues(); for(let i=d.length-1; i>=1; i--) { if(String(d[i][0]) == String(id)) { s.deleteRow(i+1); return {success:true}; } } return {error:'Not found'}; }
+
+function createNewMonthFile(month) {
+  const fileName = `OMS_Orders_${month}`;
+  const newSS = SpreadsheetApp.create(fileName);
+  const fileId = newSS.getId();
+  const headers = ['Date', 'OrderID', 'Store', 'DonVi', 'SKU', 'Quantity', 'Tracking', 'Link', 'Status', 'Note', 'Handler', 'ActionRole', 'Checked', 'Design Done', 'F.Name', 'L.Name', 'Address1', 'Address2', 'City', 'State', 'Zip', 'Country', 'Phone', 'Product Name', 'Item SKU', 'URL Mockup', 'Mockup Type', 'Is Fulfilled', 'URL Artwork Front', 'URL Artwork Back'];
+  newSS.getSheets()[0].appendRow(headers);
+  let indexSheet = getSheet(SHEET_FILE_INDEX);
+  indexSheet.appendRow([month, fileId, fileName, new Date()]);
+  return fileId;
+}

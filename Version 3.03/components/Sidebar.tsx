@@ -15,7 +15,8 @@ import {
   ChevronRight,
   Palette,
   Key,
-  PenTool
+  PenTool,
+  UserCheck
 } from 'lucide-react';
 import { User, ViewScope, UserPermissions } from '../types';
 
@@ -40,8 +41,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   const hasAccess = (module: keyof UserPermissions | 'users'): boolean => {
       if (user.role === 'admin') return true;
       
-      // Admin-only module (User Management)
+      // Admin-only modules
       if (module === 'users') return false; 
+      if (module === 'system') return false;
 
       const perm = user.permissions?.[module as keyof UserPermissions];
       if (perm) return perm !== 'none';
@@ -49,13 +51,12 @@ const Sidebar: React.FC<SidebarProps> = ({
       // Fallback for legacy users without specific permissions
       const role = (user.role || '').toLowerCase();
       
-      if (module === 'dashboard') return true; // Default everyone sees dashboard unless explicit 'none'
-      if (module === 'orders') return role !== 'designer' && role !== 'designer online'; // Default logic
+      if (module === 'dashboard') return true;
+      if (module === 'orders') return role !== 'designer' && role !== 'designer online';
       if (module === 'designer') return role === 'designer' || role === 'leader';
       if (module === 'designerOnline') return role === 'designer online' || role === 'leader';
-      if (module === 'customers') return true; // Default visible
-      if (module === 'finance') return role === 'leader' || role === 'admin'; // Default restricted
-      if (module === 'system') return role === 'admin';
+      if (module === 'customers') return true;
+      if (module === 'finance') return role === 'leader' || role === 'admin';
       
       return false;
   };
@@ -67,8 +68,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   const showDesignerOnline = hasAccess('designerOnline');
   const showCustomers = hasAccess('customers');
   const showFinance = hasAccess('finance');
-  const showSystem = hasAccess('system');
-  const showUsers = hasAccess('users'); // Only Admin
+  const showUsers = user.role === 'admin';
+  const showSystem = user.role === 'admin';
 
   let menuGroups = [
     {
@@ -91,15 +92,15 @@ const Sidebar: React.FC<SidebarProps> = ({
     {
       title: 'HỆ THỐNG',
       items: [
-        { id: 'users', label: 'Quản lý Tài khoản', icon: <UserCog size={20} />, visible: showUsers },
-        { id: 'settings', label: 'Cấu hình Google Sheet', icon: <Settings size={20} />, visible: showSystem },
+        { id: 'users', label: 'Quản lý Nhân sự', icon: <UserCheck size={20} />, visible: showUsers },
+        { id: 'settings', label: 'Cấu hình Sheet', icon: <Settings size={20} />, visible: showSystem },
       ]
     }
   ];
 
   return (
     <>
-      {/* Mobile Overlay - Increased z-index to 40 */}
+      {/* Mobile Overlay */}
       {isOpen && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
@@ -107,7 +108,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         />
       )}
 
-      {/* Sidebar Container - Increased z-index to 50 to sit above sticky headers (z-30) */}
+      {/* Sidebar Container */}
       <div className={`
         fixed top-0 left-0 h-full bg-[#1e293b] text-white z-50 transition-all duration-300 ease-in-out flex flex-col border-r border-gray-700
         ${isOpen ? 'translate-x-0' : '-translate-x-full'} 
@@ -125,7 +126,6 @@ const Sidebar: React.FC<SidebarProps> = ({
              <span className="font-bold text-xl text-orange-500">3T</span>
           )}
           
-          {/* Desktop Toggle Button */}
           <button 
             onClick={() => setIsDesktopCollapsed(!isDesktopCollapsed)} 
             className="hidden lg:flex items-center justify-center w-6 h-6 bg-slate-700 rounded-full text-gray-400 hover:text-white hover:bg-slate-600 transition-colors absolute -right-3 border border-gray-600 top-5 z-40 shadow-sm"
@@ -133,7 +133,6 @@ const Sidebar: React.FC<SidebarProps> = ({
             {isDesktopCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
           </button>
 
-          {/* Mobile Close Button */}
           <button onClick={() => setIsOpen(false)} className="lg:hidden text-gray-400 hover:text-white">
             <X size={24} />
           </button>
@@ -174,7 +173,6 @@ const Sidebar: React.FC<SidebarProps> = ({
                         <span className={`${isDesktopCollapsed ? '' : 'mr-3'}`}>{item.icon}</span>
                         {!isDesktopCollapsed && <span className="whitespace-nowrap">{item.label}</span>}
                       </button>
-                      {/* Tooltip for collapsed state */}
                       {isDesktopCollapsed && (
                         <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity shadow-lg border border-gray-700">
                           {item.label}

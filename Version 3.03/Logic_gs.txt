@@ -1,0 +1,352 @@
+
+function getOrdersFromMonthFile(month) {
+  let fileId = getFileIdForMonth(month);
+  if (!fileId) return { orders: [], fileId: null };
+  try {
+    const ss = SpreadsheetApp.openById(fileId);
+    const sheet = ss.getSheets()[0]; 
+    const data = sheet.getDataRange().getValues();
+    if (data.length <= 1) return { orders: [], fileId: fileId };
+    data.shift(); 
+    
+    // --- LOOKUP PW SHEET ---
+    const pwSheet = ss.getSheetByName("PW");
+    let pwMap = {};
+    if (pwSheet) {
+      const pwData = pwSheet.getDataRange().getValues();
+      const pwHeaders = pwData[0].map(h => String(h).toLowerCase().trim());
+      // Giả sử Order ID ở cột đầu tiên (index 0) hoặc cột B (index 1) của sheet PW
+      const orderIdIdx = pwHeaders.indexOf("order id") !== -1 ? pwHeaders.indexOf("order id") : 1;
+      const itemNameIdx = 10; // Cột K (index 10)
+      const netPriceIdx = 24; // Cột Y (index 24)
+      
+      for (let i = 1; i < pwData.length; i++) {
+        const id = String(pwData[i][orderIdIdx]).trim();
+        if (id) {
+          pwMap[id] = {
+            itemName: pwData[i][itemNameIdx] || "",
+            netPrice: pwData[i][netPriceIdx] || 0
+          };
+        }
+      }
+    }
+
+    const orders = data.map(row => {
+      const orderId = String(row[1]).trim();
+      const pwInfo = pwMap[orderId] || { itemName: "", netPrice: 0 };
+      
+      return {
+        date: formatDate(row[0]), 
+        id: orderId, 
+        storeId: row[2], 
+        type: row[3], 
+        sku: row[4], 
+        quantity: row[5], 
+        tracking: row[6], 
+        link: row[7], 
+        status: row[8], 
+        note: row[9],
+        handler: row[10] || "", // Cột K trong trang tính 1 (index 10)
+        actionRole: row[11] || "", 
+        isChecked: row[12] === "TRUE" || row[12] === true, 
+        isDesignDone: row[13] === "TRUE" || row[13] === true,
+        shippingFirstName: row[14] || "", 
+        shippingLastName: row[15] || "", 
+        shippingAddress1: row[16] || "", 
+        shippingAddress2: row[17] || "", 
+        shippingCity: row[18] || "", 
+        shippingProvince: row[19] || "", 
+        shippingZip: row[20] || "", 
+        shippingCountry: row[21] || "", 
+        shippingPhone: row[22] || "", 
+        productName: row[23] || "", 
+        itemSku: row[24] || "", 
+        urlMockup: row[25] || "", 
+        mockupType: row[26] || "", 
+        isFulfilled: row[27] === "TRUE" || row[27] === true, 
+        urlArtworkFront: row[28] || "", 
+        urlArtworkBack: row[29] || "",
+        itemName: pwInfo.itemName,
+        netPrice: pwInfo.netPrice
+      };
+    });
+    return { orders: orders, fileId: fileId };
+  } catch (e) { return { orders: [], fileId: null, error: "File deleted or inaccessible" }; }
+}
+
+function handleAddOrder(postData) {
+    let month = postData.month || (postData.date ? postData.date.substring(0, 7) : Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM'));
+    const rowData = [
+        postData.date, postData.id, postData.storeId, postData.type || "", postData.sku, postData.quantity || 1, 
+        postData.tracking || "", postData.link || "", postData.status || "Pending", postData.note || "", 
+        postData.user || "", postData.actionRole || "", 
+        postData.isChecked ? "TRUE" : "FALSE", 
+        postData.isDesignDone ? "TRUE" : "FALSE",
+        postData.shippingFirstName || "", postData.shippingLastName || "", postData.shippingAddress1 || "", postData.shippingAddress2 || "",
+        postData.shippingCity || "", postData.shippingProvince || "", postData.shippingZip || "", postData.shippingCountry || "", postData.shippingPhone || "",
+        postData.productName || "", postData.itemSku || "", postData.urlMockup || "", postData.mockupType || "", "FALSE",
+        postData.urlArtworkFront || "", postData.urlArtworkBack || ""
+    ];
+    let fileId = getFileIdForMonth(month) || createNewMonthFile(month);
+    let ss = SpreadsheetApp.openById(fileId);
+    ss.getSheets()[0].appendRow(rowData);
+    return { success: true, fileId: fileId };
+}
+
+// --- ORDER UPDATE LOGIC ---
+
+function updateOrderSingle(fileId, orderId, field, value) {
+  const ss = SpreadsheetApp.openById(fileId);
+  const sheet = ss.getSheets()[0];
+  const data = sheet.getDataRange().getValues();
+  
+  let colIndex = -1;
+  if (field === 'isChecked') colIndex = 12;
+  else if (field === 'status') colIndex = 8;
+  else if (field === 'tracking') colIndex = 6;
+  
+  if (colIndex === -1) return { success: false, error: "Field not supported" };
+
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][1]) === String(orderId)) {
+      sheet.getRange(i + 1, colIndex + 1).setValue(value);
+      return { success: true };
+    }
+  }
+  return { success: false, error: "Order not found" };
+}
+
+function handleBatchUpdateOrder(postData) {
+  const { fileId, orderIds, field, value } = postData;
+  const ss = SpreadsheetApp.openById(fileId);
+  const sheet = ss.getSheets()[0];
+  const data = sheet.getDataRange().getValues();
+  
+  let colIndex = -1;
+  if (field === 'isChecked') colIndex = 12;
+  
+  if (colIndex === -1) return { success: false, error: "Batch field not supported" };
+
+  for (let i = 1; i < data.length; i++) {
+    if (orderIds.includes(String(data[i][1]))) {
+      sheet.getRange(i + 1, colIndex + 1).setValue(value);
+    }
+  }
+  return { success: true };
+}
+
+function handleBatchUpdateDesigner(postData) {
+  const { fileId, orderIds, value } = postData;
+  const ss = SpreadsheetApp.openById(fileId);
+  const sheet = ss.getSheets()[0];
+  const data = sheet.getDataRange().getValues();
+  const colIndex = 13; // Design Done Column
+
+  for (let i = 1; i < data.length; i++) {
+    const orderId = String(data[i][1]);
+    if (orderIds.includes(orderId)) {
+      sheet.getRange(i + 1, colIndex + 1).setValue(value);
+    }
+  }
+  return { success: true };
+}
+
+function updateDesignerStatus(e) {
+  const postData = JSON.parse(e.postData.contents);
+  const { fileId, order, isDone } = postData;
+  const ss = SpreadsheetApp.openById(fileId);
+  const sheet = ss.getSheets()[0];
+  const data = sheet.getDataRange().getValues();
+  
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][1]) === String(order.id)) {
+      sheet.getRange(i + 1, 14).setValue(isDone ? "TRUE" : "FALSE");
+      return { success: true };
+    }
+  }
+  return { success: false, error: "Order not found" };
+}
+
+/**
+ * QUY TRÌNH ĐỒNG BỘ FF (TỐI ƯU THEO YÊU CẦU MỚI)
+ * 1. Mở tab 'Fulfillment_Export' trong file tháng.
+ * 2. Lấy danh sách Order ID.
+ * 3. Duyệt Sheet 1, so khớp ID ở Cột B (index 1).
+ * 4. Nếu khớp: 
+ *    - Đổi Status thành 'Fulfilled' (Cột I - index 8).
+ *    - Tích Checkbox FF thành TRUE (Cột AB - index 27).
+ *    - KHÔNG ghi đè cột G (Tracking) vì đang chứa công thức.
+ * 5. Trả về: Tổng số đơn khớp và Số lượng đơn "Mới" được check.
+ */
+function handleSyncFulfillment(fileId) {
+  const targetSS = SpreadsheetApp.openById(fileId);
+  const ffSheet = targetSS.getSheetByName("Fulfillment_Export");
+  
+  if (!ffSheet) {
+    return { 
+      success: false, 
+      error: "Không tìm thấy tab 'Fulfillment_Export'. Vui lòng tạo tab này và dán dữ liệu vào." 
+    };
+  }
+  
+  const ffData = ffSheet.getDataRange().getValues();
+  if (ffData.length <= 1) return { success: true, updatedCount: 0, newCount: 0 };
+  
+  // Xác định cột Order ID trong tab export
+  const ffHeaders = ffData[0].map(h => String(h).toLowerCase().trim());
+  const orderIdCol = ffHeaders.indexOf("order id") !== -1 ? ffHeaders.indexOf("order id") : 
+                     ffHeaders.indexOf("id") !== -1 ? ffHeaders.indexOf("id") : 0;
+  
+  // Lưu danh sách Order ID từ file export vào Set để dò nhanh
+  const ffOrderIds = new Set();
+  for (let i = 1; i < ffData.length; i++) {
+    const id = String(ffData[i][orderIdCol]).trim();
+    if (id) ffOrderIds.add(id);
+  }
+  
+  const targetSheet = targetSS.getSheets()[0]; // Trang tính chính (Trang tính 1)
+  const targetData = targetSheet.getDataRange().getValues();
+  let totalMatched = 0;
+  let newCheckCount = 0;
+  
+  for (let i = 1; i < targetData.length; i++) {
+    const orderId = String(targetData[i][1]).trim(); // Cột B (index 1)
+    const alreadyFulfilled = targetData[i][27] === "TRUE" || targetData[i][27] === true; // Cột AB (index 27)
+    
+    if (orderId && ffOrderIds.has(orderId)) {
+      totalMatched++;
+      
+      // Nếu đơn này chưa được check FF trước đó thì tính là đơn "Mới"
+      if (!alreadyFulfilled) {
+        newCheckCount++;
+      }
+
+      // 1. Đổi Trạng thái thành 'Fulfilled' ở Cột I (Cột số 9)
+      targetSheet.getRange(i + 1, 9).setValue("Fulfilled");
+      
+      // 2. Đánh dấu Đã Fulfilled (Checkbox) ở Cột AB (Cột số 28)
+      targetSheet.getRange(i + 1, 28).setValue(true);
+      
+      // Ghi chú: KHÔNG cập nhật cột G (index 7) theo yêu cầu để bảo vệ công thức.
+    }
+  }
+  
+  return { 
+    success: true, 
+    updatedCount: totalMatched, 
+    newCount: newCheckCount 
+  };
+}
+
+// --- PERSONNEL LOGIC ---
+function getUsers() {
+    const s = getSheet(SHEET_USERS);
+    const d = s.getDataRange().getValues();
+    d.shift();
+    return d.map(r => {
+        let perms = {};
+        try { perms = JSON.parse(r[7] || '{}'); } catch(e) {}
+        return {
+            username: r[0],
+            fullName: r[2],
+            role: r[3],
+            email: r[4],
+            phone: r[5],
+            status: r[6] || 'Active',
+            permissions: perms
+        };
+    });
+}
+
+function createUser(username, password, fullName, role, email, phone, permissions) {
+    const s = getSheet(SHEET_USERS);
+    const d = s.getDataRange().getValues();
+    for(let i=1; i<d.length; i++) {
+        if(String(d[i][0]).toLowerCase() === String(username).toLowerCase()) return { success: false, error: 'Username already exists' };
+    }
+    const permStr = JSON.stringify(permissions || {});
+    s.appendRow([username, password, fullName, role, email, phone, 'Active', permStr]);
+    return { success: true };
+}
+
+function updateUser(username, role, status, permissions) {
+    const s = getSheet(SHEET_USERS);
+    const d = s.getDataRange().getValues();
+    for(let i=1; i<d.length; i++) {
+        if(String(d[i][0]) === String(username)) {
+            if(role !== undefined) s.getRange(i+1, 4).setValue(role);
+            if(status !== undefined) s.getRange(i+1, 7).setValue(status);
+            if(permissions !== undefined) s.getRange(i+1, 8).setValue(JSON.stringify(permissions));
+            return { success: true };
+        }
+    }
+    return { success: false, error: 'User not found' };
+}
+
+function handleLogin(u,p,ip){
+    const s=getSheet(SHEET_USERS);
+    const d=s.getDataRange().getValues();
+    const now = new Date();
+    const scriptTimeZone = Session.getScriptTimeZone();
+    const formattedTime = Utilities.formatDate(now, scriptTimeZone, 'dd/MM/yyyy HH:mm:ss');
+
+    for(let i=1;i<d.length;i++) {
+        if(String(d[i][0])==String(u) && String(d[i][1])==String(p)){
+            const st=d[i][6]||'Active';
+            if(st!=='Active') {
+                getSheet(SHEET_LOGS).appendRow([formattedTime, u, 'LOGIN_FAILED (Locked)', ip]);
+                return {success:false, error:'Account Locked'};
+            }
+            getSheet(SHEET_LOGS).appendRow([formattedTime, u, 'LOGIN_SUCCESS', ip]);
+            
+            let perms = {}; try { perms = JSON.parse(d[i][7] || '{}'); } catch(e) {}
+            return { success:true, user:{ username:d[i][0], fullName:d[i][2], role:d[i][3], email:d[i][4], phone:d[i][5], status:st, permissions: perms } };
+        }
+    }
+    getSheet(SHEET_LOGS).appendRow([formattedTime, u, 'LOGIN_FAILED', ip]);
+    return {success:false, error:'Invalid Credentials'};
+}
+
+function getFinance(year) {
+    if (!year) year = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy');
+    var fileId = getFinanceFileId(year);
+    if (!fileId) return { transactions: [], fileId: null };
+    try {
+        var ss = SpreadsheetApp.openById(fileId);
+        var sheet = ss.getSheets()[0];
+        if (sheet.getLastRow() <= 1) return { transactions: [], fileId: fileId };
+        var data = sheet.getDataRange().getValues();
+        data.shift(); 
+        var transactions = data.map(function(r) {
+            return { id: r[0], category: r[1], description: r[2], date: formatDate(r[3]), quantity: r[4], unitPrice: r[5], totalAmount: r[6], payer: r[7], note: r[8] };
+        }).reverse();
+        return { transactions: transactions, fileId: fileId };
+    } catch(e) { return { transactions: [], fileId: null }; }
+}
+
+function addFinance(year, t) {
+    if (!year) year = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy');
+    var fileId = getFinanceFileId(year) || createFinanceFile(year).fileId;
+    var ss = SpreadsheetApp.openById(fileId);
+    var sheet = ss.getSheets()[0];
+    var id = Utilities.getUuid();
+    var row = [id, t.category, t.description, t.date || new Date(), t.quantity || 1, t.unitPrice || 0, t.totalAmount || 0, t.payer, t.note || "", new Date()];
+    sheet.appendRow(row);
+    return { success: true, transaction: { id: id, ...t } };
+}
+
+function autoRecordDailyStats(isDebug = false) {
+  const storeSheet = getSheet(SHEET_STORES);
+  const stores = storeSheet.getDataRange().getValues(); stores.shift(); 
+  let totalListing = 0, totalSale = 0, recordDate = new Date();
+  if (isDebug) recordDate.setDate(recordDate.getDate() - 1); 
+  const dateStr = Utilities.formatDate(recordDate, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  const historySheet = getSheet(SHEET_STORE_HISTORY);
+  stores.forEach(row => {
+     const storeId = row[0], listing = Number(row[5] || 0), sale = Number(row[6] || 0);
+     totalListing += listing; totalSale += sale;
+     historySheet.appendRow([dateStr, storeId, listing, sale]);
+  });
+  const dailySheet = getSheet(SHEET_DAILY);
+  dailySheet.appendRow([dateStr, totalListing, totalSale]);
+}
