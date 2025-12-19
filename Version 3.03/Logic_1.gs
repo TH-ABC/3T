@@ -1,6 +1,6 @@
 /**
  * ==========================================
- * LOGIC_1.GS: NGHIỆP VỤ CHÍNH
+ * LOGIC_1.GS: NGHIỆP VỤ CHÍNH V5.4 (UI & STABILITY)
  * ==========================================
  */
 
@@ -61,18 +61,34 @@ function handleGetNews(username) {
 }
 
 function handleUpdateNews(news) {
-  const sheet = getSheet(SHEET_NEWS);
-  const data = sheet.getDataRange().getValues();
-  const targetId = String(news.id).trim();
-  for(let i = 1; i < data.length; i++) {
-    if(String(data[i][0]).trim() === targetId) {
-      sheet.getRange(i + 1, 2).setValue(news.title);
-      sheet.getRange(i + 1, 3).setValue(news.content);
-      if(news.imageUrl !== undefined) sheet.getRange(i + 1, 4).setValue(news.imageUrl);
-      return { success: true };
+  try {
+    if (!news || !news.id) return { success: false, error: "Thiếu ID bản tin để cập nhật" };
+    const sheet = getSheet(SHEET_NEWS);
+    const data = sheet.getDataRange().getValues();
+    const targetId = String(news.id).trim();
+    
+    for(let i = 1; i < data.length; i++) {
+      if(String(data[i][0]).trim() === targetId) {
+        // Cập nhật từng ô một để đảm bảo ổn định
+        sheet.getRange(i + 1, 2).setValue(news.title || "");
+        sheet.getRange(i + 1, 3).setValue(news.content || "");
+        
+        // Kiểm tra độ dài hình ảnh (Google Sheets giới hạn 50,000 ký tự mỗi ô)
+        if(news.imageUrl !== undefined) {
+          const imgStr = String(news.imageUrl);
+          if (imgStr.length > 49000) {
+            return { success: false, error: "Dung lượng ảnh quá lớn. Vui lòng giảm chất lượng hoặc chọn ảnh khác." };
+          }
+          sheet.getRange(i + 1, 4).setValue(imgStr);
+        }
+        
+        return { success: true }; // Trả về success boolean để FE đóng modal
+      }
     }
+    return { success: false, error: "Không tìm thấy bản tin ID: " + targetId };
+  } catch (err) {
+    return { success: false, error: "Lỗi Server xử lý cập nhật: " + err.toString() };
   }
-  return { success: false, error: "Không tìm thấy bản tin để cập nhật" };
 }
 
 function handleDeleteNews(newsId) {
@@ -81,13 +97,28 @@ function handleDeleteNews(newsId) {
   const data = sheet.getDataRange().getValues();
   const targetId = String(newsId).trim();
   
+  let found = false;
   for(let i = 1; i < data.length; i++) {
     if(String(data[i][0]).trim() === targetId) {
       sheet.deleteRow(i + 1);
-      return { success: true };
+      found = true;
+      break;
     }
   }
-  return { success: false, error: "Không tìm thấy ID: " + newsId };
+  
+  if (found) {
+    const cSheet = getSheet(SHEET_NEWS_COMMENTS);
+    const cData = cSheet.getDataRange().getValues();
+    for(let j = cData.length - 1; j >= 1; j--) if(String(cData[j][1]).trim() === targetId) cSheet.deleteRow(j + 1);
+    
+    const lSheet = getSheet(SHEET_NEWS_LIKES);
+    const lData = lSheet.getDataRange().getValues();
+    for(let k = lData.length - 1; k >= 1; k--) if(String(lData[k][0]).trim() === targetId) lSheet.deleteRow(k + 1);
+    
+    return { success: true };
+  }
+  
+  return { success: false, error: "Không tìm thấy ID bài viết: " + newsId };
 }
 
 function handleToggleLockNews(newsId) {
@@ -111,7 +142,12 @@ function handleUpdateLastRead(username) {
   const data = sheet.getDataRange().getValues();
   const now = new Date();
   let foundRow = -1;
-  for(let i=1; i<data.length; i++) if(String(data[i][0]) === String(username)) { foundRow = i + 1; break; }
+  for(let i=1; i < data.length; i++) {
+    if(String(data[i][0]) === String(username)) {
+      foundRow = i + 1;
+      break;
+    }
+  }
   if(foundRow > 0) sheet.getRange(foundRow, 2).setValue(now);
   else sheet.appendRow([username, now]);
   return { success: true };
@@ -120,7 +156,9 @@ function handleUpdateLastRead(username) {
 function handleAddNews(news) {
   const sheet = getSheet(SHEET_NEWS);
   const id = "N-" + Utilities.formatDate(new Date(), "GMT+7", "yyyyMMdd-HHmmss");
-  sheet.appendRow([id, news.title, news.content, news.imageUrl || "", news.author, new Date(), "FALSE"]);
+  const imgStr = String(news.imageUrl || "");
+  if (imgStr.length > 49000) return { success: false, error: "Ảnh quá lớn. Vui lòng giảm dung lượng ảnh." };
+  sheet.appendRow([id, news.title, news.content, imgStr, news.author, new Date(), "FALSE"]);
   return { success: true };
 }
 
@@ -212,7 +250,8 @@ function updateOrderSingle(fileId, orderId, field, value) {
 }
 
 function updateDesignerStatus(e) {
-  const data = JSON.parse(e.postData.contents);
+  const postContents = typeof e === 'string' ? e : e.postData.contents;
+  const data = JSON.parse(postContents);
   const ss = SpreadsheetApp.openById(data.fileId);
   const isDone = data.isDone ? "TRUE" : "FALSE";
   updateOrderSingle(data.fileId, data.order.id, 'isDesignDone', isDone);
