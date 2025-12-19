@@ -1,35 +1,21 @@
-
 import React from 'react';
 import { 
-  LayoutDashboard, 
-  ShoppingCart, 
-  Package, 
-  Users, 
-  Settings, 
-  FileText, 
-  Wallet,
-  X,
-  LogOut,
-  UserCog,
-  ChevronLeft,
-  ChevronRight,
-  Palette,
-  Key,
-  PenTool,
-  UserCheck
+  LayoutDashboard, ShoppingCart, Users, Settings, 
+  Wallet, X, LogOut, ChevronLeft, ChevronRight, 
+  Palette, Key, PenTool, UserCheck, Home, FileText
 } from 'lucide-react';
-import { User, ViewScope, UserPermissions } from '../types';
+import { User, UserPermissions } from '../types';
 
 interface SidebarProps {
   isOpen: boolean;
   setIsOpen: (v: boolean) => void;
   currentTab: string;
-  setCurrentTab: (t: string) => void;
+  setCurrentTab: (tab: string) => void;
   user: User;
   onLogout: () => void;
   onChangePassword: () => void;
   isDesktopCollapsed: boolean;
-  setIsDesktopCollapsed: (v: boolean) => void;
+  setIsDesktopCollapsed: (collapsed: boolean) => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -37,187 +23,94 @@ const Sidebar: React.FC<SidebarProps> = ({
   isDesktopCollapsed, setIsDesktopCollapsed 
 }) => {
   
-  // Helper to determine visibility based on Permissions OR Role Fallback
-  const hasAccess = (module: keyof UserPermissions | 'users'): boolean => {
+  const hasAccess = (module: string): boolean => {
       if (user.role === 'admin') return true;
+      if (module === 'home') return true;
       
-      // Admin-only modules
-      if (module === 'users') return false; 
-      if (module === 'system') return false;
+      const perms = user.permissions;
+      if (!perms) return true;
 
-      const perm = user.permissions?.[module as keyof UserPermissions];
-      if (perm) return perm !== 'none';
-
-      // Fallback for legacy users without specific permissions
-      const role = (user.role || '').toLowerCase();
-      
-      if (module === 'dashboard') return true;
-      if (module === 'orders') return role !== 'designer' && role !== 'designer online';
-      if (module === 'designer') return role === 'designer' || role === 'leader';
-      if (module === 'designerOnline') return role === 'designer online' || role === 'leader';
-      if (module === 'customers') return true;
-      if (module === 'finance') return role === 'leader' || role === 'admin';
-      
-      return false;
+      const p = perms[module as keyof UserPermissions];
+      return p !== 'none';
   };
 
-  // Check permissions for specific tabs
-  const showDashboard = hasAccess('dashboard');
-  const showOrders = hasAccess('orders');
-  const showDesigner = hasAccess('designer');
-  const showDesignerOnline = hasAccess('designerOnline');
-  const showCustomers = hasAccess('customers');
-  const showFinance = hasAccess('finance');
-  const showUsers = user.role === 'admin';
-  const showSystem = user.role === 'admin';
+  const isAdmin = user.role.toLowerCase() === 'admin';
 
-  let menuGroups = [
+  const menuGroups = [
     {
       title: 'NGHIỆP VỤ',
       items: [
-        { id: 'dashboard', label: 'Trang chủ', icon: <LayoutDashboard size={20} />, visible: showDashboard },
-        { id: 'orders', label: 'Quản lý Đơn hàng', icon: <ShoppingCart size={20} />, visible: showOrders },
-        { id: 'designer_online', label: 'Designer Online', icon: <Palette size={20} />, visible: showDesignerOnline },
-        { id: 'designer', label: 'Designer', icon: <PenTool size={20} />, visible: showDesigner },
-        { id: 'customers', label: 'Khách hàng', icon: <Users size={20} />, visible: showCustomers },
+        { id: 'dashboard', label: 'Quản Lý', icon: <LayoutDashboard size={20} />, visible: hasAccess('dashboard') },
+        { id: 'orders', label: 'Quản lý Đơn hàng', icon: <ShoppingCart size={20} />, visible: hasAccess('orders') },
+        { id: 'designer_online', label: 'Designer Online', icon: <Palette size={20} />, visible: hasAccess('designerOnline') },
+        { id: 'designer', label: 'Designer', icon: <PenTool size={20} />, visible: hasAccess('designer') },
       ]
     },
     {
       title: 'TÀI CHÍNH',
       items: [
-        { id: 'finance', label: 'Sổ Quỹ (Thu - Chi)', icon: <Wallet size={20} />, visible: showFinance },
-        { id: 'reports', label: 'Báo Cáo Lãi Lỗ', icon: <FileText size={20} />, visible: showFinance },
+        { id: 'finance', label: 'Sổ Quỹ', icon: <Wallet size={20} />, visible: hasAccess('finance') },
       ]
     },
     {
       title: 'HỆ THỐNG',
       items: [
-        { id: 'users', label: 'Quản lý Nhân sự', icon: <UserCheck size={20} />, visible: showUsers },
-        { id: 'settings', label: 'Cấu hình Sheet', icon: <Settings size={20} />, visible: showSystem },
+        { id: 'users', label: 'Nhân Sự', icon: <UserCheck size={20} />, visible: user.role === 'admin' },
+        { id: 'settings', label: 'Cấu hình', icon: <Settings size={20} />, visible: user.role === 'admin' },
       ]
     }
   ];
 
   return (
     <>
-      {/* Mobile Overlay */}
-      {isOpen && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
-          onClick={() => setIsOpen(false)}
-        />
-      )}
+      {isOpen && <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setIsOpen(false)} />}
 
-      {/* Sidebar Container */}
-      <div className={`
-        fixed top-0 left-0 h-full bg-[#1e293b] text-white z-50 transition-all duration-300 ease-in-out flex flex-col border-r border-gray-700
-        ${isOpen ? 'translate-x-0' : '-translate-x-full'} 
-        lg:translate-x-0 
-        ${isDesktopCollapsed ? 'w-20' : 'w-64'}
-      `}>
-        {/* Header */}
-        <div className={`h-16 flex items-center ${isDesktopCollapsed ? 'justify-center' : 'justify-between px-4'} bg-[#0f172a] border-b border-gray-700 transition-all relative`}>
-          {!isDesktopCollapsed && (
-            <div className="font-bold text-lg leading-tight whitespace-nowrap overflow-hidden">
-              QUẢN LÝ <br/> <span className="text-orange-500">ORDER ONLINE</span>
-            </div>
-          )}
-          {isDesktopCollapsed && (
-             <span className="font-bold text-xl text-orange-500">3T</span>
-          )}
-          
-          <button 
-            onClick={() => setIsDesktopCollapsed(!isDesktopCollapsed)} 
-            className="hidden lg:flex items-center justify-center w-6 h-6 bg-slate-700 rounded-full text-gray-400 hover:text-white hover:bg-slate-600 transition-colors absolute -right-3 border border-gray-600 top-5 z-40 shadow-sm"
-          >
-            {isDesktopCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-          </button>
-
-          <button onClick={() => setIsOpen(false)} className="lg:hidden text-gray-400 hover:text-white">
-            <X size={24} />
+      <div className={`fixed top-0 left-0 h-full bg-[#1e293b] text-white z-50 transition-all duration-300 flex flex-col border-r border-gray-700 ${isOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 ${isDesktopCollapsed ? 'w-20' : 'w-64'}`}>
+        <div className={`h-16 flex items-center ${isDesktopCollapsed ? 'justify-center' : 'justify-between px-4'} bg-[#0f172a] border-b border-gray-700 relative`}>
+          {!isDesktopCollapsed && <div className="font-bold text-lg text-orange-500 uppercase tracking-tighter">Team 3T OMS</div>}
+          <button onClick={() => setIsDesktopCollapsed(!isDesktopCollapsed)} className="hidden lg:flex absolute -right-3 top-5 bg-slate-700 rounded-full p-1 border border-gray-600 shadow-lg z-50">
+            {isDesktopCollapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
           </button>
         </div>
 
-        {/* Menu Items */}
-        <div className="flex-1 overflow-y-auto py-4 custom-scrollbar overflow-x-hidden">
-          {menuGroups.map((group, idx) => {
-            const visibleItems = group.items.filter(i => i.visible !== false);
-            if (visibleItems.length === 0) return null;
-
-            return (
-              <div key={idx} className="mb-6">
-                {!isDesktopCollapsed ? (
-                  <h3 className="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 transition-opacity duration-300 whitespace-nowrap">
-                    {group.title}
-                  </h3>
-                ) : (
-                  <div className="h-px bg-gray-700 mx-4 mb-4 mt-2"></div>
-                )}
-                <ul>
-                  {visibleItems.map((item) => (
-                    <li key={item.id} className="relative group">
-                      <button
-                        onClick={() => {
-                          setCurrentTab(item.id);
-                          if (window.innerWidth < 1024) setIsOpen(false);
-                        }}
-                        className={`
-                          w-full flex items-center py-3 text-sm font-medium transition-colors border-l-4
-                          ${isDesktopCollapsed ? 'justify-center px-0' : 'px-4'}
-                          ${currentTab === item.id 
-                            ? 'bg-slate-700 border-orange-500 text-white' 
-                            : 'border-transparent text-gray-400 hover:bg-slate-800 hover:text-white'}
-                        `}
-                        title={isDesktopCollapsed ? item.label : ''}
-                      >
-                        <span className={`${isDesktopCollapsed ? '' : 'mr-3'}`}>{item.icon}</span>
-                        {!isDesktopCollapsed && <span className="whitespace-nowrap">{item.label}</span>}
-                      </button>
-                      {isDesktopCollapsed && (
-                        <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity shadow-lg border border-gray-700">
-                          {item.label}
-                        </div>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* User Profile / Footer */}
-        <div className={`bg-[#0f172a] border-t border-gray-700 ${isDesktopCollapsed ? 'p-2' : 'p-4'}`}>
-          <div className={`flex items-center ${isDesktopCollapsed ? 'justify-center flex-col gap-3' : 'justify-between'}`}>
-            <div className={`flex items-center ${isDesktopCollapsed ? 'justify-center' : ''}`}>
-              <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white font-bold uppercase flex-shrink-0 cursor-default">
-                {user.username.charAt(0)}
-              </div>
-              {!isDesktopCollapsed && (
-                <div className="ml-3 overflow-hidden">
-                  <p className="text-sm font-medium truncate w-32" title={user.fullName}>{user.fullName}</p>
-                  <p className="text-xs text-gray-500 capitalize">{user.role}</p>
-                </div>
-              )}
-            </div>
-            
-            <div className={`flex items-center ${isDesktopCollapsed ? 'flex-col gap-2' : 'gap-1'}`}>
-               <button 
-                onClick={onChangePassword}
-                className={`text-gray-400 hover:text-yellow-400 p-2 rounded-md hover:bg-slate-800 transition-colors`}
-                title="Đổi mật khẩu"
-              >
-                <Key size={18} />
-              </button>
-              <button 
-                onClick={onLogout}
-                className={`text-gray-400 hover:text-red-400 p-2 rounded-md hover:bg-slate-800 transition-colors`}
-                title="Đăng xuất"
-              >
-                <LogOut size={18} />
-              </button>
-            </div>
+        <div className="flex-1 overflow-y-auto py-4 custom-scrollbar">
+          <div className="px-3 mb-6">
+            <button
+              onClick={() => setCurrentTab('home')}
+              className={`w-full flex items-center py-3 rounded-xl transition-all font-bold ${currentTab === 'home' ? 'bg-orange-600 text-white shadow-lg' : 'text-gray-400 hover:bg-slate-800 hover:text-white'} ${isDesktopCollapsed ? 'justify-center' : 'px-4'}`}
+            >
+              <Home size={22} className={isDesktopCollapsed ? '' : 'mr-3'} />
+              {!isDesktopCollapsed && <span className="uppercase tracking-widest text-sm">Trang chủ</span>}
+            </button>
           </div>
+
+          {menuGroups.map((group, idx) => (
+            <div key={idx} className="mb-6">
+              {!isDesktopCollapsed && <h3 className="px-6 text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em] mb-3">{group.title}</h3>}
+              <div className="px-3 space-y-1">
+                {group.items.filter(i => i.visible).map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => setCurrentTab(item.id)}
+                    className={`w-full flex items-center py-2.5 rounded-lg transition-colors text-sm ${currentTab === item.id ? 'bg-slate-700 text-orange-500 font-bold' : 'text-gray-400 hover:bg-slate-800 hover:text-white'} ${isDesktopCollapsed ? 'justify-center' : 'px-4'}`}
+                  >
+                    <span className={isDesktopCollapsed ? '' : 'mr-3'}>{item.icon}</span>
+                    {!isDesktopCollapsed && <span>{item.label}</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="p-4 bg-[#0f172a] border-t border-gray-700 flex items-center justify-between">
+           <div className="flex items-center gap-3">
+              <div className={`w-11 h-11 rounded-xl bg-red-600 flex items-center justify-center font-black ${isAdmin ? 'admin-logo-pulse text-[8px] uppercase border-2 border-red-400 shadow-lg' : 'text-xs bg-orange-600'}`}>
+                {isAdmin ? 'ADMIN' : user.username.charAt(0).toUpperCase()}
+              </div>
+              {!isDesktopCollapsed && <div className={`text-xs font-bold truncate w-24 ${isAdmin ? 'admin-red-gradient' : ''}`}>{user.fullName}</div>}
+           </div>
+           <button onClick={onLogout} title="Đăng xuất" className="text-gray-500 hover:text-red-500 transition-colors"><LogOut size={18} /></button>
         </div>
       </div>
     </>

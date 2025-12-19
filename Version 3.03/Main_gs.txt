@@ -10,66 +10,44 @@ const SHEET_FILE_INDEX = 'FileIndex';
 const SHEET_PL_SKU = 'PL SKU';
 const SHEET_PRICES = 'PriceMap';
 const SHEET_FINANCE_META = 'FinanceMeta';
+const SHEET_NEWS = 'News';
+const SHEET_NEWS_COMMENTS = 'NewsComments';
+const SHEET_NEWS_LIKES = 'NewsLikes';
 
-function doGet(e) { return handleRequest(e); }
-function doPost(e) { return handleRequest(e); }
-
-function handleRequest(e) {
+function doPost(e) {
   const lock = LockService.getScriptLock();
   lock.tryLock(30000); 
-  
   try {
-    let action = e.parameter.action;
-    let postData = null;
-    
-    if (e.postData && e.postData.contents) {
-      try { postData = JSON.parse(e.postData.contents); } catch (err) { postData = {}; }
-      if (!action && postData.action) action = postData.action;
-    }
-
+    const postData = JSON.parse(e.postData.contents);
+    const action = postData.action;
     let result = {};
 
-    if (action === 'getOrders') {
-      let month = e.parameter.month || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM');
-      result = getOrdersFromMonthFile(month);
-    } 
-    else if (action === 'createMonthFile') result = handleCreateMonthFile(postData.month);
-    else if (action === 'addOrder') result = handleAddOrder(postData);
-    else if (action === 'updateOrderRow') result = updateOrderRow(postData.fileId, postData.orderId, postData.data);
-    else if (action === 'updateOrder') result = updateOrderSingle(postData.fileId, postData.orderId, postData.field, postData.value);
-    else if (action === 'fulfillOrder') result = handleFulfillOrder(postData);
-    else if (action === 'batchUpdateOrder') result = handleBatchUpdateOrder(postData);
-    else if (action === 'syncFulfillment') result = handleSyncFulfillment(postData.fileId);
-    else if (action === 'updateDesignerStatus') result = updateDesignerStatus(e);
-    else if (action === 'batchUpdateDesigner') result = handleBatchUpdateDesigner(postData);
-    else if (action === 'getSkuMappings') result = getSkuMappings();
-    else if (action === 'updateSkuCategory') result = handleUpdateSkuCategory(postData.sku, postData.category);
-    else if (action === 'getPriceMappings') result = getPriceMappings();
-    else if (action === 'updateCategoryPrice') result = handleUpdateCategoryPrice(postData.category, postData.price);
-    else if (action === 'getStores') result = getData(SHEET_STORES);
-    else if (action === 'addStore') result = addRow(SHEET_STORES, [postData.id, postData.name, postData.url, postData.region||"", postData.status||"LIVE", 0, 0]);
-    else if (action === 'deleteStore') result = deleteRow(SHEET_STORES, postData.id);
-    else if (action === 'getDailyStats') result = getData(SHEET_DAILY);
-    else if (action === 'getStoreHistory') result = getStoreHistory(postData.storeId);
-    else if (action === 'debugSnapshot') { autoRecordDailyStats(true); result = { success: true }; } 
+    // --- NEWS ACTIONS ---
+    if (action === 'getNews') result = handleGetNews(postData.username);
+    else if (action === 'addNews') result = handleAddNews(postData);
+    else if (action === 'addComment') result = handleAddComment(postData);
+    else if (action === 'toggleLike') result = handleToggleLike(postData.newsId, postData.username);
+
+    // --- OTHER ACTIONS ---
+    else if (action === 'getOrders') result = getOrdersFromMonthFile(postData.month);
     else if (action === 'getUsers') result = getUsers();
     else if (action === 'login') result = handleLogin(postData.username, postData.password, postData.ip);
     else if (action === 'createUser') result = createUser(postData.username, postData.password, postData.fullName, postData.role, postData.email, postData.phone, postData.permissions);
     else if (action === 'updateUser') result = updateUser(postData.username, postData.role, postData.status, postData.permissions);
-    else if (action === 'changePassword') result = handleChangePassword(postData.username, postData.oldPass, postData.newPass);
-    else if (action === 'getRoles') result = getData(SHEET_ROLES);
-    else if (action === 'addRole') result = addRole(postData.role, postData.level);
+    else if (action === 'getStores') result = getData(SHEET_STORES);
+    else if (action === 'addStore') result = addRow(SHEET_STORES, [postData.id, postData.name, postData.url, postData.region||"", postData.status||"LIVE", 0, 0]);
     else if (action === 'getFinance') result = getFinance(postData.year);
     else if (action === 'addFinance') result = addFinance(postData.year, postData.transaction);
-    else if (action === 'createFinanceFile') result = createFinanceFile(postData.year);
-    else if (action === 'getFinanceMeta') result = getFinanceMeta();
-    else if (action === 'addFinanceMeta') result = addFinanceMeta(postData.type, postData.value);
-    else if (action === 'getUnits') result = getSimpleList(SHEET_UNITS);
 
-    return returnJSON(result);
+    return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
   } catch (err) {
-    return returnJSON({ success: false, error: err.toString() });
+    return ContentService.createTextOutput(JSON.stringify({ success: false, error: err.toString() })).setMimeType(ContentService.MimeType.JSON);
   } finally {
     lock.releaseLock();
   }
+}
+
+function doGet(e) {
+    // Trả về JSON cho GET requests nếu cần
+    return ContentService.createTextOutput(JSON.stringify({status: "alive"})).setMimeType(ContentService.MimeType.JSON);
 }

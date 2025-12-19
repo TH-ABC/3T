@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Wallet, Plus, Calendar, Search, Loader2, Save, X, DollarSign, Users, Tag, Calculator, FileText, FileSpreadsheet, ExternalLink } from 'lucide-react';
 import { sheetService } from '../services/sheetService';
@@ -44,14 +43,12 @@ export const FinanceBoard: React.FC = () => {
       setTransactions(Array.isArray(transList) ? transList : []);
       setCurrentFileId(fileId);
       
-      // Merge default payers if backend is empty initially
       const safePayers = (metaData.payers && metaData.payers.length > 0) ? metaData.payers : ['Hoàng', 'A Tâm'];
       setMeta({
         categories: metaData.categories || [],
         payers: safePayers
       });
       
-      // Set default form data
       if (metaData.categories && metaData.categories.length > 0 && !formData.category) {
           setFormData(prev => ({ ...prev, category: metaData.categories[0] }));
       }
@@ -88,13 +85,12 @@ export const FinanceBoard: React.FC = () => {
     const type = isAddMetaOpen.type;
     const value = isAddMetaOpen.value.trim();
     
-    // Optimistic update
     if (type === 'category') {
         setMeta(prev => ({ ...prev, categories: [...prev.categories, value] }));
-        setFormData(prev => ({ ...prev, category: value })); // Auto select new category
+        setFormData(prev => ({ ...prev, category: value })); 
     } else {
         setMeta(prev => ({ ...prev, payers: [...prev.payers, value] }));
-        setFormData(prev => ({ ...prev, payer: value })); // Auto select new payer
+        setFormData(prev => ({ ...prev, payer: value }));
     }
     
     setIsAddMetaOpen({ type: null, value: '' });
@@ -118,7 +114,6 @@ export const FinanceBoard: React.FC = () => {
     const payload = {
         ...formData,
         totalAmount,
-        // Ensure date format is consistent
         date: formData.date ? formData.date.replace('T', ' ') : ''
     };
 
@@ -152,9 +147,12 @@ export const FinanceBoard: React.FC = () => {
     t.payer.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const formatCurrency = (val: number) => val.toLocaleString('vi-VN');
+  const safeToLocaleString = (val: any) => {
+    if (val === undefined || val === null) return "0";
+    const n = Number(String(val).replace(/,/g, ''));
+    return isNaN(n) ? "0" : n.toLocaleString('vi-VN');
+  };
 
-  // Common Input Class Styles
   const inputLabelClass = "block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide";
   const inputFieldClass = "w-full border border-gray-200 bg-gray-50 rounded-lg px-3 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 focus:bg-white outline-none transition-all shadow-sm placeholder-gray-400";
 
@@ -219,7 +217,6 @@ export const FinanceBoard: React.FC = () => {
 
       {/* Main Content */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 flex flex-col overflow-hidden">
-         {/* Filter & Search */}
          <div className="p-4 border-b border-gray-100 flex justify-between items-center gap-4 bg-gray-50/30">
             <div className="relative flex-1 max-w-md group">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-emerald-500 transition-colors" size={18} />
@@ -236,7 +233,6 @@ export const FinanceBoard: React.FC = () => {
             </div>
          </div>
 
-         {/* Table */}
          <div className="flex-1 overflow-auto custom-scrollbar">
             <table className="w-full text-left border-collapse text-sm">
                 <thead className="bg-gray-50 text-gray-600 font-semibold sticky top-0 z-10 shadow-sm text-xs uppercase tracking-wider">
@@ -274,8 +270,8 @@ export const FinanceBoard: React.FC = () => {
                                 <td className="px-4 py-3 text-gray-800 font-medium">{t.description}</td>
                                 <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap font-mono">{t.date}</td>
                                 <td className="px-4 py-3 text-right text-gray-600 font-mono">{t.quantity}</td>
-                                <td className="px-4 py-3 text-right text-gray-600 font-mono">{formatCurrency(t.unitPrice)}</td>
-                                <td className="px-4 py-3 text-right font-bold text-gray-900 font-mono bg-gray-50 group-hover:bg-emerald-100/50 transition-colors">{formatCurrency(t.totalAmount)}</td>
+                                <td className="px-4 py-3 text-right text-gray-600 font-mono">{safeToLocaleString(t.unitPrice)}</td>
+                                <td className="px-4 py-3 text-right font-bold text-gray-900 font-mono bg-gray-50 group-hover:bg-emerald-100/50 transition-colors">{safeToLocaleString(t.totalAmount)}</td>
                                 <td className="px-4 py-3 text-center">
                                     <div className="flex items-center justify-center gap-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-200 px-2 py-1 rounded-full shadow-sm">
                                         <Users size={12} className="text-emerald-500" /> {t.payer}
@@ -290,11 +286,9 @@ export const FinanceBoard: React.FC = () => {
          </div>
       </div>
 
-      {/* --- ADD DATA MODAL --- */}
       {isAddModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] border border-gray-200">
-                {/* Modal Header */}
                 <div className="px-6 py-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                     <div>
                         <h3 className="font-bold text-gray-800 text-xl flex items-center gap-2">
@@ -310,11 +304,8 @@ export const FinanceBoard: React.FC = () => {
                     </button>
                 </div>
                 
-                {/* Modal Body */}
                 <div className="p-8 overflow-y-auto custom-scrollbar">
                     <div className="grid grid-cols-12 gap-6">
-                        
-                        {/* Row 1: Date & Category */}
                         <div className="col-span-12 md:col-span-5">
                             <label className={inputLabelClass}>Ngày Giờ Giao Dịch</label>
                             <div className="relative">
@@ -352,7 +343,6 @@ export const FinanceBoard: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Row 2: Description */}
                         <div className="col-span-12">
                             <label className={inputLabelClass}>Mô Tả / Nội Dung Chi Tiết</label>
                             <div className="relative">
@@ -360,14 +350,13 @@ export const FinanceBoard: React.FC = () => {
                                 <textarea 
                                     rows={2}
                                     className={`${inputFieldClass} pl-10 resize-none`}
-                                    placeholder="Ví dụ: Mua văn phòng phẩm, Thanh toán tiền điện..."
+                                    placeholder="Ví dụ: Mua văn phòng phẩm..."
                                     value={formData.description}
                                     onChange={(e) => setFormData({...formData, description: e.target.value})}
                                 />
                             </div>
                         </div>
 
-                        {/* Row 3: Calculation */}
                         <div className="col-span-12 bg-emerald-50/50 border border-emerald-100 rounded-xl p-5">
                             <div className="flex items-center gap-2 mb-3 text-emerald-800 font-bold text-xs uppercase tracking-wider">
                                 <Calculator size={14} /> Tính Toán Giá Trị
@@ -396,13 +385,12 @@ export const FinanceBoard: React.FC = () => {
                                 <div className="col-span-3">
                                     <label className="block text-xs font-bold text-emerald-700 mb-1">THÀNH TIỀN</label>
                                     <div className="w-full border-2 border-dashed border-emerald-200 bg-white rounded-lg px-3 py-2 text-right font-bold text-emerald-700 font-mono shadow-sm">
-                                        {formatCurrency((formData.quantity || 0) * (formData.unitPrice || 0))}
+                                        {safeToLocaleString((formData.quantity || 0) * (formData.unitPrice || 0))}
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Row 4: Payer & Note */}
                         <div className="col-span-12 md:col-span-6">
                             <label className={inputLabelClass}>Người Thực Hiện (Pay)</label>
                             <div className="flex gap-2">
@@ -436,11 +424,9 @@ export const FinanceBoard: React.FC = () => {
                                 onChange={(e) => setFormData({...formData, note: e.target.value})}
                             />
                         </div>
-
                     </div>
                 </div>
 
-                {/* Modal Footer */}
                 <div className="px-8 py-5 border-t border-gray-100 bg-gray-50 flex justify-end gap-4">
                     <button onClick={() => setIsAddModalOpen(false)} disabled={isSubmitting} className="px-6 py-2.5 text-gray-600 hover:bg-gray-200 rounded-lg text-sm font-semibold transition-colors">
                         Hủy Bỏ
@@ -454,7 +440,6 @@ export const FinanceBoard: React.FC = () => {
         </div>
       )}
 
-      {/* --- ADD META MODAL (Category / Payer) --- */}
       {isAddMetaOpen.type && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-fade-in">
               <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden p-6 border border-gray-200 transform transition-all scale-100">

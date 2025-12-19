@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Search, RefreshCw, Copy, ArrowUp, ArrowDown, Calendar, UserCircle, ChevronLeft, ChevronRight, Settings, Save, X, Loader2, CheckCircle, AlertCircle, Filter, ArrowDownAZ, ArrowUpAZ, AlertTriangle, Info, FileSpreadsheet, DollarSign, CheckSquare, Square, Users, Layers, Code, PenTool } from 'lucide-react';
 import { sheetService } from '../services/sheetService';
@@ -210,7 +209,6 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
     ); 
   };
 
-  // --- STATS CALCULATION (UPDATED) ---
   const stats = useMemo<{ 
       totalOrders: number; 
       totalMoney: number; 
@@ -279,14 +277,12 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
   
   const canManageSku = user.role === 'admin' || user.permissions?.canManageSku === true;
   const canManagePrice = user.role === 'admin' || user.permissions?.canManageSku === true; 
-  // Determine check rights based on permissions or role fallback
   const canCheckDesign = user.role === 'admin' || user.role === 'leader' || user.role === 'support' || (user.permissions?.designerOnline !== 'none');
 
   const filteredOrders = orders.filter(o => { 
     const matchesSearch = ((o.id ? String(o.id).toLowerCase() : '').includes(searchTerm.toLowerCase()) || (o.sku ? String(o.sku).toLowerCase() : '').includes(searchTerm.toLowerCase()) || (o.storeId ? getStoreName(o.storeId).toLowerCase() : '').includes(searchTerm.toLowerCase()) || (o.handler ? String(o.handler).toLowerCase() : '').includes(searchTerm.toLowerCase()) || (o.actionRole ? String(o.actionRole).toLowerCase() : '').includes(searchTerm.toLowerCase())); 
     if (!matchesSearch) return false; 
     
-    // Explicitly iterate over object entries without casting in the loop head
     for (const [key, val] of Object.entries(columnFilters)) { 
         const selectedValues = val as string[];
         if (!selectedValues || selectedValues.length === 0) continue; 
@@ -307,7 +303,6 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
   });
   const sortedOrders = filteredOrders.map((item, index) => ({ item, index })).sort((a, b) => { if (sortConfig.key === 'date') { const dateA = new Date(a.item.date || '').getTime(); const dateB = new Date(b.item.date || '').getTime(); const validA = !isNaN(dateA); const validB = !isNaN(dateB); if (!validA && !validB) return 0; if (!validA) return 1; if (!validB) return -1; if (dateA !== dateB) { return sortConfig.direction === 'asc' ? dateA - dateB : dateB - dateA; } return a.index - b.index; } const valA = String((a.item as any)[sortConfig.key] || ''); const valB = String((b.item as any)[sortConfig.key] || ''); if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1; if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1; return 0; }).map(x => x.item);
 
-  // --- SELECTION HANDLERS ---
   const handleSelectAll = () => { if (selectedOrderIds.size === sortedOrders.length && sortedOrders.length > 0) setSelectedOrderIds(new Set()); else setSelectedOrderIds(new Set(sortedOrders.map(o => o.id))); };
   const handleSelectRow = (id: string) => { const newSelected = new Set(selectedOrderIds); if (newSelected.has(id)) newSelected.delete(id); else newSelected.add(id); setSelectedOrderIds(newSelected); };
   const handleBatchAction = async (actionType: 'design_done' | 'design_pending') => {
@@ -331,7 +326,6 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
   return (
     <div className="p-4 bg-gray-100 min-h-screen relative pb-20">
       <div className="bg-white shadow-sm overflow-hidden rounded-lg flex flex-col h-full">
-        {/* TOP SUMMARY DASHBOARD */}
         <div className="bg-white border-b border-gray-200 p-4">
             <h3 className="text-sm font-bold text-gray-700 uppercase mb-3 flex items-center gap-2"><DollarSign size={16} className="text-green-600"/> Tổng Hợp Tháng {currentMonthStr}/{currentYearStr}</h3>
             <div className="flex flex-col xl:flex-row gap-6">
@@ -351,16 +345,19 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
-                                {Object.entries(stats.designers).map(([name, data]: [string, { total: number; checked: number; totalMoney: number; checkedMoney: number }]) => (
-                                    <tr key={name} className="hover:bg-gray-50">
-                                        <td className="px-2 py-2 font-medium text-gray-700 truncate max-w-[100px]" title={name}>{name}</td>
-                                        <td className="px-2 py-2 text-center text-gray-600">{data.total}</td>
-                                        <td className="px-2 py-2 text-center font-bold text-blue-600">{data.checked}</td>
-                                        <td className="px-2 py-2 text-right font-medium text-gray-700">{data.totalMoney.toLocaleString('vi-VN')}</td>
-                                        <td className="px-2 py-2 text-right font-medium text-green-600">{data.checkedMoney.toLocaleString('vi-VN')}</td>
-                                        <td className="px-2 py-2 text-right font-medium text-orange-600">{(data.totalMoney - data.checkedMoney).toLocaleString('vi-VN')}</td>
-                                    </tr>
-                                ))}
+                                {Object.entries(stats.designers).map(([name, data]: [string, { total: number; checked: number; totalMoney: number; checkedMoney: number }]) => {
+                                    const isItemAdmin = (name || '').toLowerCase().includes('admin');
+                                    return (
+                                        <tr key={name} className="hover:bg-gray-50">
+                                            <td className={`px-2 py-2 font-medium truncate max-w-[100px] ${isItemAdmin ? 'admin-red-gradient' : 'text-gray-700'}`} title={name}>{name}</td>
+                                            <td className="px-2 py-2 text-center text-gray-600">{data.total}</td>
+                                            <td className="px-2 py-2 text-center font-bold text-blue-600">{data.checked}</td>
+                                            <td className="px-2 py-2 text-right font-medium text-gray-700">{data.totalMoney.toLocaleString('vi-VN')}</td>
+                                            <td className="px-2 py-2 text-right font-medium text-green-600">{data.checkedMoney.toLocaleString('vi-VN')}</td>
+                                            <td className="px-2 py-2 text-right font-medium text-orange-600">{(data.totalMoney - data.checkedMoney).toLocaleString('vi-VN')}</td>
+                                        </tr>
+                                    )
+                                })}
                                 {Object.keys(stats.designers).length === 0 && (
                                     <tr><td colSpan={6} className="px-3 py-4 text-center text-gray-400 italic">Chưa có dữ liệu designer.</td></tr>
                                 )}
@@ -402,11 +399,14 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {loading ? <tr><td colSpan={9} className="text-center py-12 text-gray-500">Đang tải dữ liệu Tháng {currentMonthStr}...</td></tr> : (sortedOrders.length === 0 ? <tr><td colSpan={9} className="text-center py-12 text-gray-500">{dataError ? (<div className="flex flex-col items-center justify-center p-4 bg-red-50 border border-red-200 rounded-lg max-w-2xl mx-auto my-4 text-red-700"><div className="flex items-center gap-2 font-bold text-lg mb-2"><AlertTriangle size={24} /> {dataError.message}</div>{dataError.detail && <p className="text-sm mb-3">{dataError.detail}</p>}<div className="flex items-center gap-2 text-sm bg-white p-2 rounded border border-red-100"><Info size={16} className="text-blue-500"/><span>Vui lòng kiểm tra tab <strong>FileIndex</strong> trong Master Sheet để đảm bảo ID file chính xác.</span></div>{dataError.fileId && (<a href={`https://docs.google.com/spreadsheets/d/${dataError.fileId}/edit`} target="_blank" rel="noreferrer" className="mt-3 text-blue-600 hover:underline text-sm font-semibold flex items-center gap-1"><FileSpreadsheet size={16} /> Bấm vào đây để kiểm tra File hiện tại (ID: {dataError.fileId.substring(0, 10)}...)</a>)}</div>) : 'Không có đơn hàng nào thuộc nhóm Designer Online.'}</td></tr> : sortedOrders.map((order, idx) => {
+              {loading ? <tr><td colSpan={10} className="text-center py-12 text-gray-500">Đang tải dữ liệu Tháng {currentMonthStr}...</td></tr> : (sortedOrders.length === 0 ? <tr><td colSpan={10} className="text-center py-12 text-gray-500">{dataError ? (<div className="flex flex-col items-center justify-center p-4 bg-red-50 border border-red-200 rounded-lg max-w-2xl mx-auto my-4 text-red-700"><div className="flex items-center gap-2 font-bold text-lg mb-2"><AlertTriangle size={24} /> {dataError.message}</div>{dataError.detail && <p className="text-sm mb-3">{dataError.detail}</p>}<div className="flex items-center gap-2 text-sm bg-white p-2 rounded border border-red-100"><Info size={16} className="text-blue-500"/><span>Vui lòng kiểm tra tab <strong>FileIndex</strong> trong Master Sheet để đảm bảo ID file chính xác.</span></div>{dataError.fileId && (<a href={`https://docs.google.com/spreadsheets/d/${dataError.fileId}/edit`} target="_blank" rel="noreferrer" className="mt-3 text-blue-600 hover:underline text-sm font-semibold flex items-center gap-1"><FileSpreadsheet size={16} /> Bấm vào đây để kiểm tra File hiện tại (ID: {dataError.fileId.substring(0, 10)}...)</a>)}</div>) : 'Không có đơn hàng nào thuộc nhóm Designer Online.'}</td></tr> : sortedOrders.map((order, idx) => {
                   const normalizedSku = normalizeKey(order.sku);
                   const category = skuMap[normalizedSku] || '';
                   const price = getPriceForCategory(category);
                   const isUpdating = updatingIds.has(order.id);
+                  const isHandlerAdmin = (order.handler || '').toLowerCase().includes('admin');
+                  const isActionAdmin = (order.actionRole || '').toLowerCase().includes('admin');
+
                   return (
                       <tr key={order.id + idx} className={`hover:bg-gray-50 border-b border-gray-200 text-gray-800 transition-colors ${selectedOrderIds.has(order.id) ? 'bg-indigo-50' : ''}`}>
                           <td className="px-2 py-2 border-r text-center align-middle"><input type="checkbox" className="w-3 h-3 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" checked={selectedOrderIds.has(order.id)} onChange={() => handleSelectRow(order.id)} /></td>
@@ -417,8 +417,13 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                           <td className="px-2 py-2 border-r text-center font-medium text-indigo-600 bg-indigo-50/50">{category}</td>
                           <td className="px-2 py-2 border-r text-center font-bold text-green-700 bg-green-50/50">{formatPrice(price)}</td>
                           <td className="px-1 py-1 border-r text-center align-middle bg-blue-50/30">{isUpdating ? (<div className="flex justify-center"><Loader2 size={14} className="animate-spin text-blue-500" /></div>) : (<button onClick={() => handleDesignerToggle(order)} disabled={!canCheckDesign} className={`p-1 rounded focus:outline-none transition-colors ${!canCheckDesign ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-100'}`} title={canCheckDesign ? "Check hoàn thành và Lưu sheet" : "Bạn không có quyền check"}>{order.isDesignDone ? <CheckSquare size={16} className="text-blue-600" /> : <Square size={16} className="text-gray-300" />}</button>)}</td>
-                          <td className="px-2 py-2 border-r text-center text-[10px] text-gray-600 font-medium whitespace-nowrap bg-gray-50/50"><div className="flex items-center justify-center gap-1.5"><UserCircle size={12} className="text-gray-400"/>{order.handler}</div></td>
-                          <td className="px-2 py-2 border-l text-center bg-gray-50/30 font-bold text-orange-600">{order.actionRole}</td>
+                          <td className="px-2 py-2 border-r text-center text-[10px] font-medium whitespace-nowrap bg-gray-50/50">
+                              <div className="flex items-center justify-center gap-1.5">
+                                  <UserCircle size={12} className={isHandlerAdmin ? 'text-red-500' : 'text-gray-400'}/>
+                                  <span className={isHandlerAdmin ? "admin-red-gradient" : "text-gray-600"}>{order.handler}</span>
+                              </div>
+                          </td>
+                          <td className={`px-2 py-2 border-l text-center bg-gray-50/30 font-bold ${isActionAdmin ? 'admin-red-gradient' : 'text-orange-600'}`}>{order.actionRole}</td>
                       </tr>
                   );
               }))}

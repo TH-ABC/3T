@@ -1,15 +1,17 @@
-
 import { GoogleGenAI } from "@google/genai";
-import { DashboardMetrics, DailyRevenue } from '../types';
+// Fixed: Changed missing member DailyRevenue to DailyStat as per types.ts.
+import { DashboardMetrics, DailyStat } from '../types';
 
 const getClient = () => {
     const apiKey = process.env.API_KEY;
     if (!apiKey) return null;
-    return new GoogleGenAI({ apiKey });
+    // Named parameter initialization for the GoogleGenAI instance.
+    return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
 export const geminiService = {
-  analyzeBusiness: async (metrics: DashboardMetrics, chartData: DailyRevenue[]) => {
+  // Fixed: Updated parameter type to use DailyStat instead of non-existent DailyRevenue.
+  analyzeBusiness: async (metrics: DashboardMetrics, chartData: DailyStat[]) => {
     const ai = getClient();
     if (!ai) return "Vui lòng cấu hình API KEY để sử dụng AI.";
 
@@ -28,12 +30,12 @@ export const geminiService = {
     `;
 
     try {
-      // Fixed: Updated model to 'gemini-3-flash-preview' for basic text tasks
+      // Fixed: Direct call to ai.models.generateContent with model name and contents.
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: prompt,
       });
-      // Correctly accessing .text property (not a method)
+      // Fixed: Access the .text property directly (not a method).
       return response.text;
     } catch (error) {
       console.error("Gemini Error:", error);

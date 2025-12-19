@@ -1,4 +1,3 @@
-
 export enum OrderStatus {
   PENDING = 'Pending',
   FULFILLED = 'Fulfilled',
@@ -7,64 +6,22 @@ export enum OrderStatus {
   RESEND = 'Resend'
 }
 
-export interface OrderItem {
-  sku: string;
-  type: string;
-  quantity: string | number;
-  note: string;
-  productName?: string;
-  itemSku?: string;
-  urlMockup?: string;
-  mockupType?: string;
-  // New Artwork fields
-  urlArtworkFront?: string;
-  urlArtworkBack?: string;
-}
-
 export interface Order {
   id: string;
-  date: string; // YYYY-MM-DD HH:mm:ss (Date List - User Selected)
-  lastModified?: string; // New: System Timestamp (Created/Updated At)
+  date: string;
   storeId: string;
   sku: string;
   tracking: string;
-  status: OrderStatus | string;
+  status: string;
   link?: string;
-  type?: string;
-  note?: string;
   quantity?: string | number;
-  handler?: string; // Người xử lý (Username)
-  isChecked?: boolean; // New Checkbox
-  actionRole?: string; // New Role Action
-  items?: OrderItem[]; // Support multiple items per order
-  isFulfilled?: boolean; // New Fulfilled Status
-  isDesignDone?: boolean; // New Designer Check Status
-  
-  // New Fields from PW sheet
+  handler?: string;
+  isChecked?: boolean;
+  isDesignDone?: boolean;
+  isFulfilled?: boolean;
+  actionRole?: string;
   itemName?: string;
   netPrice?: string | number;
-
-  // --- SHIPPING INFO (Hidden on UI, saved to Sheet) ---
-  rawShipping?: string; // Raw text to be parsed by backend
-  shippingName?: string;
-  shippingFirstName?: string;
-  shippingLastName?: string;
-  shippingAddress1?: string;
-  shippingAddress2?: string;
-  shippingCity?: string;
-  shippingProvince?: string;
-  shippingZip?: string;
-  shippingCountry?: string;
-  shippingPhone?: string;
-
-  // --- PRODUCT INFO ---
-  productName?: string;
-  itemSku?: string;
-  urlMockup?: string;
-  mockupType?: string;
-  // New Artwork fields
-  urlArtworkFront?: string;
-  urlArtworkBack?: string;
 }
 
 export interface Store {
@@ -84,73 +41,59 @@ export interface DashboardMetrics {
   debt: number;
 }
 
-export interface ChartData {
-  name: string;
-  value: number;
-}
-
-export interface DailyRevenue {
-  date: string;
-  amount: number;
-}
-
-// --- AUTH TYPES ---
-export type ViewScope = 'all' | 'own' | 'none';
-
-export interface UserPermissions {
-  canManageSku?: boolean;
-  dashboard?: ViewScope;      // New
-  orders?: ViewScope;
-  designer?: ViewScope;
-  designerOnline?: ViewScope;
-  customers?: ViewScope;      // New
-  finance?: ViewScope;        // New (Sổ quỹ + Báo cáo)
-  system?: ViewScope;         // New (Cấu hình hệ thống)
-}
-
-export interface User {
-  username: string;
-  fullName: string;
-  role: 'admin' | 'leader' | 'support' | 'designer' | 'idea' | string;
-  email?: string;
-  phone?: string;
-  status?: 'Active' | 'Inactive' | string;
-  permissions?: UserPermissions;
-}
-
-export interface Role {
-  name: string;
-  level: number;
-}
-
-export interface AuthResponse {
-  success: boolean;
-  user?: User;
-  error?: string;
-}
-
-// --- DAILY STATS TYPES ---
 export interface DailyStat {
   date: string;
   totalListing: number;
   totalSale: number;
 }
 
-// --- STORE HISTORY TYPES ---
-export interface StoreHistoryItem {
-  date: string;
-  storeId: string;
-  listing: number;
-  sale: number;
+// --- NEWS TYPES ---
+export interface NewsItem {
+  id: string;
+  title: string;
+  content: string;
+  imageUrl: string;
+  author: string;
+  timestamp: string;
+  likesCount: number;
+  isLiked?: boolean;
+  isLocked?: boolean; // NEW: Lock comments
+  comments?: NewsComment[];
 }
 
-// --- SKU MAPPING TYPE ---
-export interface SkuMapping {
-  sku: string;
-  category: string;
+export interface NewsComment {
+  id: string;
+  newsId: string;
+  username: string;
+  text: string;
+  timestamp: string;
 }
 
-// --- FINANCE TYPES ---
+// --- AUTH & PERMISSIONS ---
+export type ViewScope = 'all' | 'own' | 'none';
+
+export interface UserPermissions {
+  canManageSku?: boolean;
+  canPostNews?: boolean;
+  dashboard?: ViewScope;      
+  orders?: ViewScope;
+  designer?: ViewScope;
+  designerOnline?: ViewScope;
+  customers?: ViewScope;      
+  finance?: ViewScope;        
+  system?: ViewScope;         
+}
+
+export interface User {
+  username: string;
+  fullName: string;
+  role: string;
+  permissions?: UserPermissions;
+  status?: string;
+  email?: string;
+  phone?: string;
+}
+
 export interface FinanceTransaction {
   id: string;
   date: string;
@@ -163,13 +106,29 @@ export interface FinanceTransaction {
   note: string;
 }
 
+export interface StoreHistoryItem {
+  date: string;
+  listing: string | number;
+  sale: string | number;
+}
+
+export interface Role {
+  name: string;
+  level: number;
+}
+
+export interface SkuMapping {
+  sku: string;
+  category: string;
+}
+
+export interface AuthResponse {
+  success: boolean;
+  user?: User;
+  error?: string;
+}
+
 export interface FinanceMeta {
   categories: string[];
   payers: string[];
-}
-
-// --- SYSTEM TYPES ---
-export interface MonthOption {
-  value: string; // YYYY-MM
-  label: string;
 }

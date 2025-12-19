@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Search, RefreshCw, Copy, ExternalLink, Calendar, FileSpreadsheet, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, UserCircle, CheckSquare, Square, Loader2, AlertTriangle, Filter, ArrowDownAZ, ArrowUpAZ, Truck, Settings2, CheckCircle, Package, TrendingUp, Clock, FilePlus, PenTool, X, RefreshCcw, CreditCard, LocateFixed, ShoppingBag, DollarSign } from 'lucide-react';
+import { Search, RefreshCw, Copy, ExternalLink, Calendar, FileSpreadsheet, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, UserCircle, CheckSquare, Square, Loader2, AlertTriangle, Filter, ArrowDownAZ, ArrowUpAZ, Truck, Settings2, CheckCircle, Package, TrendingUp, Clock, FilePlus, PenTool, X, RefreshCcw, CreditCard, LocateFixed, ShoppingBag, DollarSign, Zap } from 'lucide-react';
 import { sheetService } from '../services/sheetService';
 import { Order, Store, User } from '../types';
 
@@ -112,6 +112,7 @@ interface SystemModalState {
 export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onProcessEnd }) => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
+  const [systemUsers, setSystemUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [dataError, setDataError] = useState<{ message: string, detail?: string, fileId?: string } | null>(null);
   
@@ -133,6 +134,7 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
   // --- BATCH SELECTION STATE ---
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
+  const [isSyncingPW, setIsSyncingPW] = useState(false);
   const [isSyncingFF, setIsSyncingFF] = useState(false);
 
   // --- UI STATE ---
@@ -178,8 +180,12 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
   useEffect(() => {
       const fetchMetadata = async () => {
           try {
-              const [storeData] = await Promise.all([sheetService.getStores()]);
+              const [storeData, usersRes] = await Promise.all([
+                sheetService.getStores(),
+                sheetService.getUsers()
+              ]);
               setStores(storeData);
+              setSystemUsers(Array.isArray(usersRes) ? usersRes : []);
           } catch (e) { console.error("Error fetching metadata", e); }
       };
       fetchMetadata();
@@ -235,27 +241,22 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
           if (order.date) {
               const parts = order.date.split(/[-T :]/); 
               if (parts.length >= 3) {
-                  // Assuming standard format YYYY-MM-DD or DD/MM/YYYY
                   if (parts[0].length === 4) { // YYYY-MM-DD
                       dateKey = `${parts[2]}/${parts[1]}`; // DD/MM
-                  } else { // DD/MM/YYYY or MM/DD/YYYY - Trying simple approach
+                  } else { 
                       dateKey = `${parts[0]}/${parts[1]}`; // DD/MM
                   }
               }
           }
           
           if (!stats[storeId].daily[dateKey]) stats[storeId].daily[dateKey] = 0;
-          stats[storeId].daily[dateKey] += 1; // Counting Orders per day
+          stats[storeId].daily[dateKey] += 1; 
       });
 
-      // Convert to array and sort
       return Object.values(stats).sort((a, b) => b.totalOrders - a.totalOrders).map(stat => {
-          // Sort daily keys
           const sortedDaily = Object.entries(stat.daily).sort((a, b) => {
-              // rough sort by date string DD/MM
               const [d1, m1] = a[0].split('/').map(Number);
               const [d2, m2] = b[0].split('/').map(Number);
-              // Fixed typo iNaN to isNaN
               if (isNaN(d1) || isNaN(m1)) return 1;
               if (isNaN(d2) || isNaN(m2)) return -1;
               if (m1 !== m2) return m1 - m2;
@@ -461,31 +462,34 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
     } 
   };
 
-  const handleSyncFulfillment = async () => {
-      if (!currentFileId) return;
-      setIsSyncingFF(true);
-      if (onProcessStart) onProcessStart();
-      try {
-          const result = await sheetService.syncFulfillment(currentFileId);
-          if (result && result.success) {
-              const newCount = result.newCount || 0;
-              const totalMatched = result.updatedCount || 0;
-              
-              showMessage(
-                'Đồng bộ Hoàn tất', 
-                `Đã check đồng bộ tiếp theo cho: ${newCount} đơn hàng mới.\n(Tổng số đơn khớp trong file: ${totalMatched})`, 
-                'success'
-              );
-              loadData(selectedMonth); 
-          } else {
-              showMessage('Lỗi', result.error || 'Có lỗi xảy ra khi đồng bộ.', 'error');
-          }
-      } catch (e) {
-          showMessage('Lỗi', 'Không thể kết nối đến server.', 'error');
-      } finally {
-          setIsSyncingFF(false);
-          if (onProcessEnd) onProcessEnd();
-      }
+  // NÚT ĐỒNG BỘ PW (Ưu tiên 1)
+  const handleSyncPW = async () => {
+    if (!currentFileId) return;
+    setIsSyncingPW(true);
+    if (onProcessStart) onProcessStart();
+    try {
+        const result = await sheetService.syncPW(currentFileId);
+        if (result && result.success) {
+            showMessage('Hoàn tất PW', `Đã dán đè dữ liệu cho ${result.updatedCount} đơn hàng từ sheet PW.`, 'success');
+            loadData(selectedMonth);
+        } else showMessage('Lỗi', result.error || 'Lỗi đồng bộ PW', 'error');
+    } catch (e) { showMessage('Lỗi', 'Kết nối server thất bại', 'error'); }
+    finally { setIsSyncingPW(false); if (onProcessEnd) onProcessEnd(); }
+  };
+
+  // NÚT ĐỒNG BỘ FF (Ưu tiên 2)
+  const handleSyncFF = async () => {
+    if (!currentFileId) return;
+    setIsSyncingFF(true);
+    if (onProcessStart) onProcessStart();
+    try {
+        const result = await sheetService.syncFF(currentFileId);
+        if (result && result.success) {
+            showMessage('Hoàn tất FF', `Đã điền "Fulfilled" cho ${result.updatedCount} đơn hàng (chỉ dòng trống) từ FF_Export.`, 'success');
+            loadData(selectedMonth);
+        } else showMessage('Lỗi', result.error || 'Lỗi đồng bộ FF', 'error');
+    } catch (e) { showMessage('Lỗi', 'Kết nối server thất bại', 'error'); }
+    finally { setIsSyncingFF(false); if (onProcessEnd) onProcessEnd(); }
   };
   
   const handleMonthChange = (step: number) => { const [year, month] = selectedMonth.split('-').map(Number); const date = new Date(year, month - 1 + step, 1); setSelectedMonth(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`); };
@@ -523,6 +527,13 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
     ); 
   };
 
+  const getIsAdminByHandler = (name: string) => {
+    if (!name) return false;
+    if (name.toLowerCase().includes('admin')) return true;
+    const foundUser = systemUsers.find(u => u.fullName === name || u.username === name);
+    return foundUser?.role.toLowerCase() === 'admin';
+  };
+
   return (
     <div className="flex flex-col h-full bg-gray-100 relative">
         {/* --- HEADER --- */}
@@ -540,13 +551,19 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
                     </div>
                     <button onClick={() => loadData(selectedMonth)} className={`p-2 rounded-full hover:bg-gray-100 text-gray-500 ${loading ? 'animate-spin text-orange-500' : ''}`}><RefreshCw size={18} /></button>
                     {currentFileId ? (
-                        <>
+                        <div className="flex items-center gap-2">
                             <a href={`https://docs.google.com/spreadsheets/d/${currentFileId}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-white border border-green-500 text-green-600 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-green-50 shadow-sm"><FileSpreadsheet size={16} /><span>Mở Sheet</span></a>
-                            <button onClick={handleSyncFulfillment} disabled={isSyncingFF} className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-sm transition-colors">
-                                {isSyncingFF ? <Loader2 size={16} className="animate-spin" /> : <RefreshCcw size={16} />}
-                                <span>Đồng bộ FF</span>
+                            
+                            {/* CỤM NÚT ĐỒNG BỘ MỚI */}
+                            <button onClick={handleSyncPW} disabled={isSyncingPW} className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-xs font-black shadow-lg transition-all active:scale-95 disabled:opacity-50">
+                                {isSyncingPW ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+                                <span>PW (UT1)</span>
                             </button>
-                        </>
+                            <button onClick={handleSyncFF} disabled={isSyncingFF} className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-black shadow-lg transition-all active:scale-95 disabled:opacity-50">
+                                {isSyncingFF ? <Loader2 size={14} className="animate-spin" /> : <RefreshCcw size={14} />}
+                                <span>FF (UT2)</span>
+                            </button>
+                        </div>
                     ) : (
                         <button onClick={handleCreateFile} disabled={loading} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white shadow-sm"><FilePlus size={16} /><span>Tạo Sheet</span></button>
                     )}
@@ -654,6 +671,7 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
                     sortedOrders.length === 0 ? (<tr><td colSpan={20} className="py-12 text-center text-gray-500">Không có đơn hàng.</td></tr>) : 
                     sortedOrders.map((order, idx) => {
                         const isUpdating = updatingOrderIds.has(order.id);
+                        const isHandlerAdmin = getIsAdminByHandler(order.handler || '');
                         return (
                             <tr key={order.id + idx} className={`hover:bg-blue-50/30 transition-colors group ${selectedOrderIds.has(order.id) ? 'bg-orange-50' : ''}`}>
                                 <td className="px-2 py-2 text-center border-r border-gray-100"><input type="checkbox" className="w-3 h-3 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer" checked={selectedOrderIds.has(order.id)} onChange={() => handleSelectRow(order.id)} /></td>
@@ -666,7 +684,7 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
                                 {visibleColumns['itemName'] && <td className="px-2 py-2 border-r border-gray-100"><div className="text-[10px] text-gray-600 truncate max-w-[10rem]" title={order.itemName}><ShoppingBag size={10} className="inline mr-1 text-gray-400" /> {order.itemName || '---'}</div></td>}
                                 {visibleColumns['netPrice'] && <td className="px-2 py-2 border-r border-gray-100 text-right font-mono text-emerald-600 font-bold">{order.netPrice ? Number(order.netPrice).toLocaleString('en-US') : '0'}</td>}
                                 {visibleColumns['status'] && <td className="px-2 py-2 text-center border-r border-gray-100"><span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border ${order.status === 'Fulfilled' ? 'bg-green-100 text-green-700 border-green-200' : order.status === 'Cancelled' ? 'bg-red-100 text-red-700 border-red-200' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>{order.status || 'Pending'}</span></td>}
-                                {visibleColumns['handler'] && <td className="px-2 py-2 border-r border-gray-100 text-[10px] truncate max-w-[5rem] font-bold text-indigo-600" title={order.handler}>{order.handler || '---'}</td>}
+                                {visibleColumns['handler'] && <td className={`px-2 py-2 border-r border-gray-100 text-[10px] truncate max-w-[5rem] font-bold ${isHandlerAdmin ? 'admin-red-gradient' : 'text-indigo-600'}`} title={order.handler}>{order.handler || '---'}</td>}
                                 {visibleColumns['actionRole'] && <td className="px-2 py-2 border-r border-gray-100"><span className={`text-[9px] px-1.5 py-0.5 rounded border truncate max-w-[5rem] block ${getRoleBadgeStyle(order.actionRole)}`} title={order.actionRole}>{order.actionRole}</span></td>}
                                 {visibleColumns['isFulfilled'] && <td className="px-2 py-2 text-center border-r border-gray-100">{order.isFulfilled ? <Truck size={16} className="text-green-600 mx-auto" /> : <div className="w-3 h-3 rounded-full border border-gray-300 mx-auto"></div>}</td>}
                                 {visibleColumns['checkbox'] && <td className="px-1 py-2 text-center border-r border-gray-100">{isUpdating ? <Loader2 size={14} className="animate-spin text-orange-500 mx-auto" /> : <button onClick={() => handleToggleCheckbox(order)} className={`hover:scale-110 transition-transform ${order.isChecked ? 'text-blue-600' : 'text-gray-300'}`}>{order.isChecked ? <CheckSquare size={16} /> : <Square size={16} />}</button>}</td>}
