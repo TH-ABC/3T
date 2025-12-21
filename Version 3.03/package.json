@@ -1,3 +1,4 @@
+
 {
   "name": "oms-google-sheets-version-5.0",
   "private": true,
@@ -13,7 +14,8 @@
     "recharts": "^3.5.1",
     "react": "^19.2.0",
     "lucide-react": "^0.555.0",
-    "@google/genai": "^1.30.0"
+    "@google/genai": "^1.30.0",
+    "react-quill": "^2.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
