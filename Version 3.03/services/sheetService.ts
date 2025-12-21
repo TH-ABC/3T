@@ -1,4 +1,5 @@
-import { Order, Store, User, DashboardMetrics, DailyStat, StoreHistoryItem, SkuMapping, Role, AuthResponse, FinanceTransaction, FinanceMeta, NewsItem, NewsComment } from '../types';
+
+import { Order, Store, User, DashboardMetrics, DailyStat, StoreHistoryItem, SkuMapping, Role, AuthResponse, FinanceTransaction, FinanceMeta, NewsItem, NewsComment, ScheduleStaff, AttendanceRecord, OTRecord } from '../types';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbyw4ZdfirgKUHyXMH8Ro7UZ6-VWCdf1hgqU37ilLvNt2RwzusSPG_HUc_mi8z-9tInR/exec'; 
 
@@ -26,6 +27,20 @@ async function callAPI(action: string, method: string = 'POST', data: any = {}):
 }
 
 export const sheetService = {
+  // --- SCHEDULE & ATTENDANCE ---
+  getScheduleStaff: async (): Promise<ScheduleStaff[]> => await callAPI('getScheduleStaff', 'GET'),
+  saveScheduleStaff: async (staffList: ScheduleStaff[]): Promise<any> => await callAPI('saveScheduleStaff', 'POST', { staffList }),
+  getAttendance: async (month: string): Promise<AttendanceRecord[]> => await callAPI('getAttendance', 'POST', { month }),
+  checkIn: async (username: string, name: string): Promise<any> => await callAPI('checkIn', 'POST', { username, name }),
+  checkOut: async (username: string, name: string): Promise<any> => await callAPI('checkOut', 'POST', { username, name }),
+  
+  // --- OT FUNCTIONS ---
+  getOTAttendance: async (month: string): Promise<OTRecord[]> => await callAPI('getOTAttendance', 'POST', { month }),
+  checkInOT: async (username: string, name: string): Promise<any> => await callAPI('checkInOT', 'POST', { username, name }),
+  checkOutOT: async (username: string, name: string): Promise<any> => await callAPI('checkOutOT', 'POST', { username, name }),
+  getHolidays: async (month: string): Promise<string[]> => await callAPI('getHolidays', 'POST', { month }),
+  toggleHoliday: async (date: string): Promise<any> => await callAPI('toggleHoliday', 'POST', { date }),
+
   // --- NEWS & NOTIFICATIONS ---
   getNews: async (username: string): Promise<{ news: NewsItem[], lastReadTime: number }> => {
     const res = await callAPI('getNews', 'POST', { username });

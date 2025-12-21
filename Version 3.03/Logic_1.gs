@@ -1,6 +1,7 @@
+
 /**
  * ==========================================
- * LOGIC_1.GS: NGHIỆP VỤ CHÍNH V5.4 (UI & STABILITY)
+ * LOGIC_1.GS: NGHIỆP VỤ CHÍNH V5.4 (STABLE)
  * ==========================================
  */
 
@@ -69,20 +70,13 @@ function handleUpdateNews(news) {
     
     for(let i = 1; i < data.length; i++) {
       if(String(data[i][0]).trim() === targetId) {
-        // Cập nhật từng ô một để đảm bảo ổn định
         sheet.getRange(i + 1, 2).setValue(news.title || "");
         sheet.getRange(i + 1, 3).setValue(news.content || "");
-        
-        // Kiểm tra độ dài hình ảnh (Google Sheets giới hạn 50,000 ký tự mỗi ô)
         if(news.imageUrl !== undefined) {
           const imgStr = String(news.imageUrl);
-          if (imgStr.length > 49000) {
-            return { success: false, error: "Dung lượng ảnh quá lớn. Vui lòng giảm chất lượng hoặc chọn ảnh khác." };
-          }
           sheet.getRange(i + 1, 4).setValue(imgStr);
         }
-        
-        return { success: true }; // Trả về success boolean để FE đóng modal
+        return { success: true }; 
       }
     }
     return { success: false, error: "Không tìm thấy bản tin ID: " + targetId };
@@ -96,7 +90,6 @@ function handleDeleteNews(newsId) {
   const sheet = getSheet(SHEET_NEWS);
   const data = sheet.getDataRange().getValues();
   const targetId = String(newsId).trim();
-  
   let found = false;
   for(let i = 1; i < data.length; i++) {
     if(String(data[i][0]).trim() === targetId) {
@@ -105,19 +98,15 @@ function handleDeleteNews(newsId) {
       break;
     }
   }
-  
   if (found) {
     const cSheet = getSheet(SHEET_NEWS_COMMENTS);
     const cData = cSheet.getDataRange().getValues();
     for(let j = cData.length - 1; j >= 1; j--) if(String(cData[j][1]).trim() === targetId) cSheet.deleteRow(j + 1);
-    
     const lSheet = getSheet(SHEET_NEWS_LIKES);
     const lData = lSheet.getDataRange().getValues();
     for(let k = lData.length - 1; k >= 1; k--) if(String(lData[k][0]).trim() === targetId) lSheet.deleteRow(k + 1);
-    
     return { success: true };
   }
-  
   return { success: false, error: "Không tìm thấy ID bài viết: " + newsId };
 }
 
@@ -126,7 +115,6 @@ function handleToggleLockNews(newsId) {
   const sheet = getSheet(SHEET_NEWS);
   const data = sheet.getDataRange().getValues();
   const targetId = String(newsId).trim();
-
   for(let i = 1; i < data.length; i++) {
     if(String(data[i][0]).trim() === targetId) {
       const currentStatus = data[i][6] === true || data[i][6] === "TRUE";
@@ -134,7 +122,7 @@ function handleToggleLockNews(newsId) {
       return { success: true };
     }
   }
-  return { success: false, error: "Không tìm thấy bài viết để khóa/mở" };
+  return { success: false, error: "Không tìm thấy bài viết" };
 }
 
 function handleUpdateLastRead(username) {
@@ -157,7 +145,6 @@ function handleAddNews(news) {
   const sheet = getSheet(SHEET_NEWS);
   const id = "N-" + Utilities.formatDate(new Date(), "GMT+7", "yyyyMMdd-HHmmss");
   const imgStr = String(news.imageUrl || "");
-  if (imgStr.length > 49000) return { success: false, error: "Ảnh quá lớn. Vui lòng giảm dung lượng ảnh." };
   sheet.appendRow([id, news.title, news.content, imgStr, news.author, new Date(), "FALSE"]);
   return { success: true };
 }

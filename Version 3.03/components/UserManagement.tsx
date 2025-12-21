@@ -1,12 +1,12 @@
+
 import React, { useState, useEffect } from 'react';
 import { sheetService } from '../services/sheetService';
 import { User, Role, UserPermissions, ViewScope } from '../types';
-// Fixed: Added missing Sparkles icon to the lucide-react import list.
 import { 
   UserPlus, Plus, Save, CheckCircle, AlertCircle, Loader2, 
   Mail, Phone, User as UserIcon, Lock, Shield, List, 
-  Settings, Eye, Check, X, UserCog, Key, Briefcase, Info,
-  Sparkles
+  Settings, Eye, EyeOff, Check, X, UserCog, Key, Briefcase, Info,
+  Sparkles, Trash2
 } from 'lucide-react';
 
 const UserManagement: React.FC = () => {
@@ -17,8 +17,10 @@ const UserManagement: React.FC = () => {
   
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isPermModalOpen, setIsPermModalOpen] = useState(false);
+  const [isAddRoleModalOpen, setIsAddRoleModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
+  const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [status, setStatus] = useState<{ type: 'success' | 'error' | null, message: string }>({ type: null, message: '' });
 
@@ -62,9 +64,26 @@ const UserManagement: React.FC = () => {
 
   useEffect(() => { loadData(); }, []);
 
+  const togglePasswordVisibility = (username: string) => {
+    setVisiblePasswords(prev => ({ ...prev, [username]: !prev[username] }));
+  };
+
+  const handleRoleChange = async (username: string, newRole: string) => {
+    try {
+        await sheetService.updateUser(username, newRole);
+        setUsers(prev => prev.map(u => u.username === username ? { ...u, role: newRole } : u));
+    } catch (e) {
+        alert("Lỗi khi cập nhật vai trò.");
+    }
+  };
+
+  // Add missing handleChange function to handle input updates for new user form
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const value = e.target.type === 'checkbox' ? (e.target as HTMLInputElement).checked : e.target.value;
-    setFormData({ ...formData, [e.target.name]: value });
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
   };
 
   const handleCreatePermChange = (key: keyof UserPermissions, value: any) => {
@@ -82,14 +101,29 @@ const UserManagement: React.FC = () => {
     }
     setIsSubmitting(true);
     try {
-      const response = await sheetService.createUser({ ...formData, permissions: formData.permissions });
+      const response = await sheetService.createUser({ ...formData });
       if (response.success) {
         setStatus({ type: 'success', message: 'Tạo tài khoản thành công!' });
         setFormData({ username: '', password: '', fullName: '', email: '', phone: '', role: 'support', permissions: { ...defaultPermissions } });
         loadData();
-        setTimeout(() => setIsCreateModalOpen(false), 1500);
+        setTimeout(() => {
+            setIsCreateModalOpen(false);
+            setStatus({ type: null, message: '' });
+        }, 1500);
       } else setStatus({ type: 'error', message: response.error || 'Có lỗi xảy ra.' });
     } catch (error) { setStatus({ type: 'error', message: 'Lỗi kết nối.' }); } 
+    finally { setIsSubmitting(false); }
+  };
+
+  const handleAddRole = async () => {
+    if (!newRoleData.name) return;
+    setIsSubmitting(true);
+    try {
+        await sheetService.addRole(newRoleData.name, newRoleData.level);
+        await loadData();
+        setIsAddRoleModalOpen(false);
+        setNewRoleData({ name: '', level: 5 });
+    } catch (e) { alert("Lỗi khi thêm role."); }
     finally { setIsSubmitting(false); }
   };
 
@@ -130,8 +164,17 @@ const UserManagement: React.FC = () => {
       { key: 'system', label: 'Hệ Thống' }
   ];
 
+  const roleOptions = [
+    { value: 'admin', label: 'Admin', color: 'admin-red-gradient' },
+    { value: 'CEO', label: 'CEO', color: 'text-orange-600' },
+    { value: 'leader', label: 'Leader', color: 'text-blue-600' },
+    { value: 'support', label: 'Support', color: 'text-gray-700' },
+    { value: 'designer', label: 'Designer', color: 'text-indigo-600' },
+    { value: 'designer online', label: 'Designer Online', color: 'text-teal-600' }
+  ];
+
   return (
-    <div className="p-6 bg-gray-50/50 min-h-full">
+    <div className="p-6 bg-gray-100 min-h-full">
       <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="border-b border-gray-100 bg-gray-50 flex justify-between items-center px-8 pt-4">
             <div className="flex space-x-8">
@@ -143,18 +186,19 @@ const UserManagement: React.FC = () => {
                 </button>
             </div>
             {activeTab === 'users' && (
-                <button onClick={() => setIsCreateModalOpen(true)} className="mb-2 flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">
+                <button onClick={() => { setIsCreateModalOpen(true); setStatus({type: null, message: ''}); }} className="mb-2 flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">
                     <UserPlus size={18} /> Cấp Tài Khoản
                 </button>
             )}
         </div>
 
         {activeTab === 'users' && (
-            <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
+            <div className="overflow-x-auto custom-scrollbar">
+                <table className="w-full text-left border-collapse min-w-[1000px]">
                     <thead>
                         <tr className="bg-white border-b border-gray-200 text-[10px] uppercase text-gray-400 font-black tracking-widest">
                             <th className="px-8 py-5">Username</th>
+                            <th className="px-8 py-5">Password</th>
                             <th className="px-8 py-5">Họ và tên</th>
                             <th className="px-8 py-5">Vai trò</th>
                             <th className="px-8 py-5 text-center">Trạng thái</th>
@@ -164,13 +208,40 @@ const UserManagement: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-sm">
                         {loading ? (
-                            <tr><td colSpan={6} className="p-12 text-center text-gray-400 italic">Đang tải...</td></tr>
+                            <tr><td colSpan={7} className="p-12 text-center text-gray-400 italic">Đang tải...</td></tr>
                         ) : (
                             users.map((u) => (
                                 <tr key={u.username} className="hover:bg-indigo-50/20 transition-colors">
                                     <td className="px-8 py-5 font-mono font-bold text-indigo-600">{u.username}</td>
+                                    <td className="px-8 py-5">
+                                        <div className="flex items-center gap-2 group">
+                                            <span className="font-mono text-gray-500 min-w-[80px]">
+                                                {visiblePasswords[u.username] ? u.password : '••••••••'}
+                                            </span>
+                                            <button 
+                                                onClick={() => togglePasswordVisibility(u.username)}
+                                                className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                            >
+                                                {visiblePasswords[u.username] ? <EyeOff size={14} /> : <Eye size={14} />}
+                                            </button>
+                                        </div>
+                                    </td>
                                     <td className="px-8 py-5 text-gray-700 font-bold">{u.fullName}</td>
-                                    <td className="px-8 py-5"><span className="text-xs font-bold bg-gray-100 px-2 py-1 rounded-lg border border-gray-200">{u.role}</span></td>
+                                    <td className="px-8 py-5">
+                                        <select 
+                                            value={u.role.toLowerCase()}
+                                            onChange={(e) => handleRoleChange(u.username, e.target.value)}
+                                            className={`bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all cursor-pointer ${
+                                                u.role.toLowerCase() === 'admin' ? 'admin-red-gradient border-red-100' : 
+                                                u.role.toUpperCase() === 'CEO' ? 'text-orange-600' : 'text-gray-700'
+                                            }`}
+                                        >
+                                            {roleOptions.map(opt => (
+                                                <option key={opt.value} value={opt.value} className="text-gray-900 font-bold">{opt.label}</option>
+                                            ))}
+                                            {!roleOptions.some(o => o.value === u.role.toLowerCase()) && <option value={u.role.toLowerCase()}>{u.role}</option>}
+                                        </select>
+                                    </td>
                                     <td className="px-8 py-5 text-center">
                                         <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full border ${u.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
                                             {u.status || 'Active'}
@@ -189,7 +260,132 @@ const UserManagement: React.FC = () => {
                 </table>
             </div>
         )}
+
+        {activeTab === 'roles' && (
+            <div className="p-8">
+                <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-lg font-black text-gray-800 uppercase tracking-tight">Cấu hình vai trò & Cấp độ</h3>
+                    <button onClick={() => setIsAddRoleModalOpen(true)} className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold uppercase hover:bg-emerald-700 transition-all shadow-md">
+                        <Plus size={16} /> Thêm Role
+                    </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {roles.map((r, idx) => (
+                        <div key={idx} className="bg-gray-50 p-6 rounded-2xl border border-gray-100 flex justify-between items-center">
+                            <div>
+                                <h4 className={`text-sm font-black uppercase ${r.name.toLowerCase() === 'admin' ? 'admin-red-gradient' : 'text-gray-800'}`}>{r.name}</h4>
+                                <p className="text-[10px] text-gray-400 font-bold mt-1 uppercase tracking-widest">Cấp độ: {r.level}</p>
+                            </div>
+                            <div className="w-10 h-10 rounded-full bg-white border border-gray-200 flex items-center justify-center font-black text-indigo-600 shadow-sm">
+                                {r.level}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+                <div className="mt-8 bg-blue-50 p-4 rounded-xl border border-blue-100 flex gap-3 text-blue-700">
+                    <Info size={20} className="flex-shrink-0" />
+                    <div className="text-xs leading-relaxed">
+                        <strong>Lưu ý về cấp độ:</strong> Cấp độ càng thấp (1 là cao nhất) thể hiện quyền hạn càng cao trong hệ thống.
+                        Ví dụ: 1 (Admin/CEO), 2 (Leader), 3 (Support), 4 (Designer).
+                    </div>
+                </div>
+            </div>
+        )}
       </div>
+
+      {/* CREATE USER MODAL */}
+      {isCreateModalOpen && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-fade-in">
+              <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden border border-white/20">
+                  <div className="px-8 py-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                      <h3 className="font-black text-gray-900 text-lg flex items-center gap-3">
+                          <UserPlus className="text-indigo-600" size={24} />
+                          Cấp Tài Khoản Nhân Sự
+                      </h3>
+                      <button onClick={() => setIsCreateModalOpen(false)} className="p-2 rounded-full text-gray-400 hover:text-gray-900 transition-all"><X size={24} /></button>
+                  </div>
+                  
+                  <form onSubmit={handleSubmitUser} className="p-8 space-y-4">
+                      {status.message && (
+                          <div className={`p-4 rounded-xl flex items-center gap-3 text-sm font-bold ${status.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
+                              {status.type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
+                              {status.message}
+                          </div>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-4">
+                          <div>
+                              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 mb-1.5 block">Tên đăng nhập *</label>
+                              <input name="username" type="text" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none" value={formData.username} onChange={handleChange} />
+                          </div>
+                          <div>
+                              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 mb-1.5 block">Mật khẩu *</label>
+                              <input name="password" type="text" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none" value={formData.password} onChange={handleChange} />
+                          </div>
+                      </div>
+
+                      <div>
+                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 mb-1.5 block">Họ và tên *</label>
+                          <input name="fullName" type="text" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none" value={formData.fullName} onChange={handleChange} />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                          <div>
+                              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 mb-1.5 block">Email</label>
+                              <input name="email" type="email" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none" value={formData.email} onChange={handleChange} />
+                          </div>
+                          <div>
+                              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 mb-1.5 block">Vai trò ban đầu</label>
+                              <select name="role" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none" value={formData.role} onChange={handleChange}>
+                                  <option value="CEO">CEO</option>
+                                  <option value="admin">Admin</option>
+                                  <option value="leader">Leader</option>
+                                  <option value="support">Support</option>
+                                  <option value="designer">Designer</option>
+                                  <option value="designer online">Designer Online</option>
+                              </select>
+                          </div>
+                      </div>
+
+                      <div className="pt-6 border-t border-gray-100 flex justify-end gap-3">
+                          <button type="button" onClick={() => setIsCreateModalOpen(false)} className="px-6 py-3 text-gray-400 font-black text-xs uppercase tracking-widest">Hủy</button>
+                          <button type="submit" disabled={isSubmitting} className="bg-indigo-600 text-white px-10 py-3 rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg hover:bg-indigo-700 active:scale-95 flex items-center gap-2">
+                              {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                              Tạo Tài Khoản
+                          </button>
+                      </div>
+                  </form>
+              </div>
+          </div>
+      )}
+
+      {/* ADD ROLE MODAL */}
+      {isAddRoleModalOpen && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in">
+              <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden p-8 border border-white/20">
+                  <h3 className="text-lg font-black text-gray-900 uppercase tracking-tight mb-6 flex items-center gap-3">
+                      <div className="p-1.5 bg-emerald-100 rounded-lg text-emerald-600"><Plus size={20}/></div>
+                      Thêm Vai Trò Mới
+                  </h3>
+                  <div className="space-y-4">
+                      <div>
+                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 mb-1.5 block">Tên vai trò (Ví dụ: Manager)</label>
+                          <input type="text" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" value={newRoleData.name} onChange={(e) => setNewRoleData({...newRoleData, name: e.target.value})} />
+                      </div>
+                      <div>
+                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 mb-1.5 block">Cấp độ (1-10)</label>
+                          <input type="number" min="1" max="10" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" value={newRoleData.level} onChange={(e) => setNewRoleData({...newRoleData, level: Number(e.target.value)})} />
+                      </div>
+                  </div>
+                  <div className="flex justify-end gap-3 mt-8">
+                      <button onClick={() => setIsAddRoleModalOpen(false)} className="px-6 py-2 text-gray-400 font-bold text-xs uppercase tracking-widest">Hủy</button>
+                      <button onClick={handleAddRole} disabled={isSubmitting} className="bg-emerald-600 text-white px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest shadow-md flex items-center gap-2">
+                          {isSubmitting ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Lưu vai trò
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
 
       {/* PERMISSIONS MODAL */}
       {isPermModalOpen && selectedUser && (

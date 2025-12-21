@@ -1,8 +1,10 @@
+
 import React from 'react';
 import { 
   LayoutDashboard, ShoppingCart, Users, Settings, 
   Wallet, X, LogOut, ChevronLeft, ChevronRight, 
-  Palette, Key, PenTool, UserCheck, Home, FileText
+  Palette, Key, PenTool, UserCheck, Home, FileText,
+  CalendarDays
 } from 'lucide-react';
 import { User, UserPermissions } from '../types';
 
@@ -55,6 +57,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     {
       title: 'HỆ THỐNG',
       items: [
+        { id: 'schedule', label: 'Lịch trực', icon: <CalendarDays size={20} />, visible: true },
         { id: 'users', label: 'Nhân Sự', icon: <UserCheck size={20} />, visible: user.role === 'admin' },
         { id: 'settings', label: 'Cấu hình', icon: <Settings size={20} />, visible: user.role === 'admin' },
       ]

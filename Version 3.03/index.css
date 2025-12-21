@@ -14,13 +14,16 @@
   }
   
   .admin-red-gradient {
+    color: #ff0000; /* Fallback color */
     background: linear-gradient(to right, #ff0000, #ff4d4d, #ff9900, #ff4d4d, #ff0000);
     -webkit-background-clip: text;
     background-clip: text;
-    color: transparent;
+    -webkit-text-fill-color: transparent;
+    /* Ensure color persists if background-clip fails in some contexts */
+    text-fill-color: transparent;
     background-size: 200% auto;
     animation: shine 3s linear infinite;
-    font-weight: 900;
+    font-weight: 900 !important;
   }
 
   /* Hiệu ứng nhấp nháy đặc biệt dành riêng cho Logo Admin */

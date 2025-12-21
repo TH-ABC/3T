@@ -1,3 +1,4 @@
+
 /**
  * ==========================================
  * MAIN.GS: ĐIỀU HƯỚNG CHÍNH V5.1
@@ -19,6 +20,10 @@ const SHEET_NEWS = 'News';
 const SHEET_NEWS_COMMENTS = 'NewsComments';
 const SHEET_NEWS_LIKES = 'NewsLikes';
 const SHEET_USER_READ_STATUS = 'UserReadStatus';
+const SHEET_SCHEDULE_STAFF = 'ScheduleStaff';
+const SHEET_ATTENDANCE = 'Attendance';
+const SHEET_OT_ATTENDANCE = 'OTAttendance';
+const SHEET_HOLIDAYS = 'Holidays';
 
 function doPost(e) {
   const lock = LockService.getScriptLock();
@@ -28,8 +33,22 @@ function doPost(e) {
     const action = postData.action;
     let result = {};
 
+    // --- SCHEDULE & ATTENDANCE ---
+    if (action === 'getScheduleStaff') result = getScheduleStaff();
+    else if (action === 'saveScheduleStaff') result = saveScheduleStaff(postData);
+    else if (action === 'getAttendance') result = getAttendance(postData.month);
+    else if (action === 'checkIn') result = checkIn(postData.username, postData.name);
+    else if (action === 'checkOut') result = checkOut(postData.username, postData.name);
+    
+    // --- OT & HOLIDAYS ---
+    else if (action === 'getOTAttendance') result = getOTAttendance(postData.month);
+    else if (action === 'checkInOT') result = checkInOT(postData.username, postData.name);
+    else if (action === 'checkOutOT') result = checkOutOT(postData.username, postData.name);
+    else if (action === 'getHolidays') result = getHolidays(postData.month);
+    else if (action === 'toggleHoliday') result = toggleHoliday(postData.date);
+
     // --- NEWS & NOTIFICATIONS ---
-    if (action === 'getNews') result = handleGetNews(postData.username);
+    else if (action === 'getNews') result = handleGetNews(postData.username);
     else if (action === 'addNews') result = handleAddNews(postData);
     else if (action === 'updateNews') result = handleUpdateNews(postData);
     else if (action === 'deleteNews') result = handleDeleteNews(postData.newsId);
@@ -66,6 +85,8 @@ function doPost(e) {
     else if (action === 'createUser') result = createUser(postData.username, postData.password, postData.fullName, postData.role, postData.email, postData.phone, postData.permissions);
     else if (action === 'updateUser') result = updateUser(postData.username, postData.role, postData.status, postData.permissions);
     else if (action === 'changePassword') result = handleChangePassword(postData.username, postData.oldPass, postData.newPass);
+    else if (action === 'getRoles') result = getRoles();
+    else if (action === 'addRole') result = addRole(postData.name, postData.level);
 
     // --- SYSTEM & MAPPINGS ---
     else if (action === 'getStores') result = getData(SHEET_STORES);

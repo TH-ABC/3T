@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Menu } from 'lucide-react';
 import Sidebar from './components/Sidebar';
-import Home from './components/Home'; // NEW
+import Home from './components/Home';
 import Dashboard from './components/Dashboard';
 import { OrderList } from './components/OrderList';
 import Login from './components/Login';
@@ -12,6 +12,7 @@ import { DesignerOnlineList } from './components/DesignerOnlineList';
 import { DesignerList } from './components/DesignerList';
 import { FinanceBoard } from './components/FinanceBoard';
 import ChangePasswordModal from './components/ChangePasswordModal';
+import ScheduleManagement from './components/ScheduleManagement';
 import { User, Store, UserPermissions } from './types';
 
 function App() {
@@ -72,8 +73,9 @@ function App() {
   const handleProcessStart = () => setPendingUpdates(prev => prev + 1);
   const handleProcessEnd = () => setPendingUpdates(prev => Math.max(0, prev - 1));
 
-  const canAccess = (module: keyof UserPermissions | 'users' | 'home') => {
+  const canAccess = (module: keyof UserPermissions | 'users' | 'home' | 'schedule') => {
       if (module === 'home') return true;
+      if (module === 'schedule') return true;
       if (user.role === 'admin') return true;
       if (module === 'users') return false; 
       const perm = user.permissions?.[module as keyof UserPermissions];
@@ -109,6 +111,8 @@ function App() {
       case 'finance':
         if (!canAccess('finance')) return <div className="p-6">Không có quyền truy cập.</div>;
         return <FinanceBoard />;
+      case 'schedule':
+        return <ScheduleManagement user={user} />;
       case 'users':
         return user.role === 'admin' ? <UserManagement /> : <div className="p-6">Không có quyền truy cập.</div>;
       default:

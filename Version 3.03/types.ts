@@ -1,3 +1,4 @@
+
 export enum OrderStatus {
   PENDING = 'Pending',
   FULFILLED = 'Fulfilled',
@@ -47,6 +48,32 @@ export interface DailyStat {
   totalSale: number;
 }
 
+// --- ATTENDANCE & SCHEDULE ---
+export interface ScheduleStaff {
+  name: string;
+  role: string;
+  username?: string; 
+}
+
+export interface AttendanceRecord {
+  username?: string;
+  name: string;
+  date: string; // YYYY-MM-DD
+  checkIn: string;
+  checkOut?: string;
+  totalHours?: number;
+}
+
+export interface OTRecord {
+  username?: string;
+  name: string;
+  date: string;
+  checkIn: string;
+  checkOut?: string;
+  totalHours?: number;
+  type: 'Normal' | 'Weekend' | 'Holiday';
+}
+
 // --- NEWS TYPES ---
 export interface NewsItem {
   id: string;
@@ -57,7 +84,7 @@ export interface NewsItem {
   timestamp: string;
   likesCount: number;
   isLiked?: boolean;
-  isLocked?: boolean; // NEW: Lock comments
+  isLocked?: boolean;
   comments?: NewsComment[];
 }
 
@@ -86,6 +113,7 @@ export interface UserPermissions {
 
 export interface User {
   username: string;
+  password?: string;
   fullName: string;
   role: string;
   permissions?: UserPermissions;

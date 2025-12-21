@@ -1,3 +1,4 @@
+
 /**
  * ==========================================
  * UTILS.GS: CÔNG CỤ HỖ TRỢ LÕI
@@ -18,6 +19,10 @@ function getSheet(n) {
         else if(n === SHEET_PL_SKU) s.appendRow(['STT', 'SKU', 'Phân Loại']);
         else if(n === SHEET_PRICES) s.appendRow(['Category', 'Price']);
         else if(n === SHEET_USER_READ_STATUS) s.appendRow(['Username', 'LastReadTimestamp']); 
+        else if(n === SHEET_SCHEDULE_STAFF) s.appendRow(['Name', 'Role', 'Username']);
+        else if(n === SHEET_ATTENDANCE) s.appendRow(['Date', 'Username', 'Name', 'CheckIn', 'CheckOut', 'TotalHours']);
+        else if(n === SHEET_OT_ATTENDANCE) s.appendRow(['Date', 'Username', 'Name', 'CheckIn', 'CheckOut', 'TotalHours', 'Type']);
+        else if(n === SHEET_HOLIDAYS) s.appendRow(['Date']);
         else if(n === SHEET_FINANCE_META) { s.appendRow(['Categories', 'Payers']); s.appendRow(['Chi Tiền', 'Hoàng']); s.appendRow(['Thu Tiền', 'A Tâm']); }
         s.getRange(1, 1, 1, s.getLastColumn()).setFontWeight("bold").setBackground("#f8f9fa");
         s.setFrozenRows(1);
@@ -61,7 +66,10 @@ function createFinanceFile(year) {
     return { success: true, fileId: ss.getId() };
 }
 
-function formatDate(d) { if (!d) return ""; try { return Utilities.formatDate(new Date(d), "GMT+7", 'yyyy-MM-dd HH:mm:ss'); } catch(e) { return String(d); } }
+function formatDate(d) { if (!d) return ""; try { return Utilities.formatDate(new Date(d), "GMT+7", 'yyyy-MM-dd HH:mm:ss'); } catch(e) { 
+  if (typeof d === 'string') return d.split(' ')[0];
+  return String(d); 
+} }
 function getData(n) { const s = getSheet(n); const d = s.getDataRange().getValues(); const h = d.shift(); return d.map(r => { let o = {}; h.forEach((k, i) => { o[k.toLowerCase()] = r[i]; }); return o; }); }
 function addRow(n, r) { getSheet(n).appendRow(r); return { success: true }; }
 function deleteRow(n, id) { const s = getSheet(n); const d = s.getDataRange().getValues(); for(let i = d.length - 1; i >= 1; i--) if(String(d[i][0]) == String(id)) { s.deleteRow(i + 1); return { success: true }; } return { error: 'Not found' }; }

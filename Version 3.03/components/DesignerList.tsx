@@ -45,8 +45,10 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
   const currentYear = new Date().getFullYear();
   const monthsList = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
   const yearsList = Array.from({ length: 5 }, (_, i) => String(currentYear - 2 + i));
+  const PRICE_CATEGORIES = ['Loại 1', 'Loại 2', 'Loại 3', 'Loại 4'];
 
   const getStoreName = (id: string) => { const store = stores.find(s => String(s.id) === String(id) || s.name === id); return store ? store.name : id; };
+  const normalizeKey = (key: string) => key ? key.toLowerCase().trim() : '';
 
   const loadData = async (monthToFetch: string) => {
     setLoading(true); setOrders([]); setDataError(null); setCurrentFileId(null); setSelectedOrderIds(new Set());
@@ -60,7 +62,7 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
       setStores(Array.isArray(storeData) ? storeData : []); setUsers(Array.isArray(usersData) ? usersData : []); setCurrentFileId(orderResult.fileId);
       const safeSkuMappings = Array.isArray(skuMappings) ? skuMappings : [];
       const mappingObj: Record<string, string> = {};
-      safeSkuMappings.forEach(m => { if (m && m.sku) mappingObj[m.sku.toLowerCase().trim()] = m.category; });
+      safeSkuMappings.forEach(m => { if (m && m.sku) mappingObj[normalizeKey(m.sku)] = m.category; });
       setSkuMap(mappingObj);
       const rawOrders = orderResult.orders || [];
       const ordersInMonth = rawOrders.filter(o => { if (!o.date) return false; const dateStr = String(o.date).trim(); return dateStr.startsWith(monthToFetch); });
@@ -75,52 +77,46 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
       const userRole = (user.role || '').toLowerCase().trim();
       
       // Determine permissions
-      let filteredOrders = ordersInMonth;
+      let filteredOrdersList = ordersInMonth;
       if (userRole !== 'admin') {
           const scope = user.permissions?.designer;
           
           if (!scope) {
-              // LEGACY Fallback: Filter logic based on role
-              filteredOrders = ordersInMonth.filter(o => {
+              // LEGACY Fallback
+              filteredOrdersList = ordersInMonth.filter(o => {
                   const actionRoleRaw = (o.actionRole || '').toLowerCase().trim();
                   if (actionRoleRaw === 'designer') return true;
-                  // If assigned user is a designer role, check visibility
-                  const assignedUser = usersData.find((u: User) => u.username.toLowerCase() === actionRoleRaw);
+                  const assignedUser = (usersData as any).find((u: User) => u.username.toLowerCase() === actionRoleRaw);
                   if (assignedUser && (assignedUser.role || '').toLowerCase() === 'designer') return true;
-                  // If current user is designer, only show own
                   if (userRole === 'designer' && actionRoleRaw === currentUsername) return true;
-                  // Leaders see all
                   if (userRole.includes('leader')) return true;
                   return false;
               });
           } else if (scope === 'none') {
-              filteredOrders = [];
+              filteredOrdersList = [];
           } else if (scope === 'own') {
-              // View Own: Filter by actionRole match
-              filteredOrders = ordersInMonth.filter(o => (o.actionRole || '').toLowerCase().trim() === currentUsername);
+              filteredOrdersList = ordersInMonth.filter(o => (o.actionRole || '').toLowerCase().trim() === currentUsername);
           } else {
-              // scope === 'all'
-              filteredOrders = ordersInMonth.filter(o => {
+              filteredOrdersList = ordersInMonth.filter(o => {
                   const actionRoleRaw = (o.actionRole || '').toLowerCase().trim();
                   if (actionRoleRaw === 'designer') return true;
-                  const assignedUser = usersData.find((u: User) => u.username.toLowerCase() === actionRoleRaw);
+                  const assignedUser = (usersData as any).find((u: User) => u.username.toLowerCase() === actionRoleRaw);
                   if (assignedUser && (assignedUser.role || '').toLowerCase() === 'designer') return true;
                   return false;
               });
           }
       } else {
-          // Admin View: Similar to "All" but broad
-           filteredOrders = ordersInMonth.filter(o => {
+           filteredOrdersList = ordersInMonth.filter(o => {
               const actionRoleRaw = (o.actionRole || '').toLowerCase().trim();
               if (actionRoleRaw === 'designer') return true;
-              const assignedUser = usersData.find((u: User) => u.username.toLowerCase() === actionRoleRaw);
+              const assignedUser = (usersData as any).find((u: User) => u.username.toLowerCase() === actionRoleRaw);
               if (assignedUser && (assignedUser.role || '').toLowerCase() === 'designer') return true;
               return false;
           });
       }
 
-      setOrders(filteredOrders);
-    } catch (e) { if (selectedMonthRef.current === monthToFetch) console.error(e); } finally { if (selectedMonthRef.current === monthToFetch) setLoading(false); }
+      setOrders(filteredOrdersList);
+    } catch (e) { console.error(e); } finally { if (selectedMonthRef.current === monthToFetch) setLoading(false); }
   };
 
   useEffect(() => { selectedMonthRef.current = selectedMonth; loadData(selectedMonth); }, [selectedMonth, user.username]);
@@ -133,7 +129,7 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
     orders.forEach(order => { 
       let val = ''; 
       if (key === 'storeName') val = getStoreName(order.storeId); 
-      else if (key === 'category') val = skuMap[order.sku.toLowerCase().trim()] || '(Chưa phân loại)'; 
+      else if (key === 'category') val = skuMap[normalizeKey(order.sku)] || '(Chưa phân loại)'; 
       else if (key === 'isDesignDone') val = order.isDesignDone ? "Đã xong" : "Chưa xong"; 
       else {
         const v = order[key as keyof Order];
@@ -145,9 +141,15 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
   };
   
   const handleFilterClick = (e: React.MouseEvent, columnKey: string) => { e.stopPropagation(); if (activeFilterColumn === columnKey) { setActiveFilterColumn(null); setFilterPopupPos(null); } else { const rect = e.currentTarget.getBoundingClientRect(); let top = rect.bottom + 5; let left = rect.left; const POPUP_WIDTH = 288; if (left + POPUP_WIDTH > window.innerWidth - 10) { left = rect.right - POPUP_WIDTH; } setFilterPopupPos({ top, left, alignRight: false }); setActiveFilterColumn(columnKey); setFilterSearchTerm(''); } };
-  const handleFilterValueChange = (columnKey: string, value: string) => { const currentFilters = columnFilters[columnKey] || []; const newFilters = currentFilters.includes(value) ? currentFilters.filter(v => v !== value) : [...currentFilters, value]; setColumnFilters({ ...columnFilters, [columnKey]: newFilters }); };
-  const handleClearFilter = (columnKey: string) => setColumnFilters({ ...columnFilters, [columnKey]: [] });
-  const handleSelectAllFilter = (columnKey: string, values: string[]) => setColumnFilters({ ...columnFilters, [columnKey]: values });
+  const handleFilterValueChange = (columnKey: string, value: string) => { 
+      setColumnFilters(prev => {
+          const currentFilters = (prev[columnKey] || []) as string[]; 
+          const newFilters = currentFilters.includes(value) ? currentFilters.filter(v => v !== value) : [...currentFilters, value]; 
+          return { ...prev, [columnKey]: newFilters };
+      });
+  };
+  const handleClearFilter = (columnKey: string) => setColumnFilters(prev => ({ ...prev, [columnKey]: [] }));
+  const handleSelectAllFilter = (columnKey: string, values: string[]) => setColumnFilters(prev => ({ ...prev, [columnKey]: values }));
 
   const renderFilterPopup = () => { 
     if (!activeFilterColumn || !filterPopupPos) return null; 
@@ -182,42 +184,60 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
     ); 
   };
 
-  const stats = useMemo<{ totalOrders: number; categories: Record<string, { total: number; checked: number }>; designers: Record<string, { total: number; checked: number }>; }>(() => { const result = { totalOrders: 0, categories: { 'Loại 1': { total: 0, checked: 0 }, 'Loại 2': { total: 0, checked: 0 }, 'Loại 3': { total: 0, checked: 0 }, 'Loại 4': { total: 0, checked: 0 }, 'Khác': { total: 0, checked: 0 } } as Record<string, { total: number; checked: number }>, designers: {} as Record<string, { total: number; checked: number }> }; orders.forEach(o => { const category = skuMap[o.sku.toLowerCase().trim()] || 'Khác'; const isChecked = o.isDesignDone === true; const designerName = o.actionRole ? o.actionRole.trim() : 'Chưa Giao'; let catKey = category; if (!result.categories[catKey]) catKey = 'Khác'; const target = result.categories[catKey]; target.total += 1; if (isChecked) target.checked += 1; if (!result.designers[designerName]) { result.designers[designerName] = { total: 0, checked: 0 }; } result.designers[designerName].total += 1; if (isChecked) result.designers[designerName].checked += 1; result.totalOrders += 1; }); return result; }, [orders, skuMap]);
+  const stats = useMemo<{ totalOrders: number; categories: Record<string, { total: number; checked: number }>; designers: Record<string, { total: number; checked: number }>; }>(() => { 
+      const result = { 
+          totalOrders: 0, 
+          categories: { 'Loại 1': { total: 0, checked: 0 }, 'Loại 2': { total: 0, checked: 0 }, 'Loại 3': { total: 0, checked: 0 }, 'Loại 4': { total: 0, checked: 0 }, 'Khác': { total: 0, checked: 0 } } as Record<string, { total: number; checked: number }>, 
+          designers: {} as Record<string, { total: number; checked: number }> 
+      }; 
+      orders.forEach(o => { 
+          const category = skuMap[normalizeKey(o.sku)] || 'Khác'; 
+          const isChecked = o.isDesignDone === true; 
+          const designerName = o.actionRole ? o.actionRole.trim() : 'Chưa Giao'; 
+          let catKey = category; 
+          if (!result.categories[catKey]) catKey = 'Khác'; 
+          const target = result.categories[catKey]; 
+          target.total += 1; 
+          if (isChecked) target.checked += 1; 
+          if (!result.designers[designerName]) { 
+              result.designers[designerName] = { total: 0, checked: 0 }; 
+          } 
+          result.designers[designerName].total += 1; 
+          if (isChecked) result.designers[designerName].checked += 1; 
+          result.totalOrders += 1; 
+      }); 
+      return result; 
+  }, [orders, skuMap]);
 
   const formatDateDisplay = (dateStr: string) => { if (!dateStr) return ''; try { const parts = dateStr.split(/[-T :]/); if (parts.length >= 5) { const y = parts[0]; const m = parts[1]; const d = parts[2]; const hh = parts[3] || '00'; const mm = parts[4] || '00'; if (y.length === 4) return `${d}/${m}/${y} ${hh}:${mm}`; } return dateStr; } catch (e) { return dateStr; } };
   const handleMonthChange = (step: number) => { const [year, month] = selectedMonth.split('-').map(Number); const date = new Date(year, month - 1 + step, 1); const newYear = date.getFullYear(); const newMonth = String(date.getMonth() + 1).padStart(2, '0'); setSelectedMonth(`${newYear}-${newMonth}`); };
   const handleUpdateSku = async (e: React.FormEvent) => { e.preventDefault(); if (!skuFormData.sku.trim()) { setSkuMessage({ type: 'error', text: 'Vui lòng nhập SKU' }); return; } setIsSubmittingSku(true); setSkuMessage(null); try { const result = await sheetService.updateSkuCategory(skuFormData.sku.trim(), skuFormData.category); if (result.success) { setSkuMessage({ type: 'success', text: 'Cập nhật phân loại thành công!' }); setSkuFormData(prev => ({ ...prev, sku: '' })); await loadData(selectedMonth); setTimeout(() => { setIsSkuModalOpen(false); setSkuMessage(null); }, 1500); } else { setSkuMessage({ type: 'error', text: result.error || 'Lỗi cập nhật.' }); } } catch (err) { setSkuMessage({ type: 'error', text: 'Lỗi kết nối hệ thống.' }); } finally { setIsSubmittingSku(false); } };
-  const handleDesignerToggle = async (order: Order) => { if (!currentFileId) return; if (updatingIds.has(order.id)) return; const newValue = !order.isDesignDone; if (onProcessStart) onProcessStart(); setUpdatingIds(prev => new Set(prev).add(order.id)); setOrders(prev => prev.map(o => o.id === order.id ? { ...o, isDesignDone: newValue } : o)); try { await sheetService.updateDesignerStatus(currentFileId, order, "Designer", newValue); } catch (error) { setOrders(prev => prev.map(o => o.id === order.id ? { ...o, isDesignDone: !newValue } : o)); alert('Lỗi cập nhật trạng thái'); } finally { setUpdatingIds(prev => { const newSet = new Set(prev); newSet.delete(order.id); return newSet; }); if (onProcessEnd) onProcessEnd(); } };
+  const handleDesignerToggle = async (order: Order) => { if (!currentFileId) return; if (updatingIds.has(order.id)) return; const newValue = !order.isDesignDone; if (onProcessStart) onProcessStart(); setUpdatingIds(prev => new Set(prev).add(order.id)); try { await sheetService.updateDesignerStatus(currentFileId, order, "Designer", newValue); setOrders(prev => prev.map(o => o.id === order.id ? { ...o, isDesignDone: newValue } : o)); } catch (error) { alert('Lỗi cập nhật trạng thái'); } finally { setUpdatingIds(prev => { const newSet = new Set(prev); newSet.delete(order.id); return newSet; }); if (onProcessEnd) onProcessEnd(); } };
 
   const [currentYearStr, currentMonthStr] = selectedMonth.split('-');
   const canManageSku = user.role === 'admin' || user.permissions?.canManageSku === true; 
-  // Determine if user can check items. Admin/Leader/Support can. 
-  // Designers can check their OWN.
-  // We can use the viewScope for this too, or stick to role + simple ownership logic for Action.
   const canCheckDesign = user.role === 'admin' || user.role === 'leader' || user.role === 'support' || (user.permissions?.designer !== 'none');
 
-  const filteredOrders = orders.filter(o => { 
+  const filteredOrdersList = orders.filter(o => { 
     const matchesSearch = ((o.id ? String(o.id).toLowerCase() : '').includes(searchTerm.toLowerCase()) || (o.sku ? String(o.sku).toLowerCase() : '').includes(searchTerm.toLowerCase()) || (o.storeId ? getStoreName(o.storeId).toLowerCase() : '').includes(searchTerm.toLowerCase()) || (o.handler ? String(o.handler).toLowerCase() : '').includes(searchTerm.toLowerCase()) || (o.actionRole ? String(o.actionRole).toLowerCase() : '').includes(searchTerm.toLowerCase())); 
     if (!matchesSearch) return false; 
     
-    // Explicitly iterate over object entries without casting in the loop head
-    for (const [key, val] of Object.entries(columnFilters)) { 
-        const selectedValues = val as string[];
+    for (const [key, val] of Object.entries(columnFilters) as [string, string[]][]) { 
+        const selectedValues = val;
         if (!selectedValues || selectedValues.length === 0) continue; 
         let cellValue = ''; 
         if (key === 'storeName') cellValue = getStoreName(o.storeId); 
-        else if (key === 'category') cellValue = skuMap[o.sku.toLowerCase().trim()] || '(Chưa phân loại)'; 
+        else if (key === 'category') cellValue = skuMap[normalizeKey(o.sku)] || '(Chưa phân loại)'; 
         else if (key === 'isDesignDone') cellValue = o.isDesignDone ? "Đã xong" : "Chưa xong"; 
         else cellValue = String(o[key as keyof Order] || ''); 
         if (!selectedValues.includes(cellValue)) return false; 
     } 
     return true; 
   });
-  const sortedOrders = filteredOrders.map((item, index) => ({ item, index })).sort((a, b) => { if (sortConfig.key === 'date') { const dateA = new Date(a.item.date || '').getTime(); const dateB = new Date(b.item.date || '').getTime(); const validA = !isNaN(dateA); const validB = !isNaN(dateB); if (!validA && !validB) return 0; if (!validA) return 1; if (!validB) return -1; if (dateA !== dateB) { return sortConfig.direction === 'asc' ? dateA - dateB : dateB - dateA; } return a.index - b.index; } const valA = String((a.item as any)[sortConfig.key] || ''); const valB = String((b.item as any)[sortConfig.key] || ''); if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1; if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1; return 0; }).map(x => x.item);
-  const PRICE_CATEGORIES = ['Loại 1', 'Loại 2', 'Loại 3', 'Loại 4'];
+  const sortedOrdersResult = filteredOrdersList.map((item, index) => ({ item, index })).sort((a, b) => { if (sortConfig.key === 'date') { const dateA = new Date(a.item.date || '').getTime(); const dateB = new Date(b.item.date || '').getTime(); const validA = !isNaN(dateA); const validB = !isNaN(dateB); if (!validA && !validB) return 0; if (!validA) return 1; if (!validB) return -1; if (dateA !== dateB) { return sortConfig.direction === 'asc' ? dateA - dateB : dateB - dateA; } return a.index - b.index; } const valA = String((a.item as any)[sortConfig.key] || ''); const valB = String((b.item as any)[sortConfig.key] || ''); if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1; if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1; return 0; }).map(x => x.item);
 
   // --- SELECTION HANDLERS ---
-  const handleSelectAll = () => { if (selectedOrderIds.size === sortedOrders.length && sortedOrders.length > 0) setSelectedOrderIds(new Set()); else setSelectedOrderIds(new Set(sortedOrders.map(o => o.id))); };
+  const handleSelectAll = () => { if (selectedOrderIds.size === sortedOrdersResult.length && sortedOrdersResult.length > 0) setSelectedOrderIds(new Set()); else setSelectedOrderIds(new Set(sortedOrdersResult.map(o => o.id))); };
   const handleSelectRow = (id: string) => { const newSelected = new Set(selectedOrderIds); if (newSelected.has(id)) newSelected.delete(id); else newSelected.add(id); setSelectedOrderIds(newSelected); };
   const handleBatchAction = async (actionType: 'design_done' | 'design_pending') => {
       if (!currentFileId) return;
@@ -242,10 +262,35 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
       <div className="bg-white shadow-sm overflow-hidden rounded-lg flex flex-col h-full">
         {/* TOP SUMMARY DASHBOARD */}
         <div className="bg-white border-b border-gray-200 p-4">
-            <h3 className="text-sm font-bold text-gray-700 uppercase mb-3 flex items-center gap-2"><PenTool size={16} className="text-indigo-600"/> Tổng Hợp Tháng {currentMonthStr}/{currentYearStr}</h3>
+            <h3 className="text-sm font-bold text-gray-800 uppercase mb-3 flex items-center gap-2"><PenTool size={16} className="text-indigo-600"/> Tổng Hợp Tháng {currentMonthStr}/{currentYearStr}</h3>
             <div className="flex flex-col xl:flex-row gap-6">
-                <div className="flex-1"><div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-6 gap-3"><div className="bg-indigo-600 text-white rounded p-3 shadow-sm flex flex-col justify-center items-center text-center"><span className="text-xs opacity-80 uppercase tracking-wide">Tổng Đơn</span><span className="text-xl font-bold">{stats.totalOrders}</span></div>{PRICE_CATEGORIES.map(cat => { const data = (stats.categories[cat] as { total: number; checked: number } | undefined) || { total: 0, checked: 0 }; return (<div key={cat} className="bg-gray-50 border border-gray-200 rounded p-3 shadow-sm flex flex-col justify-between"><div className="flex justify-between items-start border-b border-gray-200 pb-1 mb-1"><span className="text-xs font-bold text-gray-700 uppercase">{cat}</span></div><div className="flex justify-between items-end"><div className="text-center"><div className="text-[10px] text-gray-400 uppercase">Đơn</div><div className="text-sm font-bold text-gray-800">{data.total}</div></div><div className="text-center"><div className="text-[10px] text-gray-400 uppercase">Check</div><div className="text-sm font-bold text-blue-600">{data.checked}</div></div></div></div>); })}</div></div>
-                <div className="flex-1 border-l border-gray-200 xl:pl-6 pt-4 xl:pt-0 border-t xl:border-t-0 mt-2 xl:mt-0"><h4 className="text-xs font-bold text-gray-500 uppercase mb-2 flex items-center gap-2"><Users size={14} /> Chi Tiết Theo Designer</h4><div className="overflow-x-auto custom-scrollbar max-h-[140px]"><table className="w-full text-left text-xs border-collapse"><thead className="bg-gray-50 text-gray-500 font-semibold sticky top-0"><tr><th className="px-3 py-2 border-b">Designer</th><th className="px-3 py-2 border-b text-center">Số lượng</th><th className="px-3 py-2 border-b text-center">Đã Check</th></tr></thead><tbody className="divide-y divide-gray-100">{Object.entries(stats.designers).map(([name, data]: [string, { total: number; checked: number }]) => (<tr key={name} className="hover:bg-gray-50"><td className={`px-3 py-2 font-medium truncate max-w-[120px] ${name.toLowerCase().includes('admin') ? 'admin-red-gradient' : 'text-gray-700'}`} title={name}>{name}</td><td className="px-3 py-2 text-center text-gray-600">{data.total}</td><td className="px-3 py-2 text-center font-bold text-blue-600">{data.checked}</td></tr>))}{Object.keys(stats.designers).length === 0 && (<tr><td colSpan={3} className="px-3 py-4 text-center text-gray-400 italic">Chưa có dữ liệu designer.</td></tr>)}</tbody></table></div></div>
+                <div className="flex-1"><div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-6 gap-3"><div className="bg-indigo-600 text-white rounded p-3 shadow-sm flex flex-col justify-center items-center text-center"><span className="text-xs opacity-80 uppercase tracking-wide">Tổng Đơn</span><span className="text-xl font-bold">{stats.totalOrders}</span></div>{PRICE_CATEGORIES.map(cat => { const data = (stats.categories[cat] as { total: number; checked: number } | undefined) || { total: 0, checked: 0 }; return (<div key={cat} className="bg-gray-50 border border-gray-200 rounded p-3 shadow-sm flex flex-col justify-between"><div className="flex justify-between items-start border-b border-gray-200 pb-1 mb-1"><span className="text-xs font-bold text-gray-800 uppercase">{cat}</span></div><div className="flex justify-between items-end"><div className="text-center"><div className="text-[10px] text-gray-400 uppercase">Đơn</div><div className="text-sm font-bold text-gray-800">{data.total}</div></div><div className="text-center"><div className="text-[10px] text-gray-400 uppercase">Check</div><div className="text-sm font-bold text-blue-600">{data.checked}</div></div></div></div>); })}</div></div>
+                <div className="flex-1 border-l border-gray-200 xl:pl-6 pt-4 xl:pt-0 border-t xl:border-t-0 mt-2 xl:mt-0">
+                    <h4 className="text-xs font-bold text-gray-800 uppercase mb-2 flex items-center gap-2"><Users size={14} /> Chi Tiết Theo Designer</h4>
+                    <div className="overflow-x-auto custom-scrollbar max-h-[140px]">
+                        <table className="w-full text-left text-xs border-collapse">
+                            <thead className="bg-gray-50 text-gray-900 font-black sticky top-0">
+                                <tr>
+                                    <th className="px-3 py-2 border-b">Designer</th>
+                                    <th className="px-3 py-2 border-b text-center">Số lượng</th>
+                                    <th className="px-3 py-2 border-b text-center">Đã Check</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {Object.entries(stats.designers).map(([name, data]: [string, { total: number; checked: number }]) => (
+                                    <tr key={name} className="hover:bg-gray-50">
+                                        <td className={`px-3 py-2 font-black truncate max-w-[120px] ${name.toLowerCase().includes('admin') ? 'admin-red-gradient' : 'text-slate-900'}`} title={name}>{name}</td>
+                                        <td className="px-3 py-2 text-center text-gray-600">{data.total}</td>
+                                        <td className="px-3 py-2 text-center font-bold text-blue-600">{data.checked}</td>
+                                    </tr>
+                                ))}
+                                {Object.keys(stats.designers).length === 0 && (
+                                    <tr><td colSpan={3} className="px-3 py-4 text-center text-gray-400 italic">Chưa có dữ liệu designer.</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -265,7 +310,7 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
             <thead className="text-white font-bold text-center uppercase text-xs tracking-wider sticky top-0 z-20">
               <tr>
                 <th className="px-2 py-2 bg-[#1a4019] border-r border-gray-600 sticky top-0 z-20 w-8">
-                    <input type="checkbox" className="w-3 h-3 rounded border-gray-400 text-orange-600 focus:ring-orange-500 cursor-pointer" checked={selectedOrderIds.size > 0 && selectedOrderIds.size === sortedOrders.length} onChange={handleSelectAll} />
+                    <input type="checkbox" className="w-3 h-3 rounded border-gray-400 text-orange-600 focus:ring-orange-500 cursor-pointer" checked={selectedOrderIds.size > 0 && selectedOrderIds.size === sortedOrdersResult.length} onChange={handleSelectAll} />
                 </th>
                 <th className="px-2 py-2 border-r border-gray-600 w-24 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-center gap-1 group cursor-pointer" onClick={() => setSortConfig({ key: 'date', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' })}>Date {sortConfig.key === 'date' && (sortConfig.direction === 'asc' ? <ArrowUp size={14}/> : <ArrowDown size={14}/>)}</div></th>
                 <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>ID Order</span><button onClick={(e) => handleFilterClick(e, 'id')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['id']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
@@ -278,8 +323,8 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {loading ? <tr><td colSpan={9} className="text-center py-12 text-gray-500">Đang tải dữ liệu Tháng {currentMonthStr}...</td></tr> : (sortedOrders.length === 0 ? <tr><td colSpan={9} className="text-center py-12 text-gray-500">{dataError ? (<div className="flex flex-col items-center justify-center p-4 bg-red-50 border border-red-200 rounded-lg max-w-2xl mx-auto my-4 text-red-700"><div className="flex items-center gap-2 font-bold text-lg mb-2"><AlertTriangle size={24} /> {dataError.message}</div>{dataError.detail && <p className="text-sm mb-3">{dataError.detail}</p>}<div className="flex items-center gap-2 text-sm bg-white p-2 rounded border border-red-100"><Info size={16} className="text-blue-500"/><span>Vui lòng kiểm tra tab <strong>FileIndex</strong> trong Master Sheet để đảm bảo ID file chính xác.</span></div>{dataError.fileId && (<a href={`https://docs.google.com/spreadsheets/d/${dataError.fileId}/edit`} target="_blank" rel="noreferrer" className="mt-3 text-blue-600 hover:underline text-sm font-semibold flex items-center gap-1"><FileSpreadsheet size={16} /> Bấm vào đây để kiểm tra File hiện tại (ID: {dataError.fileId.substring(0, 10)}...)</a>)}</div>) : 'Không có đơn hàng nào thuộc nhóm Designer.'}</td></tr> : sortedOrders.map((order, idx) => {
-                  const category = skuMap[order.sku.toLowerCase().trim()] || '';
+              {loading ? <tr><td colSpan={9} className="text-center py-12 text-gray-500">Đang tải dữ liệu Tháng {currentMonthStr}...</td></tr> : (sortedOrdersResult.length === 0 ? <tr><td colSpan={9} className="text-center py-12 text-gray-500">{dataError ? (<div className="flex flex-col items-center justify-center p-4 bg-red-50 border border-red-200 rounded-lg max-w-2xl mx-auto my-4 text-red-700"><div className="flex items-center gap-2 font-bold text-lg mb-2"><AlertTriangle size={24} /> {dataError.message}</div>{dataError.detail && <p className="text-sm mb-3">{dataError.detail}</p>}<div className="flex items-center gap-2 text-sm bg-white p-2 rounded border border-red-100"><Info size={16} className="text-blue-500"/><span>Vui lòng kiểm tra tab <strong>FileIndex</strong> trong Master Sheet để đảm bảo ID file chính xác.</span></div>{dataError.fileId && (<a href={`https://docs.google.com/spreadsheets/d/${dataError.fileId}/edit`} target="_blank" rel="noreferrer" className="mt-3 text-blue-600 hover:underline text-sm font-semibold flex items-center gap-1"><FileSpreadsheet size={16} /> Bấm vào đây để kiểm tra File hiện tại (ID: {dataError.fileId.substring(0, 10)}...)</a>)}</div>) : 'Không có đơn hàng nào thuộc nhóm Designer.'}</td></tr> : sortedOrdersResult.map((order, idx) => {
+                  const category = skuMap[normalizeKey(order.sku)] || '';
                   const isUpdating = updatingIds.has(order.id);
                   const isHandlerAdmin = (order.handler || '').toLowerCase().includes('admin');
                   const isActionAdmin = (order.actionRole || '').toLowerCase().includes('admin');
@@ -292,8 +337,8 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
                           <td className="px-2 py-2 border-r font-mono text-[10px] text-gray-600">{order.sku}</td>
                           <td className="px-2 py-2 border-r text-center font-medium text-indigo-600 bg-indigo-50/50">{category}</td>
                           <td className="px-1 py-1 border-r text-center align-middle bg-blue-50/30">{isUpdating ? (<div className="flex justify-center"><Loader2 size={14} className="animate-spin text-blue-500" /></div>) : (<button onClick={() => handleDesignerToggle(order)} disabled={!canCheckDesign} className={`p-1 rounded focus:outline-none transition-colors ${!canCheckDesign ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-100'}`} title={canCheckDesign ? "Check hoàn thành và Lưu sheet" : "Bạn không có quyền check"}>{order.isDesignDone ? <CheckSquare size={16} className="text-blue-600" /> : <Square size={16} className="text-gray-300" />}</button>)}</td>
-                          <td className={`px-2 py-2 border-r text-center text-[10px] font-medium whitespace-nowrap bg-gray-50/50 ${isHandlerAdmin ? 'admin-red-gradient' : 'text-gray-600'}`}><div className="flex items-center justify-center gap-1.5"><UserCircle size={12} className={isHandlerAdmin ? 'text-red-500' : 'text-gray-400'}/>{order.handler}</div></td>
-                          <td className={`px-2 py-2 border-l text-center bg-gray-50/30 font-bold ${isActionAdmin ? 'admin-red-gradient' : 'text-orange-600'}`}>{order.actionRole}</td>
+                          <td className={`px-2 py-2 border-r text-center text-[10px] font-black whitespace-nowrap bg-gray-50/50 ${isHandlerAdmin ? 'admin-red-gradient' : 'text-gray-800'}`}><div className="flex items-center justify-center gap-1.5"><UserCircle size={12} className={isHandlerAdmin ? 'text-red-500' : 'text-gray-400'}/>{order.handler}</div></td>
+                          <td className={`px-2 py-2 border-l text-center bg-gray-50/30 font-black ${isActionAdmin ? 'admin-red-gradient' : 'text-orange-600'}`}>{order.actionRole}</td>
                       </tr>
                   );
               }))}
