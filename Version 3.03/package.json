@@ -17,6 +17,12 @@
     "@google/genai": "^1.30.0",
     "react-quill": "^2.0.0"
   },
+  "overrides": {
+    "react-quill": {
+      "react": "$react",
+      "react-dom": "$react-dom"
+    }
+  },
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
