@@ -23,6 +23,8 @@ function getSheet(n) {
         else if(n === SHEET_ATTENDANCE) s.appendRow(['Date', 'Username', 'Name', 'CheckIn', 'CheckOut', 'TotalHours']);
         else if(n === SHEET_OT_ATTENDANCE) s.appendRow(['Date', 'Username', 'Name', 'CheckIn', 'CheckOut', 'TotalHours', 'Type']);
         else if(n === SHEET_HOLIDAYS) s.appendRow(['Date']);
+        else if(n === SHEET_HANDOVER) s.appendRow(['ID', 'Date', 'Task', 'Assignee', 'DeadlineAt', 'Reserved', 'Status', 'StartTime', 'EndTime', 'Report', 'FileLink', 'ImageLink', 'CreatedBy']);
+        else if(n === SHEET_USER_NOTES) s.appendRow(['Username', 'Date', 'ItemsJSON']);
         else if(n === SHEET_FINANCE_META) { s.appendRow(['Categories', 'Payers']); s.appendRow(['Chi Tiền', 'Hoàng']); s.appendRow(['Thu Tiền', 'A Tâm']); }
         s.getRange(1, 1, 1, s.getLastColumn()).setFontWeight("bold").setBackground("#f8f9fa");
         s.setFrozenRows(1);

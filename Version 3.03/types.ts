@@ -74,6 +74,37 @@ export interface OTRecord {
   type: 'Normal' | 'Weekend' | 'Holiday';
 }
 
+// --- HANDOVER TYPES ---
+export type HandoverStatus = 'Pending' | 'Processing' | 'Completed' | 'Overdue';
+
+export interface HandoverItem {
+  id: string;
+  date: string;
+  task: string;
+  assignee: string;
+  deadlineAt: string;
+  status: HandoverStatus;
+  startTime?: string;
+  endTime?: string;
+  report?: string;
+  fileLink?: string;
+  imageLink?: string;
+  createdBy: string;
+  isSeen?: boolean; // Thuộc tính mới để quản lý thông báo
+}
+
+export interface DailyNoteItem {
+  id: string;
+  text: string;
+  completed: boolean;
+}
+
+export interface UserNote {
+  username: string;
+  date: string;
+  items: DailyNoteItem[];
+}
+
 // --- NEWS TYPES ---
 export interface NewsItem {
   id: string;
@@ -106,6 +137,7 @@ export interface UserPermissions {
   orders?: ViewScope;
   designer?: ViewScope;
   designerOnline?: ViewScope;
+  handover?: ViewScope;
   customers?: ViewScope;      
   finance?: ViewScope;        
   system?: ViewScope;         

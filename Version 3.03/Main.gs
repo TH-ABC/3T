@@ -1,4 +1,3 @@
-
 /**
  * ==========================================
  * MAIN.GS: ĐIỀU HƯỚNG CHÍNH V5.1
@@ -24,6 +23,8 @@ const SHEET_SCHEDULE_STAFF = 'ScheduleStaff';
 const SHEET_ATTENDANCE = 'Attendance';
 const SHEET_OT_ATTENDANCE = 'OTAttendance';
 const SHEET_HOLIDAYS = 'Holidays';
+const SHEET_HANDOVER = 'DailyHandover';
+const SHEET_USER_NOTES = 'UserNotes';
 
 function doPost(e) {
   const lock = LockService.getScriptLock();
@@ -33,8 +34,17 @@ function doPost(e) {
     const action = postData.action;
     let result = {};
 
+    // --- HANDOVER & NOTES ---
+    if (action === 'getHandover') result = handleGetHandover(postData.date, postData.viewerName, postData.viewerRole);
+    else if (action === 'addHandover') result = handleAddHandover(postData);
+    else if (action === 'updateHandover') result = handleUpdateHandover(postData.id, postData.updates);
+    else if (action === 'deleteHandover') result = handleDeleteHandover(postData.id);
+    else if (action === 'markHandoverAsSeen') result = handleMarkHandoverAsSeen(postData.id); // Route mới
+    else if (action === 'getUserNote') result = handleGetUserNote(postData.username, postData.date);
+    else if (action === 'saveUserNote') result = handleSaveUserNote(postData);
+
     // --- SCHEDULE & ATTENDANCE ---
-    if (action === 'getScheduleStaff') result = getScheduleStaff();
+    else if (action === 'getScheduleStaff') result = getScheduleStaff();
     else if (action === 'saveScheduleStaff') result = saveScheduleStaff(postData);
     else if (action === 'getAttendance') result = getAttendance(postData.month);
     else if (action === 'checkIn') result = checkIn(postData.username, postData.name);

@@ -13,6 +13,7 @@ import { DesignerList } from './components/DesignerList';
 import { FinanceBoard } from './components/FinanceBoard';
 import ChangePasswordModal from './components/ChangePasswordModal';
 import ScheduleManagement from './components/ScheduleManagement';
+import DailyHandover from './components/DailyHandover';
 import { User, Store, UserPermissions } from './types';
 
 function App() {
@@ -73,7 +74,7 @@ function App() {
   const handleProcessStart = () => setPendingUpdates(prev => prev + 1);
   const handleProcessEnd = () => setPendingUpdates(prev => Math.max(0, prev - 1));
 
-  const canAccess = (module: keyof UserPermissions | 'users' | 'home' | 'schedule') => {
+  const canAccess = (module: keyof UserPermissions | 'users' | 'home' | 'schedule' | 'handover') => {
       if (module === 'home') return true;
       if (module === 'schedule') return true;
       if (user.role === 'admin') return true;
@@ -83,6 +84,7 @@ function App() {
       const role = (user.role || '').toLowerCase();
       if (module === 'dashboard') return true;
       if (module === 'orders') return !role.includes('designer');
+      if (module === 'handover') return true; // Handover accessible to all
       if (module === 'designer') return role.includes('designer') || role === 'leader';
       if (module === 'designerOnline') return role === 'designer online' || role === 'leader';
       if (module === 'customers') return true;
@@ -102,6 +104,8 @@ function App() {
       case 'orders':
         if (!canAccess('orders')) return <div className="p-6">Không có quyền truy cập.</div>;
         return <OrderList user={user} onProcessStart={handleProcessStart} onProcessEnd={handleProcessEnd} />;
+      case 'handover':
+        return <DailyHandover user={user} />;
       case 'designer_online':
         if (!canAccess('designerOnline')) return <div className="p-6">Không có quyền truy cập.</div>;
         return <DesignerOnlineList user={user} onProcessStart={handleProcessStart} onProcessEnd={handleProcessEnd} />;

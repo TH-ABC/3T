@@ -1,5 +1,5 @@
 
-import { Order, Store, User, DashboardMetrics, DailyStat, StoreHistoryItem, SkuMapping, Role, AuthResponse, FinanceTransaction, FinanceMeta, NewsItem, NewsComment, ScheduleStaff, AttendanceRecord, OTRecord } from '../types';
+import { Order, Store, User, DashboardMetrics, DailyStat, StoreHistoryItem, SkuMapping, Role, AuthResponse, FinanceTransaction, FinanceMeta, NewsItem, NewsComment, ScheduleStaff, AttendanceRecord, OTRecord, HandoverItem, UserNote } from '../types';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbyw4ZdfirgKUHyXMH8Ro7UZ6-VWCdf1hgqU37ilLvNt2RwzusSPG_HUc_mi8z-9tInR/exec'; 
 
@@ -27,6 +27,17 @@ async function callAPI(action: string, method: string = 'POST', data: any = {}):
 }
 
 export const sheetService = {
+  // --- HANDOVER ---
+  getHandover: async (date: string, viewerName?: string, viewerRole?: string): Promise<HandoverItem[]> => 
+    await callAPI('getHandover', 'POST', { date, viewerName, viewerRole }),
+  
+  addHandover: async (item: Partial<HandoverItem>): Promise<any> => await callAPI('addHandover', 'POST', item),
+  updateHandover: async (id: string, updates: Partial<HandoverItem>): Promise<any> => await callAPI('updateHandover', 'POST', { id, updates }),
+  deleteHandover: async (id: string): Promise<any> => await callAPI('deleteHandover', 'POST', { id }),
+  markHandoverAsSeen: async (id: string): Promise<any> => await callAPI('markHandoverAsSeen', 'POST', { id }), // Hàm mới
+  getUserNote: async (username: string, date: string): Promise<UserNote> => await callAPI('getUserNote', 'POST', { username, date }),
+  saveUserNote: async (note: UserNote): Promise<any> => await callAPI('saveUserNote', 'POST', note),
+
   // --- SCHEDULE & ATTENDANCE ---
   getScheduleStaff: async (): Promise<ScheduleStaff[]> => await callAPI('getScheduleStaff', 'GET'),
   saveScheduleStaff: async (staffList: ScheduleStaff[]): Promise<any> => await callAPI('saveScheduleStaff', 'POST', { staffList }),

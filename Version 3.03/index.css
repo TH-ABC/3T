@@ -19,27 +19,38 @@
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
-    /* Ensure color persists if background-clip fails in some contexts */
     text-fill-color: transparent;
     background-size: 200% auto;
     animation: shine 3s linear infinite;
     font-weight: 900 !important;
   }
 
-  /* Hiệu ứng nhấp nháy đặc biệt dành riêng cho Logo Admin */
   .admin-logo-pulse {
     animation: adminPulseGlow 2s infinite;
     border: 3px solid rgba(239, 68, 68, 0.6);
     box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
   }
 
-  /* macOS Liquid Glass Effect */
+  /* Hiệu ứng thông báo nổi bật cực mạnh */
+  .notif-bell-pulse {
+    animation: notifPulse 1.5s infinite;
+    background: #ff4500 !important;
+    color: white !important;
+    box-shadow: 0 0 15px rgba(255, 69, 0, 0.6);
+  }
+
   .macos-glass {
     background: rgba(255, 255, 255, 0.65);
     backdrop-filter: blur(40px) saturate(180%);
     -webkit-backdrop-filter: blur(40px) saturate(180%);
     border: 1px solid rgba(255, 255, 255, 0.3);
   }
+}
+
+@keyframes notifPulse {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 69, 0, 0.7); }
+  70% { transform: scale(1.1); box-shadow: 0 0 0 10px rgba(255, 69, 0, 0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 69, 0, 0); }
 }
 
 @keyframes adminPulseGlow {

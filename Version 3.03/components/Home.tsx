@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { 
   Bell, Heart, MessageSquare, Send, Plus, 
@@ -10,7 +9,7 @@ import {
   ChevronLeft, Share2, Check, AlertCircle,
   Type, AlignLeft, Layout, Bold, Underline, Palette, Type as TypeIcon,
   CornerDownRight, List, Info, MousePointer2, ChevronDown, ChevronUp,
-  Eye, Monitor
+  Eye, Monitor, AlertTriangle
 } from 'lucide-react';
 import { sheetService } from '../services/sheetService';
 import { User as UserType, NewsItem, NewsComment } from '../types';
@@ -41,8 +40,6 @@ const Home: React.FC<HomeProps> = ({ user, onTabChange }) => {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   
   const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set());
-  const [showNotifDropdown, setShowNotifDropdown] = useState(false);
-  const [lastReadTime, setLastReadTime] = useState<number>(0);
   
   const dropdownRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -135,7 +132,6 @@ const Home: React.FC<HomeProps> = ({ user, onTabChange }) => {
 
     if (isRich) {
       const cleanText = text.replace(/<span class="ql-cursor">.*?<\/span>/g, '');
-      // Chuyển sang dùng dangerouslySetInnerHTML để render HTML thô, triệt tiêu khoảng trống thừa từ Editor Component
       return (
         <div 
           className="quill-content-render ql-editor ql-snow" 
@@ -158,7 +154,6 @@ const Home: React.FC<HomeProps> = ({ user, onTabChange }) => {
         sheetService.getUsers()
       ]);
       setNews(newsRes.news);
-      setLastReadTime(newsRes.lastReadTime || 0);
       setSystemUsers(Array.isArray(usersRes) ? usersRes : []);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
@@ -167,27 +162,14 @@ const Home: React.FC<HomeProps> = ({ user, onTabChange }) => {
   useEffect(() => {
     fetchData();
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowNotifDropdown(false);
+      // Đóng modal xác nhận xóa nếu click ra ngoài
+      if (confirmDeleteId && !(event.target as HTMLElement).closest('.delete-modal-content')) {
+        setConfirmDeleteId(null);
       }
-      setConfirmDeleteId(null);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  // Sửa logic nhận diện tin tức chưa đọc: Dùng Date chuẩn hóa để so sánh chính xác
-  const unreadNews = news.filter(n => {
-    const postTime = new Date(n.timestamp.replace(' ', 'T')).getTime();
-    return postTime > lastReadTime;
-  });
-
-  const handleMarkAsRead = async () => {
-    const now = Date.now();
-    setLastReadTime(now);
-    setShowNotifDropdown(false);
-    await sheetService.updateLastReadTime(user.username);
-  };
+  }, [confirmDeleteId]);
 
   const handleLike = async (newsId: string) => {
     setNews(prev => prev.map(n => n.id === newsId ? { 
@@ -226,14 +208,25 @@ const Home: React.FC<HomeProps> = ({ user, onTabChange }) => {
     await sheetService.addComment({ newsId, username: user.username, text: textToSave });
   };
 
-  const handleDeleteNews = async (id: string) => {
-    if (confirmDeleteId !== id) { setConfirmDeleteId(id); return; }
+  const handleDeleteNews = (id: string) => {
+    setConfirmDeleteId(id);
+  };
+
+  const executeActualDelete = async (id: string) => {
     setActionLoadingId(id);
     try {
       const res = await sheetService.deleteNews(id);
-      if (res.success) setNews(prev => prev.filter(n => n.id !== id));
-      else alert(res.error || "Lỗi xóa bài");
-    } finally { setActionLoadingId(null); }
+      if (res.success) {
+        setNews(prev => prev.filter(n => n.id !== id));
+        setConfirmDeleteId(null);
+      } else {
+        alert(res.error || "Lỗi xóa bài");
+      }
+    } catch (err) {
+      alert("Lỗi kết nối khi xóa bài tin.");
+    } finally { 
+      setActionLoadingId(null); 
+    }
   };
 
   const handleToggleLock = async (id: string) => {
@@ -304,46 +297,6 @@ const Home: React.FC<HomeProps> = ({ user, onTabChange }) => {
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="relative" ref={dropdownRef}>
-              <button onClick={() => setShowNotifDropdown(!showNotifDropdown)} className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all relative ${unreadNews.length > 0 ? 'bg-orange-500 text-white shadow-lg shadow-orange-100' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
-                <Bell size={18} />
-                {unreadNews.length > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-[8px] font-black rounded-full flex items-center justify-center border-2 border-white">{unreadNews.length}</span>}
-              </button>
-
-              {/* THÔNG BÁO DROPDOWN - ĐÃ ĐƯỢC FIX LỖI KHÔNG HOẠT ĐỘNG */}
-              {showNotifDropdown && (
-                <div className="absolute top-full right-0 mt-3 w-80 bg-white rounded-[1.5rem] shadow-2xl border border-slate-200 p-4 animate-slide-in z-[60]">
-                  <div className="flex justify-between items-center mb-4 pb-2 border-b border-slate-100">
-                    <h4 className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Thông báo mới</h4>
-                    {unreadNews.length > 0 && (
-                      <button onClick={handleMarkAsRead} className="text-[9px] font-bold text-indigo-600 hover:underline">Đã đọc tất cả</button>
-                    )}
-                  </div>
-                  <div className="max-h-64 overflow-y-auto custom-scrollbar space-y-3">
-                    {unreadNews.length === 0 ? (
-                      <div className="py-8 text-center">
-                        <CheckCircle size={24} className="mx-auto text-emerald-400 mb-2 opacity-50" />
-                        <p className="text-[10px] font-bold text-slate-400 uppercase">Bạn đã xem hết tin tức!</p>
-                      </div>
-                    ) : (
-                      unreadNews.map(n => (
-                        <div key={n.id} onClick={() => { setSelectedNews(n); setShowNotifDropdown(false); }} className="p-3 bg-slate-50 rounded-xl hover:bg-indigo-50 transition-colors cursor-pointer border border-slate-100 group">
-                          <p className="text-xs font-black text-slate-800 line-clamp-1 group-hover:text-indigo-600">
-                            {n.title.replace(/<[^>]*>?/gm, '') || "Bản tin không tiêu đề"}
-                          </p>
-                          <div className="flex items-center gap-2 mt-1.5">
-                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">{n.author}</span>
-                            <span className="w-1 h-1 rounded-full bg-slate-300"></span>
-                            <span className="text-[8px] font-bold text-slate-400">{n.timestamp.split(' ')[0]}</span>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-            
             {(isAdminSession || user.permissions?.canPostNews) && (
               <button onClick={() => { setIsEditing(false); setNewPost({id:'', title:'', content:'', imageUrl:''}); setIsPostModalOpen(true); }} className="h-10 px-4 sm:px-6 bg-slate-900 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-black transition-all shadow-xl shadow-slate-200 flex items-center gap-2">
                 <Plus size={14} /> <span>Đăng tin</span>
@@ -383,7 +336,7 @@ const Home: React.FC<HomeProps> = ({ user, onTabChange }) => {
                             <button onClick={() => handleToggleLock(item.id)} className={`p-2 rounded-xl transition-all ${item.isLocked ? 'text-orange-600 bg-orange-50 shadow-sm' : 'text-slate-400 hover:text-orange-500 hover:bg-orange-50'}`} title={item.isLocked ? "Mở khóa bình luận" : "Khóa bình luận"}>
                                 {item.isLocked ? <Lock size={16} /> : <Unlock size={16} />}
                             </button>
-                            <button onClick={() => handleDeleteNews(item.id)} className={`p-2 rounded-xl transition-all ${confirmDeleteId === item.id ? 'bg-rose-500 text-white' : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'}`} title="Xóa bài">
+                            <button onClick={() => handleDeleteNews(item.id)} className={`p-2 rounded-xl transition-all hover:bg-rose-50 text-slate-400 hover:text-rose-600`} title="Xóa bài">
                                 {isLoadingThis ? <Loader2 size={16} className="animate-spin"/> : <Trash2 size={16}/>}
                             </button>
                            </>
@@ -656,6 +609,39 @@ const Home: React.FC<HomeProps> = ({ user, onTabChange }) => {
                    <div className="flex gap-4 pt-4 border-t border-slate-50 opacity-40"><Heart size={14}/><MessageSquare size={14}/></div>
                 </div>
                 <div className="mt-8 text-center"><p className="text-[9px] font-bold text-slate-300 uppercase tracking-widest">Giao diện này phản ánh kết quả sau khi đăng</p></div>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* --- CUSTOM DELETE CONFIRMATION MODAL --- */}
+      {confirmDeleteId && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 animate-fade-in">
+           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"></div>
+           <div className="delete-modal-content bg-white rounded-[2rem] shadow-2xl p-8 w-full max-w-sm relative animate-slide-in">
+              <div className="flex flex-col items-center text-center">
+                 <div className="w-16 h-16 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mb-6 shadow-sm border border-rose-100">
+                    <AlertTriangle size={32} />
+                 </div>
+                 <h3 className="text-lg font-black text-slate-900 uppercase mb-2 tracking-tight">Xác nhận xóa bài?</h3>
+                 <p className="text-xs font-bold text-slate-500 leading-relaxed mb-8">
+                    Bản tin này sẽ bị xóa vĩnh viễn khỏi hệ thống và không thể khôi phục lại. Bạn chắc chắn chứ?
+                 </p>
+                 <div className="flex w-full gap-3">
+                    <button 
+                       onClick={() => setConfirmDeleteId(null)} 
+                       className="flex-1 py-3.5 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
+                    >
+                       Hủy bỏ
+                    </button>
+                    <button 
+                       onClick={() => executeActualDelete(confirmDeleteId)} 
+                       disabled={actionLoadingId === confirmDeleteId}
+                       className="flex-1 py-3.5 bg-rose-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-rose-200 active:scale-95 transition-all flex items-center justify-center gap-2"
+                    >
+                       {actionLoadingId === confirmDeleteId ? <Loader2 size={14} className="animate-spin" /> : "Xác nhận xóa"}
+                    </button>
+                 </div>
               </div>
            </div>
         </div>
