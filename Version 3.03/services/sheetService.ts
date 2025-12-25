@@ -34,7 +34,7 @@ export const sheetService = {
   addHandover: async (item: Partial<HandoverItem>): Promise<any> => await callAPI('addHandover', 'POST', item),
   updateHandover: async (id: string, updates: Partial<HandoverItem>): Promise<any> => await callAPI('updateHandover', 'POST', { id, updates }),
   deleteHandover: async (id: string): Promise<any> => await callAPI('deleteHandover', 'POST', { id }),
-  markHandoverAsSeen: async (id: string): Promise<any> => await callAPI('markHandoverAsSeen', 'POST', { id }), // Hàm mới
+  markHandoverAsSeen: async (id: string): Promise<any> => await callAPI('markHandoverAsSeen', 'POST', { id }), 
   getUserNote: async (username: string, date: string): Promise<UserNote> => await callAPI('getUserNote', 'POST', { username, date }),
   saveUserNote: async (note: UserNote): Promise<any> => await callAPI('saveUserNote', 'POST', note),
 
@@ -89,6 +89,10 @@ export const sheetService = {
     return await callAPI('toggleLike', 'POST', { newsId, username });
   },
 
+  // --- AUTH & SESSION ---
+  login: async (username: string, password: string, ip?: string): Promise<AuthResponse> => await callAPI('login', 'POST', { username, password, ip }),
+  logout: async (username: string, type: string = 'LOGOUT'): Promise<any> => await callAPI('logout', 'POST', { username, type }),
+
   // --- EXISTING METHODS ---
   getDashboardStats: async (): Promise<DashboardMetrics> => ({ revenue: 0, netIncome: 0, inventoryValue: 0, debt: 0 }),
   getStores: async (): Promise<Store[]> => await callAPI('getStores', 'GET'),
@@ -110,7 +114,6 @@ export const sheetService = {
   syncFF: async (fileId: string): Promise<any> => await callAPI('syncFF', 'POST', { fileId }),
   addOrder: async (order: Order, fileId?: string): Promise<any> => await callAPI('addOrder', 'POST', { ...order, isDesignDone: order.isDesignDone || false, fileId }),
   addUnit: async (name: string): Promise<any> => await callAPI('addUnit', 'POST', { name }),
-  login: async (username: string, password: string, ip?: string): Promise<AuthResponse> => await callAPI('login', 'POST', { username, password, ip }),
   getRoles: async (): Promise<Role[]> => await callAPI('getRoles', 'GET'),
   createUser: async (user: any): Promise<any> => await callAPI('createUser', 'POST', user),
   addRole: async (name: string, level: number): Promise<any> => await callAPI('addRole', 'POST', { name, level }),

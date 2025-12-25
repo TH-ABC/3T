@@ -14,7 +14,8 @@ import { FinanceBoard } from './components/FinanceBoard';
 import ChangePasswordModal from './components/ChangePasswordModal';
 import ScheduleManagement from './components/ScheduleManagement';
 import DailyHandover from './components/DailyHandover';
-import { User, Store, UserPermissions } from './types';
+import { User, Store, UserPermissions, HandoverItem } from './types';
+import { sheetService } from './services/sheetService';
 
 function App() {
   const [user, setUser] = useState<User | null>(() => {
@@ -30,6 +31,134 @@ function App() {
   const [selectedStore, setSelectedStore] = useState<Store | null>(null);
   const [pendingUpdates, setPendingUpdates] = useState(0);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  const [unreadTaskCount, setUnreadTaskCount] = useState(0);
+
+  // --- LOGIC THÔNG BÁO NGOÀI ICON WEB (FAVICON BADGE) ---
+  useEffect(() => {
+    if (!user) {
+      document.title = "Hệ Thống Quản Lý Order";
+      return;
+    }
+
+    const updateWebIconNotification = async () => {
+      try {
+        // Lấy toàn bộ task để kiểm tra task mới chưa xem
+        const handoverRes = await sheetService.getHandover("", user.fullName, user.role);
+        if (Array.isArray(handoverRes)) {
+          const newTasks = handoverRes.filter(item => 
+            !item.isSeen && 
+            item.status === 'Pending' && 
+            item.assignee.toLowerCase() === user.fullName.toLowerCase()
+          );
+          
+          const count = newTasks.length;
+          setUnreadTaskCount(count);
+
+          // Cập nhật Tiêu đề trang
+          if (count > 0) {
+            document.title = `(${count}) Công việc mới - OMS Team 3T`;
+            drawFaviconBadge(count);
+          } else {
+            document.title = "OMS Team 3T";
+            restoreFavicon();
+          }
+        }
+      } catch (e) {
+        console.error("Favicon update error:", e);
+      }
+    };
+
+    const drawFaviconBadge = (count: number) => {
+      const favicon = document.querySelector('link[rel="icon"]') as HTMLLinkElement || document.createElement('link');
+      favicon.rel = 'icon';
+      
+      const canvas = document.createElement('canvas');
+      canvas.width = 32;
+      canvas.height = 32;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const img = new Image();
+      // Sử dụng favicon mặc định hoặc icon hệ thống
+      img.src = '/favicon.ico'; 
+      img.onload = () => {
+        ctx.drawImage(img, 0, 0, 32, 32);
+        
+        // Vẽ vòng tròn đỏ
+        ctx.beginPath();
+        ctx.arc(24, 8, 8, 0, 2 * Math.PI);
+        ctx.fillStyle = '#ff0000';
+        ctx.fill();
+        
+        // Vẽ số lượng
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(count > 9 ? '9+' : count.toString(), 24, 8);
+        
+        favicon.href = canvas.toDataURL('image/png');
+        if (!document.querySelector('link[rel="icon"]')) {
+          document.head.appendChild(favicon);
+        }
+      };
+    };
+
+    const restoreFavicon = () => {
+      const favicon = document.querySelector('link[rel="icon"]') as HTMLLinkElement;
+      if (favicon) favicon.href = '/favicon.ico';
+    };
+
+    // Kiểm tra ngay khi login và mỗi 60 giây
+    updateWebIconNotification();
+    const interval = setInterval(updateWebIconNotification, 60000);
+
+    return () => {
+      clearInterval(interval);
+      restoreFavicon();
+    };
+  }, [user]);
+
+  // --- AUTOMATIC LOGOUT LOGIC (8 HOURS IDLE) ---
+  useEffect(() => {
+    if (!user) return;
+
+    // Điều chỉnh: 8 giờ = 8 * 60 * 60 * 1000ms
+    const IDLE_TIMEOUT = 8 * 60 * 60 * 1000; 
+    let idleTimer: any;
+
+    const resetTimer = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        handleAutoLogout();
+      }, IDLE_TIMEOUT);
+    };
+
+    const handleAutoLogout = async () => {
+      try {
+        await sheetService.logout(user.username, 'LOGOUT_INACTIVE_8H');
+      } catch (e) {
+        console.error("Logout log error:", e);
+      }
+      
+      handleLogout();
+      alert("Phiên làm việc đã hết hạn do bạn không tương tác trong 8 giờ. Vui lòng đăng nhập lại.");
+    };
+
+    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
+    events.forEach(event => {
+      window.addEventListener(event, resetTimer);
+    });
+
+    resetTimer();
+
+    return () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      events.forEach(event => {
+        window.removeEventListener(event, resetTimer);
+      });
+    };
+  }, [user]);
 
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -84,7 +213,7 @@ function App() {
       const role = (user.role || '').toLowerCase();
       if (module === 'dashboard') return true;
       if (module === 'orders') return !role.includes('designer');
-      if (module === 'handover') return true; // Handover accessible to all
+      if (module === 'handover') return true; 
       if (module === 'designer') return role.includes('designer') || role === 'leader';
       if (module === 'designerOnline') return role === 'designer online' || role === 'leader';
       if (module === 'customers') return true;

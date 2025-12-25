@@ -1,3 +1,4 @@
+
 /**
  * ==========================================
  * MAIN.GS: ĐIỀU HƯỚNG CHÍNH V5.1
@@ -91,6 +92,7 @@ function doPost(e) {
 
     // --- USERS ---
     else if (action === 'login') result = handleLogin(postData.username, postData.password, postData.ip);
+    else if (action === 'logout') result = handleLogout(postData.username, postData.type); // Action mới
     else if (action === 'getUsers') result = getUsers();
     else if (action === 'createUser') result = createUser(postData.username, postData.password, postData.fullName, postData.role, postData.email, postData.phone, postData.permissions);
     else if (action === 'updateUser') result = updateUser(postData.username, postData.role, postData.status, postData.permissions);

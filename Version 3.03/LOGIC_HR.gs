@@ -253,3 +253,7 @@ function handleLogin(u, p, ip) {
     }
     return { success: false, error: 'Tên đăng nhập hoặc mật khẩu không đúng.' };
 }
+function handleLogout(username, type) {
+    getSheet(SHEET_LOGS).appendRow([new Date(), username, type || 'LOGOUT', '']);
+    return { success: true };
+}

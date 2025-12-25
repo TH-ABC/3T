@@ -87,10 +87,11 @@ export interface HandoverItem {
   startTime?: string;
   endTime?: string;
   report?: string;
-  fileLink?: string;
+  fileLink?: string; // Link từ người giao
+  resultLink?: string; // Link từ người làm (mới)
   imageLink?: string;
   createdBy: string;
-  isSeen?: boolean; // Thuộc tính mới để quản lý thông báo
+  isSeen?: boolean; 
 }
 
 export interface DailyNoteItem {
@@ -103,6 +104,7 @@ export interface UserNote {
   username: string;
   date: string;
   items: DailyNoteItem[];
+  showPlanner?: boolean; // Trạng thái ẩn hiện Planner (mới)
 }
 
 // --- NEWS TYPES ---
