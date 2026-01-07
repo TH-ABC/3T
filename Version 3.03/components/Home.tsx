@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { 
   Bell, Heart, MessageSquare, Send, Plus, 
@@ -32,6 +33,7 @@ const Home: React.FC<HomeProps> = ({ user, onTabChange }) => {
   const [newPost, setNewPost] = useState({ id: '', title: '', content: '', imageUrl: '' });
   const [isEditing, setIsEditing] = useState(false);
   const [posting, setPosting] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   
   const [commentingId, setCommentingId] = useState<string | null>(null);
   const [commentText, setCommentText] = useState('');
@@ -77,38 +79,34 @@ const Home: React.FC<HomeProps> = ({ user, onTabChange }) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         const img = new Image();
+        img.onerror = () => resolve("");
         img.onload = () => {
-          let currentWidth = maxWidth;
-          let currentHeight = maxHeight;
-          let quality = 0.7;
-          let base64 = "";
+          let width = img.width;
+          let height = img.height;
+          
+          if (width > height) {
+            if (width > maxWidth) {
+              height *= maxWidth / width;
+              width = maxWidth;
+            }
+          } else {
+            if (height > maxHeight) {
+              width *= maxHeight / height;
+              height = maxHeight;
+            }
+          }
           
           const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
           const ctx = canvas.getContext('2d');
-
-          const attemptResize = (w: number, h: number, q: number) => {
-            let width = img.width;
-            let height = img.height;
-            if (width > height) { if (width > w) { height *= w / width; width = w; } } 
-            else { if (height > h) { width *= h / height; height = h; } }
-            
-            canvas.width = width;
-            canvas.height = height;
-            ctx?.clearRect(0, 0, width, height);
-            ctx?.drawImage(img, 0, 0, width, height);
-            return canvas.toDataURL('image/jpeg', q);
-          };
-
-          base64 = attemptResize(currentWidth, currentHeight, quality);
-          while (base64.length > 45000 && (currentWidth > 200 || quality > 0.2)) {
-            if (quality > 0.3) quality -= 0.1;
-            else {
-               currentWidth -= 100;
-               currentHeight -= 100;
-            }
-            base64 = attemptResize(currentWidth, currentHeight, quality);
-          }
-          resolve(base64);
+          if (!ctx) return resolve("");
+          ctx.drawImage(img, 0, 0, width, height);
+          
+          // Lấy chuỗi Base64 và TÁCH BỎ HEADER để gửi data thuần
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+          const base64Parts = dataUrl.split(',');
+          resolve(base64Parts.length > 1 ? base64Parts[1] : "");
         };
         img.src = e.target?.result as string;
       };
@@ -162,7 +160,6 @@ const Home: React.FC<HomeProps> = ({ user, onTabChange }) => {
   useEffect(() => {
     fetchData();
     const handleClickOutside = (event: MouseEvent) => {
-      // Đóng modal xác nhận xóa nếu click ra ngoài
       if (confirmDeleteId && !(event.target as HTMLElement).closest('.delete-modal-content')) {
         setConfirmDeleteId(null);
       }
@@ -251,30 +248,56 @@ const Home: React.FC<HomeProps> = ({ user, onTabChange }) => {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const resized = await resizeImage(file, 800, 800);
-      setNewPost(prev => ({ ...prev, imageUrl: resized }));
+      setIsUploadingImage(true);
+      try {
+        const pureBase64 = await resizeImage(file, 1000, 1000);
+        if (!pureBase64) {
+          alert("Lỗi nén ảnh hoặc ảnh quá nhỏ.");
+          setIsUploadingImage(false);
+          return;
+        }
+
+        // Tải ảnh trực tiếp lên Drive ngay khi chọn file thông qua Backend
+        const res = await sheetService.uploadImage(pureBase64);
+        if (res && res.success && res.url) {
+           setNewPost(prev => ({ ...prev, imageUrl: res.url! }));
+        } else {
+           alert("Không thể tải ảnh lên Google Drive: " + (res?.error || "Vui lòng thử lại."));
+        }
+      } catch (err) {
+        alert("Lỗi kết nối khi tải ảnh lên hệ thống.");
+      } finally {
+        setIsUploadingImage(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
     }
   };
 
   const handleCreateOrUpdatePost = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPost.title || !newPost.content) return;
+    
+    if (isUploadingImage) {
+      alert("Đang tải ảnh lên máy chủ, vui lòng đợi...");
+      return;
+    }
+
     setPosting(true);
     try {
       let res;
       if (isEditing) res = await sheetService.updateNews({ ...newPost });
       else res = await sheetService.addNews({ ...newPost, author: user.fullName });
       
-      if (res && (res.success === true || String(res.success).toUpperCase() === "TRUE")) {
+      if (res && res.success) {
         setIsPostModalOpen(false);
         setIsEditing(false);
         setNewPost({ id: '', title: '', content: '', imageUrl: '' });
         await fetchData();
       } else {
-        alert(res?.error || "Cập nhật thất bại. Vui lòng thử lại.");
+        alert(res?.error || "Giao dịch thất bại.");
       }
     } catch (err) { 
-        alert("Lỗi kết nối hệ thống: " + err);
+        alert("Lỗi kết nối hệ thống.");
     } finally { setPosting(false); }
   };
 
@@ -521,94 +544,80 @@ const Home: React.FC<HomeProps> = ({ user, onTabChange }) => {
 
       {/* --- MODAL ĐĂNG/SỬA TIN RICH TEXT EDITOR --- */}
       {isPostModalOpen && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-0 sm:p-4 animate-fade-in">
-           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => !posting && setIsPostModalOpen(false)}></div>
-           <div className="bg-white w-full max-w-5xl h-full sm:h-[90vh] sm:rounded-[3rem] shadow-2xl overflow-hidden relative animate-slide-in flex flex-col md:flex-row">
-              <div className="flex-1 overflow-y-auto custom-scrollbar p-6 sm:p-10 border-r border-slate-100">
-                <div className="flex items-center justify-between mb-8">
-                  <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-orange-500 text-white flex items-center justify-center shadow-lg shadow-orange-100">
-                      {isEditing ? <Edit2 size={20} /> : <Megaphone size={20} />}
-                    </div>
-                    {isEditing ? 'Chỉnh Sửa Tin' : 'Phát Hành Bản Tin'}
-                  </h3>
-                  <button type="button" onClick={() => setIsPostModalOpen(false)} className="md:hidden w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-500"><X size={20}/></button>
-                </div>
-
-                <form onSubmit={handleCreateOrUpdatePost} className="space-y-6">
-                  <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-2">Tiêu đề bản tin</label>
-                    <input 
-                      type="text"
-                      value={newPost.title}
-                      onChange={(e) => setNewPost({...newPost, title: e.target.value})}
-                      placeholder="Tiêu đề bắt mắt..."
-                      className="w-full h-12 px-5 bg-white border border-slate-200 rounded-2xl font-bold text-slate-900 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition-all"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-2">Nội dung chi tiết</label>
-                    <Suspense fallback={<div className="h-40 animate-pulse bg-slate-50 border border-slate-100 rounded-xl"></div>}>
-                      <ReactQuill 
-                        theme="snow"
-                        value={newPost.content}
-                        onChange={(val) => setNewPost({...newPost, content: val})}
-                        modules={quillModules}
-                        formats={quillFormats}
-                        placeholder="Hãy kể một câu chuyện thú vị..."
-                        className="bg-white rounded-2xl quill-editor-modal"
-                      />
-                    </Suspense>
-                  </div>
-
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><ImageIcon size={12} className="text-orange-500"/> Hình ảnh minh họa</label>
-                    <div onClick={() => fileInputRef.current?.click()} className="w-full h-40 border-2 border-dashed border-slate-200 rounded-[2rem] flex flex-col items-center justify-center gap-3 cursor-pointer hover:bg-slate-50 hover:border-indigo-300 transition-all overflow-hidden group/upload">
-                       <input type="file" accept="image/*" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
-                       {newPost.imageUrl ? (
-                         <div className="relative w-full h-full"><img src={newPost.imageUrl} className="w-full h-full object-cover" alt="" /><div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover/upload:opacity-100 transition-opacity"><div className="bg-white/20 backdrop-blur-md px-4 py-2 rounded-full text-white text-[10px] font-black uppercase">Đổi ảnh khác</div></div></div>
-                       ) : (
-                         <>
-                           <div className="w-12 h-12 bg-white rounded-2xl shadow-md text-slate-300 flex items-center justify-center group-hover/upload:text-indigo-500 transition-colors"><ImageIcon size={24} /></div>
-                           <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Tải ảnh lên hệ thống</p>
-                         </>
-                       )}
-                    </div>
-                  </div>
-
-                  <div className="pt-4 flex gap-3">
-                    <button type="button" onClick={() => setIsPostModalOpen(false)} className="flex-1 h-14 bg-slate-100 text-slate-500 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-200 active:scale-95 transition-all">Hủy</button>
-                    <button type="submit" disabled={posting} className="flex-[2] h-14 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2">
-                      {posting ? <Loader2 size={18} className="animate-spin" /> : (isEditing ? <><CheckCircle size={18}/> Cập Nhật</> : <><Send size={18}/> Phát hành ngay</>)}
-                    </button>
-                  </div>
-                </form>
-              </div>
-
-              <div className="hidden md:flex md:w-[400px] bg-[#fdfdfd] flex-col p-10 overflow-y-auto custom-scrollbar">
-                <div className="mb-6 flex items-center justify-between">
-                   <h4 className="text-[11px] font-black text-indigo-600 uppercase tracking-[0.2em] flex items-center gap-2"><Eye size={14}/> Preview Live</h4>
-                   <div className="flex gap-1.5"><div className="w-2 h-2 rounded-full bg-red-400"></div><div className="w-2 h-2 rounded-full bg-amber-400"></div><div className="w-2 h-2 rounded-full bg-emerald-400"></div></div>
-                </div>
-                
-                <div className="bg-white border border-slate-200 rounded-[2.5rem] shadow-xl p-6 relative overflow-hidden pointer-events-none scale-90 origin-top">
-                   <div className="flex items-center gap-3 mb-1">
-                      <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-white text-xs font-black">{user.fullName.charAt(0)}</div>
-                      <div><p className="text-[11px] font-black text-slate-900">{user.fullName}</p><p className="text-[8px] font-bold text-slate-300 uppercase">Vừa xong</p></div>
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-0 sm:p-4 animate-fade-in overflow-hidden">
+           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => !posting && !isUploadingImage && setIsPostModalOpen(false)}></div>
+           <div className="bg-white w-full max-w-xl rounded-[3rem] shadow-2xl overflow-hidden relative animate-slide-in border border-white/20 flex flex-col max-h-[90vh]">
+              <div className="p-10 overflow-y-auto custom-scrollbar flex-1">
+                 <h3 className="text-2xl font-black text-slate-900 uppercase mb-8 flex items-center gap-4">
+                   <div className="w-12 h-12 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-xl shadow-indigo-100">
+                      {isEditing ? <Edit2 size={28} /> : <Plus size={28} strokeWidth={3} />}
                    </div>
-                   {!isContentEmpty(newPost.title) && (
-                     <div className="text-sm font-black text-slate-900 mb-0 leading-tight">
-                          {renderFormattedText(newPost.title || "Tiêu đề mẫu")}
-                     </div>
-                   )}
-                   <div className="text-[11px] text-slate-600 leading-relaxed mb-6">
-                        {renderFormattedText(newPost.content || "Nội dung mẫu sẽ hiển thị tại đây khi bạn bắt đầu gõ...")}
-                   </div>
-                   {newPost.imageUrl && <div className="rounded-2xl overflow-hidden aspect-video border border-slate-100 mb-6"><img src={newPost.imageUrl} className="w-full h-full object-cover" alt="" /></div>}
-                   <div className="flex gap-4 pt-4 border-t border-slate-50 opacity-40"><Heart size={14}/><MessageSquare size={14}/></div>
-                </div>
-                <div className="mt-8 text-center"><p className="text-[9px] font-bold text-slate-300 uppercase tracking-widest">Giao diện này phản ánh kết quả sau khi đăng</p></div>
+                   {isEditing ? 'Chỉnh sửa tin' : 'Phát hành bản tin'}
+                 </h3>
+                 <form onSubmit={handleCreateOrUpdatePost} className="space-y-6">
+                    <div>
+                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Tiêu đề bản tin</label>
+                       <input 
+                         type="text"
+                         value={newPost.title}
+                         onChange={(e) => setNewPost({...newPost, title: e.target.value})}
+                         className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all shadow-sm"
+                         placeholder="Nhập tiêu đề hấp dẫn..."
+                         required
+                       />
+                    </div>
+                    
+                    <div>
+                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Nội dung chi tiết</label>
+                       <Suspense fallback={<div className="h-40 bg-slate-50 animate-pulse rounded-2xl"></div>}>
+                          <ReactQuill 
+                            theme="snow"
+                            value={newPost.content}
+                            onChange={(val) => setNewPost({...newPost, content: val})}
+                            modules={quillModules}
+                            formats={quillFormats}
+                            className="bg-white rounded-2xl quill-editor-modal border-slate-200"
+                            placeholder="Kể một câu chuyện thú vị cho Team..."
+                          />
+                       </Suspense>
+                    </div>
+
+                    <div>
+                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Hình ảnh minh họa</label>
+                       <div className="flex flex-col gap-2">
+                          <button 
+                            type="button" 
+                            onClick={() => fileInputRef.current?.click()} 
+                            disabled={isUploadingImage}
+                            className={`w-full h-14 flex items-center justify-center gap-3 bg-white border-2 border-indigo-100 border-dashed rounded-2xl hover:bg-indigo-50 hover:border-indigo-300 transition-all shadow-sm font-black text-[11px] uppercase tracking-widest ${isUploadingImage ? 'opacity-50 cursor-not-allowed' : 'text-indigo-600'}`}
+                          >
+                             {isUploadingImage ? <Loader2 size={24} className="animate-spin" /> : <ImageIcon size={24} />}
+                             {newPost.imageUrl ? 'Đổi ảnh khác' : 'Tải ảnh từ thiết bị'}
+                          </button>
+                          <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
+                          
+                          {newPost.imageUrl && (
+                            <div className="relative rounded-[2rem] overflow-hidden border border-slate-200 shadow-lg group/preview aspect-video bg-slate-900 mt-2 max-h-48">
+                               <img src={newPost.imageUrl} className="w-full h-full object-contain" />
+                               <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover/preview:opacity-100 transition-opacity">
+                                  <span className="bg-white/20 backdrop-blur-md px-4 py-2 rounded-full text-white text-[10px] font-black uppercase tracking-widest">Đã tải xong</span>
+                               </div>
+                            </div>
+                          )}
+                       </div>
+                    </div>
+
+                    <div className="pt-6 flex gap-4 border-t border-slate-100">
+                       <button type="button" onClick={() => setIsPostModalOpen(false)} className="flex-1 py-4 text-slate-400 font-black text-xs uppercase tracking-widest hover:text-slate-900 transition-colors">Hủy bỏ</button>
+                       <button 
+                         type="submit" 
+                         disabled={posting || isUploadingImage}
+                         className="flex-[2] py-4 bg-indigo-600 text-white rounded-[1.5rem] text-[11px] font-black uppercase tracking-[0.2em] shadow-2xl shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                       >
+                         {posting ? <Loader2 size={18} className="animate-spin" /> : <><Send size={18} strokeWidth={3}/> {isEditing ? 'Cập nhật tin' : 'Phát hành ngay'}</>}
+                       </button>
+                    </div>
+                 </form>
               </div>
            </div>
         </div>
@@ -617,31 +626,18 @@ const Home: React.FC<HomeProps> = ({ user, onTabChange }) => {
       {/* --- CUSTOM DELETE CONFIRMATION MODAL --- */}
       {confirmDeleteId && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 animate-fade-in">
-           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"></div>
-           <div className="delete-modal-content bg-white rounded-[2rem] shadow-2xl p-8 w-full max-w-sm relative animate-slide-in">
-              <div className="flex flex-col items-center text-center">
-                 <div className="w-16 h-16 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mb-6 shadow-sm border border-rose-100">
-                    <AlertTriangle size={32} />
-                 </div>
-                 <h3 className="text-lg font-black text-slate-900 uppercase mb-2 tracking-tight">Xác nhận xóa bài?</h3>
-                 <p className="text-xs font-bold text-slate-500 leading-relaxed mb-8">
-                    Bản tin này sẽ bị xóa vĩnh viễn khỏi hệ thống và không thể khôi phục lại. Bạn chắc chắn chứ?
-                 </p>
-                 <div className="flex w-full gap-3">
-                    <button 
-                       onClick={() => setConfirmDeleteId(null)} 
-                       className="flex-1 py-3.5 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
-                    >
-                       Hủy bỏ
-                    </button>
-                    <button 
-                       onClick={() => executeActualDelete(confirmDeleteId)} 
-                       disabled={actionLoadingId === confirmDeleteId}
-                       className="flex-1 py-3.5 bg-rose-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-rose-200 active:scale-95 transition-all flex items-center justify-center gap-2"
-                    >
-                       {actionLoadingId === confirmDeleteId ? <Loader2 size={14} className="animate-spin" /> : "Xác nhận xóa"}
-                    </button>
-                 </div>
+           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setConfirmDeleteId(null)}></div>
+           <div className="delete-modal-content bg-white rounded-[2rem] shadow-2xl p-10 w-full max-w-sm relative animate-slide-in text-center border border-rose-100">
+              <div className="w-20 h-20 bg-rose-50 text-rose-600 rounded-3xl flex items-center justify-center mb-8 mx-auto shadow-sm border border-rose-100">
+                 <AlertTriangle size={48} strokeWidth={2.5} />
+              </div>
+              <h3 className="text-2xl font-black text-slate-900 uppercase mb-3 tracking-tighter">Xác nhận xóa?</h3>
+              <p className="text-xs font-bold text-slate-500 leading-relaxed mb-10 px-4">
+                 Bản tin này sẽ bị loại bỏ vĩnh viễn khỏi hệ thống quản lý. Thao tác này không thể hoàn tác.
+              </p>
+              <div className="flex gap-4">
+                 <button onClick={() => setConfirmDeleteId(null)} className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all">Hủy</button>
+                 <button onClick={() => executeActualDelete(confirmDeleteId)} className="flex-1 py-4 bg-rose-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl shadow-rose-200 hover:bg-rose-700 active:scale-95 transition-all">Đồng ý xóa</button>
               </div>
            </div>
         </div>
