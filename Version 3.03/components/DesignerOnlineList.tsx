@@ -48,7 +48,9 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
   const PRICE_CATEGORIES = ['Loại 1', 'Loại 2', 'Loại 3', 'Loại 4'];
 
   const getStoreName = (id: string) => { const store = stores.find(s => String(s.id) === String(id) || s.name === id); return store ? store.name : id; };
-  const normalizeKey = (key: string) => key ? key.toLowerCase().trim() : '';
+  
+  // FIX: Đảm bảo key luôn là string trước khi toLowerCase
+  const normalizeKey = (key: any) => key !== undefined && key !== null ? String(key).toLowerCase().trim() : '';
 
   const loadData = async (monthToFetch: string) => {
     setLoading(true); setOrders([]); setDataError(null); setCurrentFileId(null); setSelectedOrderIds(new Set());
@@ -67,14 +69,27 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
       setSkuMap(mappingObj);
       const safePriceMappings = Array.isArray(priceMappings) ? priceMappings : [];
       const priceObj: Record<string, number> = {};
-      safePriceMappings.forEach(p => { if (p && p.category) { const normalizedKey = normalizeKey(String(p.category)); priceObj[normalizedKey] = Number(p.price) || 0; } });
+      safePriceMappings.forEach(p => { if (p && p.category) { const normalizedKey = normalizeKey(p.category); priceObj[normalizedKey] = Number(p.price) || 0; } });
       setPriceMap(priceObj);
       const rawOrders = orderResult.orders || [];
-      const ordersInMonth = rawOrders.filter(o => { if (!o.date) return false; const dateStr = String(o.date).trim(); return dateStr.startsWith(monthToFetch); });
+      
+      const ordersInMonth = rawOrders.filter(o => { 
+        if (!o.date) return false; 
+        const dateStr = String(o.date).trim();
+        const [targetY, targetM] = monthToFetch.split('-');
+        const isIsoMatch = dateStr.includes(`${targetY}-${targetM}`);
+        const isVnMatch = dateStr.includes(`/${targetM}/${targetY}`);
+        const isStartWithMatch = dateStr.startsWith(monthToFetch);
+        return isIsoMatch || isVnMatch || isStartWithMatch;
+      });
+
       if (rawOrders.length > 0 && ordersInMonth.length === 0) {
           const sampleDate = rawOrders[0].date;
-          const actualMonth = sampleDate ? sampleDate.substring(0, 7) : 'Không xác định';
-          setDataError({ message: `Lỗi Dữ Liệu: Bạn chọn tháng ${monthToFetch} nhưng hệ thống trả về dữ liệu tháng ${actualMonth}.`, detail: `Nguyên nhân: File ID trong sheet "FileIndex" sai.`, fileId: orderResult.fileId });
+          setDataError({ 
+            message: `Lỗi kết nối: Không tìm thấy đơn hàng tháng ${monthToFetch}.`, 
+            detail: `File nguồn (ID: ${orderResult.fileId}) chứa dữ liệu của ngày ${sampleDate}. Vui lòng kiểm tra tab FileIndex.`, 
+            fileId: orderResult.fileId 
+          });
           setCurrentFileId(orderResult.fileId);
       }
       
@@ -283,7 +298,6 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
   const handleSelectAll = () => { if (selectedOrderIds.size === sortedOrdersResult.length && sortedOrdersResult.length > 0) setSelectedOrderIds(new Set()); else setSelectedOrderIds(new Set(sortedOrdersResult.map(o => o.id))); };
   const handleSelectRow = (id: string) => { const newSelected = new Set(selectedOrderIds); if (newSelected.has(id)) newSelected.delete(id); else newSelected.add(id); setSelectedOrderIds(newSelected); };
   
-  // Fix: Explicitly cast Array.from result to string[] for batch update
   const handleBatchAction = async (actionType: 'design_done' | 'design_pending') => {
       if (!currentFileId) return;
       if (selectedOrderIds.size === 0) return;
@@ -305,6 +319,29 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
   return (
     <div className="p-4 bg-gray-100 min-h-screen relative pb-20">
       <div className="bg-white shadow-sm overflow-hidden rounded-lg flex flex-col h-full">
+        {dataError && (
+          <div className="m-4 p-5 bg-rose-50 border-2 border-rose-200 rounded-3xl animate-fade-in">
+             <div className="flex items-center gap-4">
+                <div className="p-3 bg-rose-600 text-white rounded-2xl shadow-lg shadow-rose-200">
+                   <AlertTriangle size={32} />
+                </div>
+                <div>
+                   <h3 className="text-xl font-black text-rose-900 uppercase tracking-tight">{dataError.message}</h3>
+                   <p className="text-xs font-bold text-rose-600 mt-1">{dataError.detail}</p>
+                </div>
+             </div>
+             {dataError.fileId && (
+               <a 
+                 href={`https://docs.google.com/spreadsheets/d/${dataError.fileId}/edit`} 
+                 target="_blank" rel="noreferrer"
+                 className="mt-4 flex items-center gap-2 text-[10px] font-black uppercase text-indigo-600 hover:text-indigo-800 underline transition-colors"
+               >
+                 <FileSpreadsheet size={14}/> Bấm vào đây để kiểm tra trực tiếp file dữ liệu nguồn
+               </a>
+             )}
+          </div>
+        )}
+
         <div className="bg-white border-b border-gray-200 p-4">
             <h3 className="text-sm font-bold text-gray-700 uppercase mb-3 flex items-center gap-2"><DollarSign size={16} className="text-green-600"/> Tổng Hợp Tháng {currentMonthStr}/{currentYearStr}</h3>
             <div className="flex flex-col xl:flex-row gap-6">
@@ -364,7 +401,7 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
             <thead className="text-white font-bold text-center uppercase text-xs tracking-wider sticky top-0 z-20">
               <tr>
                 <th className="px-2 py-2 bg-[#1a4019] border-r border-gray-600 sticky top-0 z-20 w-8">
-                    <input type="checkbox" className="w-3 h-3 rounded border-gray-400 text-orange-600 focus:ring-orange-500 cursor-pointer" checked={selectedOrderIds.size > 0 && selectedOrderIds.size === sortedOrdersResult.length} onChange={handleSelectAll} />
+                    <input type="checkbox" className="w-3 h-3 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer" checked={selectedOrderIds.size > 0 && selectedOrderIds.size === sortedOrdersResult.length} onChange={handleSelectAll} />
                 </th>
                 <th className="px-2 py-2 border-r border-gray-600 w-24 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-center gap-1 group cursor-pointer" onClick={() => setSortConfig({ key: 'date', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' })}>Date {sortConfig.key === 'date' && (sortConfig.direction === 'asc' ? <ArrowUp size={14}/> : <ArrowDown size={14}/>)}</div></th>
                 <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>ID Order Etsy</span><button onClick={(e) => handleFilterClick(e, 'id')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['id']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
@@ -378,7 +415,15 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {loading ? <tr><td colSpan={10} className="text-center py-12 text-gray-500">Đang tải dữ liệu Tháng {currentMonthStr}...</td></tr> : (sortedOrdersResult.length === 0 ? <tr><td colSpan={10} className="text-center py-12 text-gray-500">{dataError ? (<div className="flex flex-col items-center justify-center p-4 bg-red-50 border border-red-200 rounded-lg max-w-2xl mx-auto my-4 text-red-700"><div className="flex items-center gap-2 font-bold text-lg mb-2"><AlertTriangle size={24} /> {dataError.message}</div>{dataError.detail && <p className="text-sm mb-3">{dataError.detail}</p>}<div className="flex items-center gap-2 text-sm bg-white p-2 rounded border border-red-100"><Info size={16} className="text-blue-500"/><span>Vui lòng kiểm tra tab <strong>FileIndex</strong> trong Master Sheet để đảm bảo ID file chính xác.</span></div>{dataError.fileId && (<a href={`https://docs.google.com/spreadsheets/d/${dataError.fileId}/edit`} target="_blank" rel="noreferrer" className="mt-3 text-blue-600 hover:underline text-sm font-semibold flex items-center gap-1"><FileSpreadsheet size={16} /> Bấm vào đây để kiểm tra File hiện tại (ID: {dataError.fileId.substring(0, 10)}...)</a>)}</div>) : 'Không có đơn hàng nào thuộc nhóm Designer Online.'}</td></tr> : sortedOrdersResult.map((order, idx) => {
+              {loading ? (
+                <tr><td colSpan={10} className="text-center py-12 text-gray-500">Đang tải dữ liệu Tháng {currentMonthStr}...</td></tr>
+              ) : sortedOrdersResult.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="text-center py-12 text-gray-500">
+                    {'Không có đơn hàng nào khớp với bộ lọc.'}
+                  </td>
+                </tr>
+              ) : sortedOrdersResult.map((order, idx) => {
                   const normalizedSku = normalizeKey(order.sku);
                   const category = skuMap[normalizedSku] || '';
                   const price = getPriceForCategory(category);
@@ -405,12 +450,11 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                           <td className={`px-2 py-2 border-l text-center bg-gray-50/30 font-bold ${isActionAdmin ? 'admin-red-gradient' : 'text-orange-600'}`}>{order.actionRole}</td>
                       </tr>
                   );
-              }))}
+              })}
             </tbody>
           </table>
         </div>
 
-        {/* --- FLOATING BATCH ACTION BAR --- */}
         {selectedOrderIds.size > 0 && canCheckDesign && (
             <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-white rounded-full shadow-2xl border border-gray-200 px-6 py-3 flex items-center gap-4 z-50 animate-slide-in">
                 <span className="text-sm font-bold text-gray-700 whitespace-nowrap bg-gray-100 px-3 py-1 rounded-full">{selectedOrderIds.size} đã chọn</span>
@@ -430,7 +474,7 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
         )}
 
         {renderFilterPopup()}
-        {isSkuModalOpen && (<div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fade-in"><div className="bg-white rounded-lg shadow-xl w-full max-w-sm overflow-hidden"><div className="px-5 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50"><h3 className="font-bold text-gray-800 text-lg flex items-center gap-2"><Settings className="text-indigo-500" size={20} /> Cập Nhật Phân Loại</h3><button onClick={() => setIsSkuModalOpen(false)} disabled={isSubmittingSku} className="text-gray-400 hover:text-gray-600">✕</button></div><form onSubmit={handleUpdateSku} className="p-5 space-y-4">{skuMessage && (<div className={`p-3 rounded-md flex items-center gap-2 text-sm ${skuMessage.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>{skuMessage.type === 'success' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}<span>{skuMessage.text}</span></div>)}<div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">SKU Sản Phậm</label><input type="text" className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-gray-800 bg-white" placeholder="Nhập mã SKU..." value={skuFormData.sku} onChange={(e) => setSkuFormData({...skuFormData, sku: e.target.value})} autoFocus /></div><div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Chọn Phân Loại</label><select className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer text-gray-800 bg-white" value={skuFormData.category} onChange={(e) => setSkuFormData({...skuFormData, category: e.target.value})}><option value="Loại 1">Loại 1</option><option value="Loại 2">Loại 2</option><option value="Loại 3">Loại 3</option><option value="Loại 4">Loại 4</option></select></div><div className="pt-2 flex gap-3"><button type="button" onClick={() => setIsSkuModalOpen(false)} disabled={isSubmittingSku} className="flex-1 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md text-sm transition-colors font-medium">Hủy</button><button type="submit" disabled={isSubmittingSku} className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-bold transition-colors shadow-sm disabled:opacity-70">{isSubmittingSku ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />} Lưu</button></div></form></div></div>)}
+        {isSkuModalOpen && (<div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fade-in"><div className="bg-white rounded-lg shadow-xl w-full max-w-sm overflow-hidden"><div className="px-5 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50"><h3 className="font-bold text-gray-800 text-lg flex items-center gap-2"><Settings className="text-indigo-500" size={20} /> Cập Nhật Phân Loại</h3><button onClick={() => setIsSkuModalOpen(false)} disabled={isSubmittingSku} className="text-gray-400 hover:text-gray-600">✕</button></div><form onSubmit={handleUpdateSku} className="p-5 space-y-4">{skuMessage && (<div className={`p-3 rounded-md flex items-center gap-2 text-sm ${skuMessage.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>{skuMessage.type === 'success' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}<span>{skuMessage.text}</span></div>)}<div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">SKU Sản Phẩm</label><input type="text" className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-gray-800 bg-white" placeholder="Nhập mã SKU..." value={skuFormData.sku} onChange={(e) => setSkuFormData({...skuFormData, sku: e.target.value})} autoFocus /></div><div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Chọn Phân Loại</label><select className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer text-gray-800 bg-white" value={skuFormData.category} onChange={(e) => setSkuFormData({...skuFormData, category: e.target.value})}><option value="Loại 1">Loại 1</option><option value="Loại 2">Loại 2</option><option value="Loại 3">Loại 3</option><option value="Loại 4">Loại 4</option></select></div><div className="pt-2 flex gap-3"><button type="button" onClick={() => setIsSkuModalOpen(false)} disabled={isSubmittingSku} className="flex-1 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md text-sm transition-colors font-medium">Hủy</button><button type="submit" disabled={isSubmittingSku} className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-bold transition-colors shadow-sm disabled:opacity-70">{isSubmittingSku ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />} Lưu</button></div></form></div></div>)}
         {isPriceModalOpen && (<div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fade-in"><div className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden"><div className="px-5 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50"><h3 className="font-bold text-gray-800 text-lg flex items-center gap-2"><DollarSign className="text-green-600" size={20} /> Cấu Hình Giá Tiền</h3><button onClick={() => setIsPriceModalOpen(false)} disabled={isSavingPrices} className="text-gray-400 hover:text-gray-600">✕</button></div><div className="p-5"><div className="bg-blue-50 border border-blue-100 p-3 rounded text-xs text-blue-700 mb-4 flex gap-2"><Info size={16} className="flex-shrink-0"/><span>Giá tiền sẽ được áp dụng tự động cho các đơn hàng có SKU thuộc phân loại tương ứng.</span></div>{isLoadingPrices && (<div className="text-center py-2 text-gray-500 text-xs flex items-center justify-center gap-2"><Loader2 className="animate-spin" size={14} /> Đang cập nhật dữ liệu mới nhất...</div>)}{!isLoadingPrices && !backendConfigError && Object.keys(priceMap).length === 0 && (<div className="bg-yellow-50 border border-yellow-200 p-3 rounded text-xs text-yellow-700 mb-4 flex gap-2"><AlertTriangle size={16} className="flex-shrink-0"/><span>Chưa tải được bảng giá từ Sheet (Sheet có thể đang trống).</span></div>)}<div className="space-y-3 mb-6">{PRICE_CATEGORIES.map(cat => (<div key={cat} className="flex items-center gap-3"><div className="w-24 text-sm font-bold text-gray-700">{cat}</div><div className="flex-1 relative"><input type="number" className="w-full border border-gray-300 rounded px-3 py-2 text-sm text-right pr-8 font-mono focus:ring-2 focus:ring-green-500 outline-none" value={tempPriceMap[cat] !== undefined ? tempPriceMap[cat] : 0} onChange={(e) => setTempPriceMap({...tempPriceMap, [cat]: Number(e.target.value)})} placeholder="0" /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">đ</span></div></div>))}</div><div className="flex gap-3 pt-2 border-t border-gray-100"><button onClick={() => setIsPriceModalOpen(false)} disabled={isSavingPrices} className="flex-1 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md text-sm font-medium">Hủy bỏ</button><button onClick={handleSavePrices} disabled={isSavingPrices} className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-bold shadow-sm flex items-center justify-center gap-2">{isSavingPrices ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />} Lưu Cấu Hình</button></div></div></div></div>)}
       </div>
     </div>
