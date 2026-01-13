@@ -1,12 +1,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { sheetService } from '../services/sheetService';
-import { User, Role, UserPermissions, ViewScope } from '../types';
+import { User, Role, UserPermissions, ViewScope, FinanceScope } from '../types';
 import { 
   UserPlus, Plus, Save, CheckCircle, AlertCircle, Loader2, 
   Mail, Phone, User as UserIcon, Lock, Shield, List, 
   Settings, Eye, EyeOff, Check, X, UserCog, Key, Briefcase, Info,
-  Sparkles, Trash2
+  Sparkles, Trash2, DollarSign
 } from 'lucide-react';
 
 const UserManagement: React.FC = () => {
@@ -27,6 +27,7 @@ const UserManagement: React.FC = () => {
   const defaultPermissions: UserPermissions = {
       canManageSku: false,
       canPostNews: false,
+      canViewFinanceSummary: false,
       dashboard: 'all',
       orders: 'none',
       designer: 'none',
@@ -77,20 +78,12 @@ const UserManagement: React.FC = () => {
     }
   };
 
-  // Add missing handleChange function to handle input updates for new user form
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
       [name]: value
     }));
-  };
-
-  const handleCreatePermChange = (key: keyof UserPermissions, value: any) => {
-      setFormData(prev => ({
-          ...prev,
-          permissions: { ...prev.permissions, [key]: value }
-      }));
   };
 
   const handleSubmitUser = async (e: React.FormEvent) => {
@@ -132,6 +125,7 @@ const UserManagement: React.FC = () => {
       setEditPerms({
           canManageSku: user.permissions?.canManageSku || false,
           canPostNews: user.permissions?.canPostNews || false,
+          canViewFinanceSummary: user.permissions?.canViewFinanceSummary || false,
           dashboard: user.permissions?.dashboard || 'none',
           orders: user.permissions?.orders || 'none',
           designer: user.permissions?.designer || 'none',
@@ -154,13 +148,48 @@ const UserManagement: React.FC = () => {
       finally { setIsSubmitting(false); }
   };
 
+  // Logic xử lý đa chọn cho Finance
+  const toggleFinanceScope = (scopeId: string) => {
+      let current = editPerms.finance || 'none';
+      
+      if (scopeId === 'all') {
+          setEditPerms({...editPerms, finance: 'all'});
+          return;
+      }
+      if (scopeId === 'none') {
+          setEditPerms({...editPerms, finance: 'none'});
+          return;
+      }
+
+      // Xử lý chuỗi nhiều scope
+      if (current === 'all' || current === 'none') {
+          setEditPerms({...editPerms, finance: scopeId});
+      } else {
+          let parts = current.split(',').filter(p => p.trim() !== '');
+          if (parts.includes(scopeId)) {
+              parts = parts.filter(p => p !== scopeId);
+              setEditPerms({...editPerms, finance: parts.length > 0 ? parts.join(',') : 'none'});
+          } else {
+              parts.push(scopeId);
+              setEditPerms({...editPerms, finance: parts.join(',')});
+          }
+      }
+  };
+
+  const isFinanceScopeChecked = (scopeId: string) => {
+      let current = editPerms.finance || 'none';
+      if (scopeId === 'all') return current === 'all';
+      if (scopeId === 'none') return current === 'none';
+      if (current === 'all') return true;
+      return current.split(',').includes(scopeId);
+  };
+
   const permissionGroups = [
       { key: 'dashboard', label: 'Quản Lý (Dashboard)' },
       { key: 'orders', label: 'Đơn Hàng' },
       { key: 'designerOnline', label: 'Design Online' },
       { key: 'designer', label: 'Designer' },
       { key: 'customers', label: 'Khách Hàng' },
-      { key: 'finance', label: 'Tài Chính' },
       { key: 'system', label: 'Hệ Thống' }
   ];
 
@@ -359,34 +388,6 @@ const UserManagement: React.FC = () => {
           </div>
       )}
 
-      {/* ADD ROLE MODAL */}
-      {isAddRoleModalOpen && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in">
-              <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden p-8 border border-white/20">
-                  <h3 className="text-lg font-black text-gray-900 uppercase tracking-tight mb-6 flex items-center gap-3">
-                      <div className="p-1.5 bg-emerald-100 rounded-lg text-emerald-600"><Plus size={20}/></div>
-                      Thêm Vai Trò Mới
-                  </h3>
-                  <div className="space-y-4">
-                      <div>
-                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 mb-1.5 block">Tên vai trò (Ví dụ: Manager)</label>
-                          <input type="text" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" value={newRoleData.name} onChange={(e) => setNewRoleData({...newRoleData, name: e.target.value})} />
-                      </div>
-                      <div>
-                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 mb-1.5 block">Cấp độ (1-10)</label>
-                          <input type="number" min="1" max="10" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" value={newRoleData.level} onChange={(e) => setNewRoleData({...newRoleData, level: Number(e.target.value)})} />
-                      </div>
-                  </div>
-                  <div className="flex justify-end gap-3 mt-8">
-                      <button onClick={() => setIsAddRoleModalOpen(false)} className="px-6 py-2 text-gray-400 font-bold text-xs uppercase tracking-widest">Hủy</button>
-                      <button onClick={handleAddRole} disabled={isSubmitting} className="bg-emerald-600 text-white px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest shadow-md flex items-center gap-2">
-                          {isSubmitting ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Lưu vai trò
-                      </button>
-                  </div>
-              </div>
-          </div>
-      )}
-
       {/* PERMISSIONS MODAL */}
       {isPermModalOpen && selectedUser && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-fade-in">
@@ -402,23 +403,52 @@ const UserManagement: React.FC = () => {
                   </div>
                   
                   <div className="p-8 overflow-y-auto custom-scrollbar space-y-8">
-                      {/* Section: News Rights */}
-                      <div className="bg-orange-50 border border-orange-100 rounded-3xl p-6">
+                      {/* Section: Feature Rights */}
+                      <div className="bg-orange-50 border border-orange-100 rounded-3xl p-6 space-y-6">
                         <h4 className="text-[11px] font-black text-orange-600 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
-                           <Sparkles size={14} /> Đặc quyền tin tức
+                           <Sparkles size={14} /> Đặc quyền bổ sung
                         </h4>
-                        <label className="flex items-center gap-4 cursor-pointer group">
-                            <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${editPerms.canPostNews ? 'bg-orange-600 border-orange-600 text-white shadow-lg' : 'bg-white border-gray-300'}`}>
-                                {editPerms.canPostNews && <Check size={14} strokeWidth={4} />}
-                            </div>
-                            <input 
-                                type="checkbox" 
-                                className="hidden" 
-                                checked={editPerms.canPostNews} 
-                                onChange={() => setEditPerms({...editPerms, canPostNews: !editPerms.canPostNews})} 
-                            />
-                            <span className="text-sm font-black text-gray-800 uppercase tracking-widest">Cho phép đăng tin tức lên trang chủ</span>
-                        </label>
+                        
+                        <div className="space-y-4">
+                            <label className="flex items-center gap-4 cursor-pointer group">
+                                <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${editPerms.canPostNews ? 'bg-orange-600 border-orange-600 text-white shadow-lg' : 'bg-white border-gray-300'}`}>
+                                    {editPerms.canPostNews && <Check size={14} strokeWidth={4} />}
+                                </div>
+                                <input 
+                                    type="checkbox" 
+                                    className="hidden" 
+                                    checked={editPerms.canPostNews} 
+                                    onChange={() => setEditPerms({...editPerms, canPostNews: !editPerms.canPostNews})} 
+                                />
+                                <span className="text-sm font-black text-gray-800 uppercase tracking-widest">Đăng tin tức trang chủ</span>
+                            </label>
+
+                            <label className="flex items-center gap-4 cursor-pointer group">
+                                <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${editPerms.canViewFinanceSummary ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-white border-gray-300'}`}>
+                                    {editPerms.canViewFinanceSummary && <Check size={14} strokeWidth={4} />}
+                                </div>
+                                <input 
+                                    type="checkbox" 
+                                    className="hidden" 
+                                    checked={editPerms.canViewFinanceSummary} 
+                                    onChange={() => setEditPerms({...editPerms, canViewFinanceSummary: !editPerms.canViewFinanceSummary})} 
+                                />
+                                <span className="text-sm font-black text-gray-800 uppercase tracking-widest">Xem 4 bảng tổng hợp tài chính</span>
+                            </label>
+                            
+                            <label className="flex items-center gap-4 cursor-pointer group">
+                                <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${editPerms.canManageSku ? 'bg-slate-800 border-slate-800 text-white shadow-lg' : 'bg-white border-gray-300'}`}>
+                                    {editPerms.canManageSku && <Check size={14} strokeWidth={4} />}
+                                </div>
+                                <input 
+                                    type="checkbox" 
+                                    className="hidden" 
+                                    checked={editPerms.canManageSku} 
+                                    onChange={() => setEditPerms({...editPerms, canManageSku: !editPerms.canManageSku})} 
+                                />
+                                <span className="text-sm font-black text-gray-800 uppercase tracking-widest">Quản lý SKU & Bảng Giá</span>
+                            </label>
+                        </div>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-6">
@@ -435,28 +465,32 @@ const UserManagement: React.FC = () => {
                                 </div>
                             </div>
                         ))}
-                      </div>
 
-                      <div className="pt-6 border-t border-gray-100">
-                          <label className="flex items-center gap-4 cursor-pointer group">
-                              <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${editPerms.canManageSku ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-white border-gray-300'}`}>
-                                  {editPerms.canManageSku && <Check size={14} strokeWidth={4} />}
-                              </div>
-                              <input 
-                                  type="checkbox" 
-                                  className="hidden" 
-                                  checked={editPerms.canManageSku} 
-                                  onChange={() => setEditPerms({...editPerms, canManageSku: !editPerms.canManageSku})} 
-                              />
-                              <span className="text-sm font-black text-gray-800 uppercase tracking-widest">Quản lý SKU & Bảng Giá</span>
-                          </label>
+                        {/* Module Tài Chính hỗ trợ chọn nhiều cùng lúc */}
+                        <div className="flex flex-col gap-2 col-span-1 md:col-span-2 mt-4 pt-4 border-t border-slate-100">
+                            <label className="text-[11px] font-black text-indigo-600 uppercase tracking-widest ml-1">Module Tài Chính (Được chọn nhiều)</label>
+                            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                                {[
+                                    { id: 'all', label: 'Toàn bộ' },
+                                    { id: 'payment', label: 'Payment' },
+                                    { id: 'funds', label: 'Sổ Quỹ' },
+                                    { id: 'printway', label: 'Printway' },
+                                    { id: 'none', label: 'Khóa' }
+                                ].map((scope) => (
+                                    <label key={scope.id} className={`cursor-pointer border-2 rounded-xl px-2 py-3 text-[10px] font-black uppercase tracking-widest text-center transition-all flex items-center justify-center ${isFinanceScopeChecked(scope.id) ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg scale-105' : 'bg-white text-gray-400 border-gray-100 hover:border-indigo-200'}`}>
+                                        <input type="checkbox" className="hidden" checked={isFinanceScopeChecked(scope.id)} onChange={() => toggleFinanceScope(scope.id)} />
+                                        {scope.label}
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
                       </div>
                   </div>
 
                   <div className="bg-gray-50/80 px-8 py-6 flex justify-end gap-4 border-t border-gray-100">
                       <button onClick={() => setIsPermModalOpen(false)} disabled={isSubmitting} className="px-6 py-3 text-gray-500 hover:text-gray-800 font-black text-xs uppercase tracking-widest transition-all">Hủy</button>
                       <button onClick={handleSavePerms} disabled={isSubmitting} className="flex items-center gap-3 bg-indigo-600 hover:bg-indigo-700 text-white px-10 py-3 rounded-2xl text-xs font-black uppercase tracking-[0.2em] transition-all shadow-xl shadow-indigo-600/30 active:scale-95 disabled:opacity-50">
-                          {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
+                          {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
                           Lưu Quyền Hạn
                       </button>
                   </div>

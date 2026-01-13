@@ -131,17 +131,20 @@ export interface NewsComment {
 
 // --- AUTH & PERMISSIONS ---
 export type ViewScope = 'all' | 'own' | 'none';
+// Cập nhật: Cho phép chuỗi để chứa nhiều scope (ví dụ: "payment,printway")
+export type FinanceScope = string;
 
 export interface UserPermissions {
   canManageSku?: boolean;
   canPostNews?: boolean;
+  canViewFinanceSummary?: boolean; // Mới: Quyền xem 4 bảng tổng hợp tài chính
   dashboard?: ViewScope;      
   orders?: ViewScope;
   designer?: ViewScope;
   designerOnline?: ViewScope;
   handover?: ViewScope;
   customers?: ViewScope;      
-  finance?: ViewScope;        
+  finance?: FinanceScope; // Cập nhật: Scope riêng cho tài chính       
   system?: ViewScope;         
 }
 
@@ -159,13 +162,37 @@ export interface User {
 export interface FinanceTransaction {
   id: string;
   date: string;
-  category: string;
+  category: string; // Thu tiền / Chi tiền
+  subCategory: string; // Danh mục con tự tạo
   description: string;
   quantity: number;
   unitPrice: number;
   totalAmount: number;
   payer: string;
   note: string;
+}
+
+export interface PaymentRecord {
+  id: string;
+  storeName: string;
+  amount: number;
+  region: 'Au' | 'Us' | 'VN';
+  convertedUsd: number;
+  date: string;
+  timestamp?: string;
+}
+
+export interface PrintwayRecord {
+  invoiceId: string;
+  type: string;
+  status: string;
+  date: string;
+  method: string;
+  amountUsd: number;
+  fee: number;
+  totalAmount: number;
+  note: string;
+  loai: string; // Changed to string to allow raw types
 }
 
 export interface StoreHistoryItem {
@@ -192,5 +219,6 @@ export interface AuthResponse {
 
 export interface FinanceMeta {
   categories: string[];
+  subCategories: string[];
   payers: string[];
 }

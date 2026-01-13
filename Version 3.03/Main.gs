@@ -1,10 +1,10 @@
-
 /**
  * ==========================================
- * MAIN.GS: ĐIỀU HƯỚNG CHÍNH V5.1
+ * MAIN.GS: ĐIỀU HƯỚNG CHÍNH V7.8
  * ==========================================
  */
 
+// Các hằng số tên Sheet giữ nguyên
 const SHEET_STORES = 'Stores';
 const SHEET_USERS = 'Users';
 const SHEET_UNITS = 'Units';
@@ -31,16 +31,29 @@ function doPost(e) {
   const lock = LockService.getScriptLock();
   lock.tryLock(30000); 
   try {
-    const postData = JSON.parse(e.postData.contents);
+    const contents = e.postData.contents;
+    if (!contents) return createJsonResponse({ success: false, error: "Empty request body" });
+    
+    const postData = JSON.parse(contents);
     const action = postData.action;
     let result = {};
 
-    // --- HANDOVER & NOTES ---
-    if (action === 'getHandover') result = handleGetHandover(postData.date, postData.viewerName, postData.viewerRole);
+    // --- NEWS ACTIONS ---
+    if (action === 'getNews') result = handleGetNews(postData.username);
+    else if (action === 'addNews') result = handleAddNews(postData);
+    else if (action === 'updateNews') result = handleUpdateNews(postData);
+    else if (action === 'deleteNews') result = handleDeleteNews(postData.newsId);
+    else if (action === 'toggleLockNews') result = handleToggleLockNews(postData.newsId);
+    else if (action === 'addComment') result = handleAddComment(postData);
+    else if (action === 'toggleLike') result = handleToggleLike(postData.newsId, postData.username);
+    else if (action === 'updateLastReadTime') result = handleUpdateLastRead(postData.username);
+    
+    // --- HANDOVER ACTIONS ---
+    else if (action === 'getHandover') result = handleGetHandover(postData.date, postData.viewerName, postData.viewerRole);
     else if (action === 'addHandover') result = handleAddHandover(postData);
     else if (action === 'updateHandover') result = handleUpdateHandover(postData.id, postData.updates);
     else if (action === 'deleteHandover') result = handleDeleteHandover(postData.id);
-    else if (action === 'markHandoverAsSeen') result = handleMarkHandoverAsSeen(postData.id); // Route mới
+    else if (action === 'markHandoverAsSeen') result = handleMarkHandoverAsSeen(postData.id); 
     else if (action === 'getUserNote') result = handleGetUserNote(postData.username, postData.date);
     else if (action === 'saveUserNote') result = handleSaveUserNote(postData);
 
@@ -50,23 +63,11 @@ function doPost(e) {
     else if (action === 'getAttendance') result = getAttendance(postData.month);
     else if (action === 'checkIn') result = checkIn(postData.username, postData.name);
     else if (action === 'checkOut') result = checkOut(postData.username, postData.name);
-    
-    // --- OT & HOLIDAYS ---
     else if (action === 'getOTAttendance') result = getOTAttendance(postData.month);
     else if (action === 'checkInOT') result = checkInOT(postData.username, postData.name);
     else if (action === 'checkOutOT') result = checkOutOT(postData.username, postData.name);
     else if (action === 'getHolidays') result = getHolidays(postData.month);
     else if (action === 'toggleHoliday') result = toggleHoliday(postData.date);
-
-    // --- NEWS & NOTIFICATIONS ---
-    else if (action === 'getNews') result = handleGetNews(postData.username);
-    else if (action === 'addNews') result = handleAddNews(postData);
-    else if (action === 'updateNews') result = handleUpdateNews(postData);
-    else if (action === 'deleteNews') result = handleDeleteNews(postData.newsId);
-    else if (action === 'toggleLockNews') result = handleToggleLockNews(postData.newsId);
-    else if (action === 'addComment') result = handleAddComment(postData);
-    else if (action === 'toggleLike') result = handleToggleLike(postData.newsId, postData.username);
-    else if (action === 'updateLastReadTime') result = handleUpdateLastRead(postData.username);
 
     // --- ORDERS & FULFILLMENT ---
     else if (action === 'getOrders') result = getOrdersFromMonthFile(postData.month);
@@ -75,10 +76,10 @@ function doPost(e) {
     else if (action === 'fulfillOrder') result = handleFulfillOrder(postData);
     else if (action === 'batchUpdateOrder') result = handleBatchUpdateOrder(postData);
     else if (action === 'batchUpdateDesigner') result = handleBatchUpdateDesigner(postData);
-    else if (action === 'updateDesignerStatus') result = updateDesignerStatus(e);
+    else if (action === 'updateDesignerStatus') result = updateDesignerStatus(postData);
     else if (action === 'createMonthFile') result = { success: true, fileId: createNewMonthFile(postData.month) };
-
-    // --- SYNC ---
+    
+    // --- SYNC ACTIONS ---
     else if (action === 'syncPW') result = handleSyncPW(postData.fileId);
     else if (action === 'syncFF') result = handleSyncFF(postData.fileId);
     else if (action === 'syncFulfillment') result = handleSyncFulfillment(postData.fileId);
@@ -86,13 +87,16 @@ function doPost(e) {
     // --- FINANCE ---
     else if (action === 'getFinance') result = getFinance(postData.year);
     else if (action === 'addFinance') result = addFinance(postData.year, postData.transaction);
+    else if (action === 'addPayment') result = addPayment(postData.year, postData.payment);
+    else if (action === 'addPrintwayBatch') result = addPrintwayBatch(postData.year, postData.list);
+    else if (action === 'updateFinanceField') result = updateFinanceField(postData.year, postData.id, postData.field, postData.value);
     else if (action === 'createFinanceFile') result = createFinanceFile(postData.year);
     else if (action === 'getFinanceMeta') result = getFinanceMeta();
     else if (action === 'addFinanceMeta') result = addFinanceMeta(postData.type, postData.value);
 
-    // --- USERS ---
+    // --- USERS & ROLES ---
     else if (action === 'login') result = handleLogin(postData.username, postData.password, postData.ip);
-    else if (action === 'logout') result = handleLogout(postData.username, postData.type); // Action mới
+    else if (action === 'logout') result = handleLogout(postData.username, postData.type); 
     else if (action === 'getUsers') result = getUsers();
     else if (action === 'createUser') result = createUser(postData.username, postData.password, postData.fullName, postData.role, postData.email, postData.phone, postData.permissions);
     else if (action === 'updateUser') result = updateUser(postData.username, postData.role, postData.status, postData.permissions);
@@ -102,7 +106,7 @@ function doPost(e) {
 
     // --- SYSTEM & MAPPINGS ---
     else if (action === 'getStores') result = getData(SHEET_STORES);
-    else if (action === 'addStore') result = addRow(SHEET_STORES, [Utilities.getUuid().substring(0,8), postData.name, postData.url, postData.region||"", postData.status||"LIVE", 0, 0]);
+    else if (action === 'addStore') result = addStore(postData);
     else if (action === 'deleteStore') result = deleteRow(SHEET_STORES, postData.id);
     else if (action === 'getStoreHistory') result = getStoreHistory(postData.storeId);
     else if (action === 'getDailyStats') result = getData(SHEET_DAILY);
@@ -112,14 +116,23 @@ function doPost(e) {
     else if (action === 'updateCategoryPrice') result = handleUpdateCategoryPrice(postData.category, postData.price);
     else if (action === 'debugSnapshot') { autoRecordDailyStats(true); result = {success: true}; }
 
-    return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
+    return createJsonResponse(result);
   } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({ success: false, error: err.toString() })).setMimeType(ContentService.MimeType.JSON);
+    return createJsonResponse({ success: false, error: "Server Internal Error: " + err.toString() });
   } finally {
     lock.releaseLock();
   }
 }
 
+function createJsonResponse(data) {
+  return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);
+}
+
 function doGet(e) {
-  return ContentService.createTextOutput(JSON.stringify({ status: "running", version: "5.1", timestamp: new Date() })).setMimeType(ContentService.MimeType.JSON);
+  return createJsonResponse({ status: "running", version: "7.8", timestamp: new Date() });
+}
+
+function addStore(postData) {
+    const id = Utilities.getUuid().substring(0,8);
+    return addRow(SHEET_STORES, [id, postData.name, postData.url, postData.region||"", postData.status||"LIVE", 0, 0]);
 }

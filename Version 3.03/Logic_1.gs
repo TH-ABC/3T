@@ -1,6 +1,6 @@
 /**
  * ==========================================
- * LOGIC_1.GS: NGHIỆP VỤ CHÍNH V5.4 (STABLE)
+ * LOGIC_1.GS: NGHIỆP VỤ CHÍNH V8.2 (STABLE)
  * ==========================================
  */
 
@@ -235,9 +235,7 @@ function updateOrderSingle(fileId, orderId, field, value) {
   const up = {}; up[field] = value; return updateOrderRow(fileId, orderId, up); 
 }
 
-function updateDesignerStatus(e) {
-  const postContents = typeof e === 'string' ? e : e.postData.contents;
-  const data = JSON.parse(postContents);
+function updateDesignerStatus(data) {
   const ss = SpreadsheetApp.openById(data.fileId);
   const isDone = data.isDone ? "TRUE" : "FALSE";
   updateOrderSingle(data.fileId, data.order.id, 'isDesignDone', isDone);
@@ -245,7 +243,7 @@ function updateDesignerStatus(e) {
     const s = ss.getSheetByName(n);
     if (s) {
       const d = s.getDataRange().getValues();
-      for (let j = 1; j < d.length; j++) if (String(d[j][2]).trim() == String(data.order.id).trim()) s.getRange(j + 1, 10).setValue(isDone);
+      for (let j = 1; j < d.length; j++) if (String(d[j][1]).trim() == String(data.order.id).trim()) s.getRange(j + 1, 14).setValue(isDone);
     }
   });
   return { success: true };

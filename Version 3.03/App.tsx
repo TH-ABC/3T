@@ -243,7 +243,7 @@ function App() {
         return <DesignerList user={user} onProcessStart={handleProcessStart} onProcessEnd={handleProcessEnd} />;
       case 'finance':
         if (!canAccess('finance')) return <div className="p-6">Không có quyền truy cập.</div>;
-        return <FinanceBoard />;
+        return <FinanceBoard user={user} />;
       case 'schedule':
         return <ScheduleManagement user={user} />;
       case 'users':

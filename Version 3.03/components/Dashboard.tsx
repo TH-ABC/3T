@@ -66,7 +66,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSelectStore }) => {
           const rawName = s.name || s['store name'] || s.Name || s['tên store'] || 'Không tên';
           return {
             id: s.id || s.ID || '',
-            name: String(rawName).toUpperCase(), // TỰ ĐỘNG VIẾT HOA TÊN STORE
+            name: String(rawName), // KHÔNG ÉP VIẾT HOA TÊN STORE THEO YÊU CẦU
             url: s.url || s.URL || s['link'] || '',
             region: s.region || s.Region || '',
             status: s.status || s.Status || 'LIVE',
@@ -125,10 +125,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSelectStore }) => {
 
   const handleAddStore = async () => {
     if (!newStoreData.name) return;
-    await sheetService.addStore(newStoreData);
-    setIsModalOpen(false);
-    setNewStoreData({ name: '', url: '', region: '' });
-    loadData(false); 
+    const res = await sheetService.addStore(newStoreData);
+    if (res && res.success) {
+        setIsModalOpen(false);
+        setNewStoreData({ name: '', url: '', region: '' });
+        loadData(false); 
+    } else {
+        alert("Lỗi khi thêm Store. Vui lòng thử lại.");
+    }
   };
 
   const formatNumber = (val: string | number) => {

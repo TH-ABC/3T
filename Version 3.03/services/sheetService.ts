@@ -1,5 +1,4 @@
-
-import { Order, Store, User, DashboardMetrics, DailyStat, StoreHistoryItem, SkuMapping, Role, AuthResponse, FinanceTransaction, FinanceMeta, NewsItem, NewsComment, ScheduleStaff, AttendanceRecord, OTRecord, HandoverItem, UserNote } from '../types';
+import { Order, Store, User, DashboardMetrics, DailyStat, StoreHistoryItem, SkuMapping, Role, AuthResponse, FinanceTransaction, FinanceMeta, NewsItem, NewsComment, ScheduleStaff, AttendanceRecord, OTRecord, HandoverItem, UserNote, PaymentRecord, PrintwayRecord } from '../types';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbyw4ZdfirgKUHyXMH8Ro7UZ6-VWCdf1hgqU37ilLvNt2RwzusSPG_HUc_mi8z-9tInR/exec'; 
 
@@ -93,6 +92,16 @@ export const sheetService = {
   login: async (username: string, password: string, ip?: string): Promise<AuthResponse> => await callAPI('login', 'POST', { username, password, ip }),
   logout: async (username: string, type: string = 'LOGOUT'): Promise<any> => await callAPI('logout', 'POST', { username, type }),
 
+  // --- FINANCE METHODS ---
+  getFinance: async (year: string): Promise<{ transactions: FinanceTransaction[], payments: PaymentRecord[], printway: PrintwayRecord[], fileId: string | null }> => await callAPI('getFinance', 'POST', { year }),
+  addFinance: async (year: string, transaction: Partial<FinanceTransaction>): Promise<any> => await callAPI('addFinance', 'POST', { year, transaction }),
+  addPayment: async (year: string, payment: Partial<PaymentRecord>): Promise<any> => await callAPI('addPayment', 'POST', { year, payment }),
+  addPrintwayBatch: async (year: string, list: PrintwayRecord[]): Promise<any> => await callAPI('addPrintwayBatch', 'POST', { year, list }),
+  updateFinanceField: async (year: string, id: string, field: string, value: any): Promise<any> => await callAPI('updateFinanceField', 'POST', { year, id, field, value }),
+  createFinanceFile: async (year: string): Promise<any> => await callAPI('createFinanceFile', 'POST', { year }),
+  getFinanceMeta: async (): Promise<FinanceMeta> => await callAPI('getFinanceMeta', 'GET'),
+  addFinanceMeta: async (type: 'category' | 'subCategory' | 'payer', value: string): Promise<any> => await callAPI('addFinanceMeta', 'POST', { type, value }),
+
   // --- EXISTING METHODS ---
   getDashboardStats: async (): Promise<DashboardMetrics> => ({ revenue: 0, netIncome: 0, inventoryValue: 0, debt: 0 }),
   getStores: async (): Promise<Store[]> => await callAPI('getStores', 'GET'),
@@ -124,9 +133,4 @@ export const sheetService = {
   getPriceMappings: async (): Promise<{category: string, price: number}[]> => await callAPI('getPriceMappings', 'GET'),
   updateCategoryPrice: async (category: string, price: number): Promise<any> => await callAPI('updateCategoryPrice', 'POST', { category, price }),
   changePassword: async (username: string, oldPass: string, newPass: string): Promise<any> => await callAPI('changePassword', 'POST', { username, oldPass, newPass }),
-  getFinance: async (year: string): Promise<{ transactions: FinanceTransaction[], fileId: string | null }> => await callAPI('getFinance', 'POST', { year }),
-  addFinance: async (year: string, transaction: Partial<FinanceTransaction>): Promise<any> => await callAPI('addFinance', 'POST', { year, transaction }),
-  createFinanceFile: async (year: string): Promise<any> => await callAPI('createFinanceFile', 'POST', { year }),
-  getFinanceMeta: async (): Promise<FinanceMeta> => await callAPI('getFinanceMeta', 'GET'),
-  addFinanceMeta: async (type: 'category' | 'payer', value: string): Promise<any> => await callAPI('addFinanceMeta', 'POST', { type, value })
 };
