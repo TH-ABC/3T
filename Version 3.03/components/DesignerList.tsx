@@ -33,7 +33,6 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
   const [currentFileId, setCurrentFileId] = useState<string | null>(null);
   const [updatingIds, setUpdatingIds] = useState<Set<string>>(new Set());
 
-  // --- BATCH SELECTION STATE ---
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
 
@@ -48,7 +47,9 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
   const PRICE_CATEGORIES = ['Loại 1', 'Loại 2', 'Loại 3', 'Loại 4'];
 
   const getStoreName = (id: string) => { const store = stores.find(s => String(s.id) === String(id) || s.name === id); return store ? store.name : id; };
-  const normalizeKey = (key: string) => key ? key.toLowerCase().trim() : '';
+  
+  // FIX: Đảm bảo key luôn là string trước khi toLowerCase
+  const normalizeKey = (key: any) => key !== undefined && key !== null ? String(key).toLowerCase().trim() : '';
 
   const loadData = async (monthToFetch: string) => {
     setLoading(true); setOrders([]); setDataError(null); setCurrentFileId(null); setSelectedOrderIds(new Set());
@@ -62,27 +63,36 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
       setStores(Array.isArray(storeData) ? storeData : []); setUsers(Array.isArray(usersData) ? usersData : []); setCurrentFileId(orderResult.fileId);
       const safeSkuMappings = Array.isArray(skuMappings) ? skuMappings : [];
       const mappingObj: Record<string, string> = {};
-      safeSkuMappings.forEach(m => { if (m && m.sku) mappingObj[normalizeKey(m.sku)] = m.category; });
+      safeSkuMappings.forEach(m => { if (m && m.sku) mappingObj[normalizeKey(m.sku)] = String(m.category); });
       setSkuMap(mappingObj);
       const rawOrders = orderResult.orders || [];
-      const ordersInMonth = rawOrders.filter(o => { if (!o.date) return false; const dateStr = String(o.date).trim(); return dateStr.startsWith(monthToFetch); });
+      
+      const ordersInMonth = rawOrders.filter(o => { 
+        if (!o.date) return false; 
+        const dateStr = String(o.date).trim();
+        const [targetY, targetM] = monthToFetch.split('-');
+        const isIsoMatch = dateStr.includes(`${targetY}-${targetM}`);
+        const isVnMatch = dateStr.includes(`/${targetM}/${targetY}`);
+        return isIsoMatch || isVnMatch || dateStr.startsWith(monthToFetch);
+      });
+
       if (rawOrders.length > 0 && ordersInMonth.length === 0) {
           const sampleDate = rawOrders[0].date;
-          const actualMonth = sampleDate ? sampleDate.substring(0, 7) : 'Không xác định';
-          setDataError({ message: `Lỗi Dữ Liệu: Bạn chọn tháng ${monthToFetch} nhưng hệ thống trả về dữ liệu tháng ${actualMonth}.`, detail: `Nguyên nhân: File ID trong sheet "FileIndex" sai.`, fileId: orderResult.fileId });
+          setDataError({ 
+            message: `Dữ liệu tháng ${monthToFetch} bị lệch.`, 
+            detail: `Đã tìm thấy file nhưng ngày tháng đơn hàng (${sampleDate}) không khớp bộ lọc.`, 
+            fileId: orderResult.fileId 
+          });
           setCurrentFileId(orderResult.fileId);
       }
       
       const currentUsername = (user.username || '').toLowerCase().trim();
       const userRole = (user.role || '').toLowerCase().trim();
       
-      // Determine permissions
       let filteredOrdersList = ordersInMonth;
       if (userRole !== 'admin') {
           const scope = user.permissions?.designer;
-          
           if (!scope) {
-              // LEGACY Fallback
               filteredOrdersList = ordersInMonth.filter(o => {
                   const actionRoleRaw = (o.actionRole || '').toLowerCase().trim();
                   if (actionRoleRaw === 'designer') return true;
@@ -121,7 +131,6 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
 
   useEffect(() => { selectedMonthRef.current = selectedMonth; loadData(selectedMonth); }, [selectedMonth, user.username]);
 
-  // --- FILTER LOGIC ---
   useEffect(() => { const handleClickOutside = (event: MouseEvent) => { if (filterPopupRef.current && !filterPopupRef.current.contains(event.target as Node)) { setActiveFilterColumn(null); setFilterSearchTerm(''); setFilterPopupPos(null); } }; document.addEventListener('mousedown', handleClickOutside); window.addEventListener('scroll', () => { if (activeFilterColumn) setActiveFilterColumn(null); }, true); return () => { document.removeEventListener('mousedown', handleClickOutside); window.removeEventListener('scroll', () => {}, true); }; }, [activeFilterColumn]);
 
   const getUniqueValues = (key: string): string[] => { 
@@ -236,7 +245,6 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
   });
   const sortedOrdersResult = filteredOrdersList.map((item, index) => ({ item, index })).sort((a, b) => { if (sortConfig.key === 'date') { const dateA = new Date(a.item.date || '').getTime(); const dateB = new Date(b.item.date || '').getTime(); const validA = !isNaN(dateA); const validB = !isNaN(dateB); if (!validA && !validB) return 0; if (!validA) return 1; if (!validB) return -1; if (dateA !== dateB) { return sortConfig.direction === 'asc' ? dateA - dateB : dateB - dateA; } return a.index - b.index; } const valA = String((a.item as any)[sortConfig.key] || ''); const valB = String((b.item as any)[sortConfig.key] || ''); if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1; if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1; return 0; }).map(x => x.item);
 
-  // --- SELECTION HANDLERS ---
   const handleSelectAll = () => { if (selectedOrderIds.size === sortedOrdersResult.length && sortedOrdersResult.length > 0) setSelectedOrderIds(new Set()); else setSelectedOrderIds(new Set(sortedOrdersResult.map(o => o.id))); };
   const handleSelectRow = (id: string) => { const newSelected = new Set(selectedOrderIds); if (newSelected.has(id)) newSelected.delete(id); else newSelected.add(id); setSelectedOrderIds(newSelected); };
   const handleBatchAction = async (actionType: 'design_done' | 'design_pending') => {
@@ -260,7 +268,20 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
   return (
     <div className="p-4 bg-gray-100 min-h-screen relative pb-20">
       <div className="bg-white shadow-sm overflow-hidden rounded-lg flex flex-col h-full">
-        {/* TOP SUMMARY DASHBOARD */}
+        {dataError && (
+          <div className="m-4 p-5 bg-rose-50 border-2 border-rose-200 rounded-3xl animate-fade-in">
+             <div className="flex items-center gap-4">
+                <div className="p-3 bg-rose-600 text-white rounded-2xl shadow-lg shadow-rose-200">
+                   <AlertTriangle size={32} />
+                </div>
+                <div>
+                   <h3 className="text-xl font-black text-rose-900 uppercase tracking-tight">{dataError.message}</h3>
+                   <p className="text-xs font-bold text-rose-600 mt-1">{dataError.detail}</p>
+                </div>
+             </div>
+          </div>
+        )}
+
         <div className="bg-white border-b border-gray-200 p-4">
             <h3 className="text-sm font-bold text-gray-800 uppercase mb-3 flex items-center gap-2"><PenTool size={16} className="text-indigo-600"/> Tổng Hợp Tháng {currentMonthStr}/{currentYearStr}</h3>
             <div className="flex flex-col xl:flex-row gap-6">
@@ -323,7 +344,7 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {loading ? <tr><td colSpan={9} className="text-center py-12 text-gray-500">Đang tải dữ liệu Tháng {currentMonthStr}...</td></tr> : (sortedOrdersResult.length === 0 ? <tr><td colSpan={9} className="text-center py-12 text-gray-500">{dataError ? (<div className="flex flex-col items-center justify-center p-4 bg-red-50 border border-red-200 rounded-lg max-w-2xl mx-auto my-4 text-red-700"><div className="flex items-center gap-2 font-bold text-lg mb-2"><AlertTriangle size={24} /> {dataError.message}</div>{dataError.detail && <p className="text-sm mb-3">{dataError.detail}</p>}<div className="flex items-center gap-2 text-sm bg-white p-2 rounded border border-red-100"><Info size={16} className="text-blue-500"/><span>Vui lòng kiểm tra tab <strong>FileIndex</strong> trong Master Sheet để đảm bảo ID file chính xác.</span></div>{dataError.fileId && (<a href={`https://docs.google.com/spreadsheets/d/${dataError.fileId}/edit`} target="_blank" rel="noreferrer" className="mt-3 text-blue-600 hover:underline text-sm font-semibold flex items-center gap-1"><FileSpreadsheet size={16} /> Bấm vào đây để kiểm tra File hiện tại (ID: {dataError.fileId.substring(0, 10)}...)</a>)}</div>) : 'Không có đơn hàng nào thuộc nhóm Designer.'}</td></tr> : sortedOrdersResult.map((order, idx) => {
+              {loading ? <tr><td colSpan={9} className="text-center py-12 text-gray-500">Đang tải dữ liệu Tháng {currentMonthStr}...</td></tr> : (sortedOrdersResult.length === 0 ? <tr><td colSpan={9} className="text-center py-12 text-gray-500">{'Không có đơn hàng nào khớp với bộ lọc.'}</td></tr> : sortedOrdersResult.map((order, idx) => {
                   const category = skuMap[normalizeKey(order.sku)] || '';
                   const isUpdating = updatingIds.has(order.id);
                   const isHandlerAdmin = (order.handler || '').toLowerCase().includes('admin');
@@ -346,7 +367,6 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
           </table>
         </div>
 
-        {/* --- FLOATING BATCH ACTION BAR --- */}
         {selectedOrderIds.size > 0 && canCheckDesign && (
             <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-white rounded-full shadow-2xl border border-gray-200 px-6 py-3 flex items-center gap-4 z-50 animate-slide-in">
                 <span className="text-sm font-bold text-gray-700 whitespace-nowrap bg-gray-100 px-3 py-1 rounded-full">{selectedOrderIds.size} đã chọn</span>
