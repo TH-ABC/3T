@@ -1,10 +1,10 @@
+
 /**
  * ==========================================
- * MAIN.GS: ĐIỀU HƯỚNG CHÍNH V7.8
+ * MAIN.GS: ĐIỀU HƯỚNG CHÍNH V12.0
  * ==========================================
  */
 
-// Các hằng số tên Sheet giữ nguyên
 const SHEET_STORES = 'Stores';
 const SHEET_USERS = 'Users';
 const SHEET_UNITS = 'Units';
@@ -38,8 +38,24 @@ function doPost(e) {
     const action = postData.action;
     let result = {};
 
+    // --- SCHEDULE & ATTENDANCE & TIMEKEEPING ---
+    if (action === 'getScheduleStaff') result = getScheduleStaff();
+    else if (action === 'saveScheduleStaff') result = saveScheduleStaff(postData);
+    else if (action === 'deleteScheduleStaffMember') result = deleteScheduleStaffMember(postData.username, postData.name);
+    else if (action === 'getAttendance') result = getAttendance(postData.month);
+    else if (action === 'checkIn') result = checkIn(postData.username, postData.name);
+    else if (action === 'checkOut') result = checkOut(postData.username, postData.name);
+    else if (action === 'getOTAttendance') result = getOTAttendance(postData.month);
+    else if (action === 'checkInOT') result = checkInOT(postData.username, postData.name);
+    else if (action === 'checkOutOT') result = checkOutOT(postData.username, postData.name);
+    else if (action === 'getHolidays') result = getHolidays(postData.month);
+    else if (action === 'toggleHoliday') result = toggleHoliday(postData.date);
+    else if (action === 'getManualTimekeeping') result = getManualTimekeeping(postData.month);
+    else if (action === 'saveManualTimekeeping') result = saveManualTimekeeping(postData.month, postData.username, postData.day, postData.value);
+    else if (action === 'saveFullMonthlyTable') result = saveFullMonthlyTable(postData.month, postData.matrix);
+
     // --- NEWS ACTIONS ---
-    if (action === 'getNews') result = handleGetNews(postData.username);
+    else if (action === 'getNews') result = handleGetNews(postData.username);
     else if (action === 'addNews') result = handleAddNews(postData);
     else if (action === 'updateNews') result = handleUpdateNews(postData);
     else if (action === 'deleteNews') result = handleDeleteNews(postData.newsId);
@@ -57,18 +73,6 @@ function doPost(e) {
     else if (action === 'getUserNote') result = handleGetUserNote(postData.username, postData.date);
     else if (action === 'saveUserNote') result = handleSaveUserNote(postData);
 
-    // --- SCHEDULE & ATTENDANCE ---
-    else if (action === 'getScheduleStaff') result = getScheduleStaff();
-    else if (action === 'saveScheduleStaff') result = saveScheduleStaff(postData);
-    else if (action === 'getAttendance') result = getAttendance(postData.month);
-    else if (action === 'checkIn') result = checkIn(postData.username, postData.name);
-    else if (action === 'checkOut') result = checkOut(postData.username, postData.name);
-    else if (action === 'getOTAttendance') result = getOTAttendance(postData.month);
-    else if (action === 'checkInOT') result = checkInOT(postData.username, postData.name);
-    else if (action === 'checkOutOT') result = checkOutOT(postData.username, postData.name);
-    else if (action === 'getHolidays') result = getHolidays(postData.month);
-    else if (action === 'toggleHoliday') result = toggleHoliday(postData.date);
-
     // --- ORDERS & FULFILLMENT ---
     else if (action === 'getOrders') result = getOrdersFromMonthFile(postData.month);
     else if (action === 'addOrder') result = handleAddOrder(postData);
@@ -85,14 +89,17 @@ function doPost(e) {
     else if (action === 'syncFulfillment') result = handleSyncFulfillment(postData.fileId);
 
     // --- FINANCE ---
-    else if (action === 'getFinance') result = getFinance(postData.year);
-    else if (action === 'addFinance') result = addFinance(postData.year, postData.transaction);
-    else if (action === 'addPayment') result = addPayment(postData.year, postData.payment);
-    else if (action === 'addPrintwayBatch') result = addPrintwayBatch(postData.year, postData.list);
-    else if (action === 'updateFinanceField') result = updateFinanceField(postData.year, postData.id, postData.field, postData.value);
-    else if (action === 'createFinanceFile') result = createFinanceFile(postData.year);
+    else if (action === 'getFinance') result = getFinance(String(postData.year || "").trim()); 
+    else if (action === 'addFinance') result = addFinance(String(postData.year || "").trim(), postData.transaction);
+    else if (action === 'addPayment') result = addPayment(String(postData.year || "").trim(), postData.payment);
+    else if (action === 'addPrintwayBatch') result = addPrintwayBatch(String(postData.year || "").trim(), postData.list);
+    else if (action === 'addEbayBatch') result = addEbayBatch(String(postData.year || "").trim(), postData.list);
+    else if (action === 'updateFinanceField') result = updateFinanceField(String(postData.year || "").trim(), postData.id, postData.field, postData.value);
+    else if (action === 'updatePaymentField') result = updatePaymentField(String(postData.year || "").trim(), postData.id, postData.field, postData.value);
+    else if (action === 'createFinanceFile') result = createFinanceFile(String(postData.year || "").trim());
     else if (action === 'getFinanceMeta') result = getFinanceMeta();
     else if (action === 'addFinanceMeta') result = addFinanceMeta(postData.type, postData.value);
+    else if (action === 'getStaffSalarySummary') result = getStaffSalarySummary(postData.year);
 
     // --- USERS & ROLES ---
     else if (action === 'login') result = handleLogin(postData.username, postData.password, postData.ip);
@@ -129,7 +136,7 @@ function createJsonResponse(data) {
 }
 
 function doGet(e) {
-  return createJsonResponse({ status: "running", version: "7.8", timestamp: new Date() });
+  return createJsonResponse({ status: "running", version: "12.0", timestamp: new Date() });
 }
 
 function addStore(postData) {

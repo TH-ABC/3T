@@ -1,4 +1,5 @@
-import { Order, Store, User, DashboardMetrics, DailyStat, StoreHistoryItem, SkuMapping, Role, AuthResponse, FinanceTransaction, FinanceMeta, NewsItem, NewsComment, ScheduleStaff, AttendanceRecord, OTRecord, HandoverItem, UserNote, PaymentRecord, PrintwayRecord } from '../types';
+
+import { Order, Store, User, DashboardMetrics, DailyStat, StoreHistoryItem, SkuMapping, Role, AuthResponse, FinanceTransaction, FinanceMeta, NewsItem, NewsComment, ScheduleStaff, AttendanceRecord, OTRecord, HandoverItem, UserNote, PaymentRecord, PrintwayRecord, EbayRecord, StaffSalarySummary } from '../types';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbyw4ZdfirgKUHyXMH8Ro7UZ6-VWCdf1hgqU37ilLvNt2RwzusSPG_HUc_mi8z-9tInR/exec'; 
 
@@ -40,10 +41,16 @@ export const sheetService = {
   // --- SCHEDULE & ATTENDANCE ---
   getScheduleStaff: async (): Promise<ScheduleStaff[]> => await callAPI('getScheduleStaff', 'GET'),
   saveScheduleStaff: async (staffList: ScheduleStaff[]): Promise<any> => await callAPI('saveScheduleStaff', 'POST', { staffList }),
+  deleteScheduleStaffMember: async (username: string, name: string): Promise<any> => await callAPI('deleteScheduleStaffMember', 'POST', { username, name }),
   getAttendance: async (month: string): Promise<AttendanceRecord[]> => await callAPI('getAttendance', 'POST', { month }),
   checkIn: async (username: string, name: string): Promise<any> => await callAPI('checkIn', 'POST', { username, name }),
   checkOut: async (username: string, name: string): Promise<any> => await callAPI('checkOut', 'POST', { username, name }),
   
+  // --- TIMEKEEPING & FULL TABLE SAVE V32.0 ---
+  getManualTimekeeping: async (month: string): Promise<any> => await callAPI('getManualTimekeeping', 'POST', { month }),
+  saveManualTimekeeping: async (month: string, username: string, day: number, value: string): Promise<any> => await callAPI('saveManualTimekeeping', 'POST', { month, username, day, value }),
+  saveFullMonthlyTable: async (month: string, matrix: any[]): Promise<any> => await callAPI('saveFullMonthlyTable', 'POST', { month, matrix }),
+
   // --- OT FUNCTIONS ---
   getOTAttendance: async (month: string): Promise<OTRecord[]> => await callAPI('getOTAttendance', 'POST', { month }),
   checkInOT: async (username: string, name: string): Promise<any> => await callAPI('checkInOT', 'POST', { username, name }),
@@ -59,48 +66,30 @@ export const sheetService = {
     }
     return { news: [], lastReadTime: 0 };
   },
-
-  updateLastReadTime: async (username: string): Promise<any> => {
-    return await callAPI('updateLastReadTime', 'POST', { username });
-  },
-
-  addNews: async (news: Partial<NewsItem>): Promise<any> => {
-    return await callAPI('addNews', 'POST', news);
-  },
-
-  updateNews: async (news: Partial<NewsItem>): Promise<any> => {
-    return await callAPI('updateNews', 'POST', news);
-  },
-
-  deleteNews: async (newsId: string): Promise<any> => {
-    return await callAPI('deleteNews', 'POST', { newsId });
-  },
-
-  toggleLockNews: async (newsId: string): Promise<any> => {
-    return await callAPI('toggleLockNews', 'POST', { newsId });
-  },
-
-  addComment: async (comment: Partial<NewsComment>): Promise<any> => {
-    return await callAPI('addComment', 'POST', comment);
-  },
-
-  toggleLike: async (newsId: string, username: string): Promise<any> => {
-    return await callAPI('toggleLike', 'POST', { newsId, username });
-  },
+  updateLastReadTime: async (username: string): Promise<any> => await callAPI('updateLastReadTime', 'POST', { username }),
+  addNews: async (news: Partial<NewsItem>): Promise<any> => await callAPI('addNews', 'POST', news),
+  updateNews: async (news: Partial<NewsItem>): Promise<any> => await callAPI('updateNews', 'POST', news),
+  deleteNews: async (newsId: string): Promise<any> => await callAPI('deleteNews', 'POST', { newsId }),
+  toggleLockNews: async (newsId: string): Promise<any> => await callAPI('toggleLockNews', 'POST', { newsId }),
+  addComment: async (comment: Partial<NewsComment>): Promise<any> => await callAPI('addComment', 'POST', comment),
+  toggleLike: async (newsId: string, username: string): Promise<any> => await callAPI('toggleLike', 'POST', { newsId, username }),
 
   // --- AUTH & SESSION ---
   login: async (username: string, password: string, ip?: string): Promise<AuthResponse> => await callAPI('login', 'POST', { username, password, ip }),
   logout: async (username: string, type: string = 'LOGOUT'): Promise<any> => await callAPI('logout', 'POST', { username, type }),
 
   // --- FINANCE METHODS ---
-  getFinance: async (year: string): Promise<{ transactions: FinanceTransaction[], payments: PaymentRecord[], printway: PrintwayRecord[], fileId: string | null }> => await callAPI('getFinance', 'POST', { year }),
+  getFinance: async (year: string): Promise<{ transactions: FinanceTransaction[], payments: PaymentRecord[], printway: PrintwayRecord[], ebay: EbayRecord[], fileId: string | null, error?: string }> => await callAPI('getFinance', 'POST', { year }),
   addFinance: async (year: string, transaction: Partial<FinanceTransaction>): Promise<any> => await callAPI('addFinance', 'POST', { year, transaction }),
   addPayment: async (year: string, payment: Partial<PaymentRecord>): Promise<any> => await callAPI('addPayment', 'POST', { year, payment }),
   addPrintwayBatch: async (year: string, list: PrintwayRecord[]): Promise<any> => await callAPI('addPrintwayBatch', 'POST', { year, list }),
+  addEbayBatch: async (year: string, list: EbayRecord[]): Promise<any> => await callAPI('addEbayBatch', 'POST', { year, list }),
   updateFinanceField: async (year: string, id: string, field: string, value: any): Promise<any> => await callAPI('updateFinanceField', 'POST', { year, id, field, value }),
+  updatePaymentField: async (year: string, id: string, field: string, value: any): Promise<any> => await callAPI('updatePaymentField', 'POST', { year, id, field, value }),
   createFinanceFile: async (year: string): Promise<any> => await callAPI('createFinanceFile', 'POST', { year }),
   getFinanceMeta: async (): Promise<FinanceMeta> => await callAPI('getFinanceMeta', 'GET'),
   addFinanceMeta: async (type: 'category' | 'subCategory' | 'payer', value: string): Promise<any> => await callAPI('addFinanceMeta', 'POST', { type, value }),
+  getStaffSalarySummary: async (year: string): Promise<StaffSalarySummary[]> => await callAPI('getStaffSalarySummary', 'POST', { year }),
 
   // --- EXISTING METHODS ---
   getDashboardStats: async (): Promise<DashboardMetrics> => ({ revenue: 0, netIncome: 0, inventoryValue: 0, debt: 0 }),

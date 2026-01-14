@@ -195,6 +195,20 @@ export interface PrintwayRecord {
   loai: string; // Changed to string to allow raw types
 }
 
+export interface EbayRecord {
+  recordId: string;
+  accountingTime: string;
+  type: string;
+  amount: number;
+  cardRemark: string;
+}
+
+export interface StaffSalarySummary {
+  month: string;
+  amountVnd: number;
+  amountUsd: number;
+}
+
 export interface StoreHistoryItem {
   date: string;
   listing: string | number;

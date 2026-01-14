@@ -5,7 +5,7 @@ import {
   Wallet, X, LogOut, ChevronLeft, ChevronRight, 
   Palette, Key, PenTool, UserCheck, Home, FileText,
   CalendarDays, ClipboardList, Bell, Clock, ArrowRight,
-  CheckCircle, Zap, History, Megaphone
+  CheckCircle, Zap, History, Megaphone, BarChart3, Landmark
 } from 'lucide-react';
 import { sheetService } from '../services/sheetService';
 import { User, UserPermissions, HandoverItem, NewsItem } from '../types';
@@ -34,7 +34,6 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const fetchNotifications = async () => {
     try {
-      // ĐIỀU CHỈNH: Gửi date là "" để lấy toàn bộ lịch sử thay vì chỉ lấy ngày hôm nay
       const [handoverRes, newsRes] = await Promise.all([
         sheetService.getHandover("", user.fullName, user.role),
         sheetService.getNews(user.username)
@@ -72,17 +71,13 @@ const Sidebar: React.FC<SidebarProps> = ({
     };
   }, [user.fullName, user.username]);
 
-  // Phân loại task/news
   const currentFullName = user.fullName.toLowerCase();
-  
-  // Tin nhắn mới: Chưa xem, trạng thái Pending và đúng người nhận
   const newTasks = allTasks.filter(item => 
     !item.isSeen && 
     item.status === 'Pending' && 
     item.assignee.toLowerCase() === currentFullName
   );
   
-  // LỊCH SỬ: Đã xem HOẶC đã nhận việc/hoàn thành và đúng người nhận
   const historyTasks = allTasks.filter(item => 
     (item.isSeen || item.status !== 'Pending') && 
     item.assignee.toLowerCase() === currentFullName
@@ -115,13 +110,13 @@ const Sidebar: React.FC<SidebarProps> = ({
     {
       title: 'TÀI CHÍNH',
       items: [
-        { id: 'finance', label: 'Sổ Quỹ', icon: <Wallet size={20} />, visible: hasAccess('finance') },
+        { id: 'finance', label: 'Funds', icon: <BarChart3 size={20} />, visible: hasAccess('finance') },
       ]
     },
     {
       title: 'HỆ THỐNG',
       items: [
-        { id: 'schedule', label: 'Lịch trực', icon: <CalendarDays size={20} />, visible: true },
+        { id: 'schedule', label: 'Điểm danh ca trực', icon: <CalendarDays size={20} />, visible: true },
         { id: 'users', label: 'Nhân Sự', icon: <UserCheck size={20} />, visible: user.role === 'admin' },
         { id: 'settings', label: 'Cấu hình', icon: <Settings size={20} />, visible: user.role === 'admin' },
       ]
@@ -129,27 +124,17 @@ const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   const handleNotifClick = async (item: HandoverItem | NewsItem) => {
-    // Đóng popup trước để giao diện mượt mà
     setShowNotif(false);
-
     if ('task' in item) {
-      // ĐIỀU CHỈNH: Chuyển tab Bàn Giao Việc ngay lập tức
       setCurrentTab('handover');
-      
-      // Đánh dấu đã xem trên UI local
       setAllTasks(prev => prev.map(t => t.id === item.id ? { ...t, isSeen: true } : t));
-      
-      // Cập nhật Backend vĩnh viễn
       try {
         await sheetService.markHandoverAsSeen(item.id);
       } catch (e) {
         console.error("Error marking handover as seen:", e);
       }
     } else {
-      // ĐIỀU CHỈNH: Chuyển về tab Tin Tức (Trang chủ) ngay lập tức
       setCurrentTab('home');
-
-      // Cập nhật tin tức đã xem local
       setUnreadNews(prev => prev.filter(n => n.id !== item.id));
       try {
         await sheetService.updateLastReadTime(user.username);
@@ -214,7 +199,6 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <div className="max-h-[400px] overflow-y-auto custom-scrollbar space-y-3">
                   {notifTab === 'new' ? (
                     <>
-                      {/* Tin tức chưa đọc */}
                       {unreadNews.map(news => (
                         <div key={news.id} onClick={() => handleNotifClick(news)} className="p-4 bg-blue-50/50 rounded-2xl border-2 border-blue-100 hover:border-blue-400 hover:bg-blue-100 transition-all cursor-pointer group shadow-sm">
                           <div className="flex items-center justify-between mb-2">
@@ -232,7 +216,6 @@ const Sidebar: React.FC<SidebarProps> = ({
                         </div>
                       ))}
 
-                      {/* Việc chưa nhận */}
                       {newTasks.map(task => (
                         <div key={task.id} onClick={() => handleNotifClick(task)} className="p-4 bg-orange-50/50 rounded-2xl border-2 border-orange-100 hover:border-orange-400 hover:bg-orange-100 transition-all cursor-pointer group shadow-sm">
                           <div className="flex items-center justify-between mb-2">
