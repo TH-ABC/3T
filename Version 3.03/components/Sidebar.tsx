@@ -110,7 +110,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     {
       title: 'TÀI CHÍNH',
       items: [
-        { id: 'finance', label: 'Funds', icon: <BarChart3 size={20} />, visible: hasAccess('finance') },
+        { id: 'finance', label: 'Thống kê', icon: <BarChart3 size={20} />, visible: hasAccess('finance') },
       ]
     },
     {

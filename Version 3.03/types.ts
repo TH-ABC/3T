@@ -87,8 +87,8 @@ export interface HandoverItem {
   startTime?: string;
   endTime?: string;
   report?: string;
-  fileLink?: string; // Link từ người giao
-  resultLink?: string; // Link từ người làm (mới)
+  fileLink?: string; 
+  resultLink?: string; 
   imageLink?: string;
   createdBy: string;
   isSeen?: boolean; 
@@ -104,7 +104,7 @@ export interface UserNote {
   username: string;
   date: string;
   items: DailyNoteItem[];
-  showPlanner?: boolean; // Trạng thái ẩn hiện Planner (mới)
+  showPlanner?: boolean; 
 }
 
 // --- NEWS TYPES ---
@@ -131,20 +131,19 @@ export interface NewsComment {
 
 // --- AUTH & PERMISSIONS ---
 export type ViewScope = 'all' | 'own' | 'none';
-// Cập nhật: Cho phép chuỗi để chứa nhiều scope (ví dụ: "payment,printway")
 export type FinanceScope = string;
 
 export interface UserPermissions {
   canManageSku?: boolean;
   canPostNews?: boolean;
-  canViewFinanceSummary?: boolean; // Mới: Quyền xem 4 bảng tổng hợp tài chính
+  canViewFinanceSummary?: boolean; 
   dashboard?: ViewScope;      
   orders?: ViewScope;
   designer?: ViewScope;
   designerOnline?: ViewScope;
   handover?: ViewScope;
   customers?: ViewScope;      
-  finance?: FinanceScope; // Cập nhật: Scope riêng cho tài chính       
+  finance?: FinanceScope;        
   system?: ViewScope;         
 }
 
@@ -162,8 +161,8 @@ export interface User {
 export interface FinanceTransaction {
   id: string;
   date: string;
-  category: string; // Thu tiền / Chi tiền
-  subCategory: string; // Danh mục con tự tạo
+  category: string; 
+  subCategory: string; 
   description: string;
   quantity: number;
   unitPrice: number;
@@ -185,14 +184,13 @@ export interface PaymentRecord {
 export interface PrintwayRecord {
   invoiceId: string;
   type: string;
+  loai: string;
   status: string;
   date: string;
   method: string;
   amountUsd: number;
-  fee: number;
   totalAmount: number;
   note: string;
-  loai: string; // Changed to string to allow raw types
 }
 
 export interface EbayRecord {
@@ -235,4 +233,6 @@ export interface FinanceMeta {
   categories: string[];
   subCategories: string[];
   payers: string[];
+  stores: string[];
+  regions: string[];
 }

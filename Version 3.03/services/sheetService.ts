@@ -1,4 +1,3 @@
-
 import { Order, Store, User, DashboardMetrics, DailyStat, StoreHistoryItem, SkuMapping, Role, AuthResponse, FinanceTransaction, FinanceMeta, NewsItem, NewsComment, ScheduleStaff, AttendanceRecord, OTRecord, HandoverItem, UserNote, PaymentRecord, PrintwayRecord, EbayRecord, StaffSalarySummary } from '../types';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbyw4ZdfirgKUHyXMH8Ro7UZ6-VWCdf1hgqU37ilLvNt2RwzusSPG_HUc_mi8z-9tInR/exec'; 
@@ -83,12 +82,14 @@ export const sheetService = {
   addFinance: async (year: string, transaction: Partial<FinanceTransaction>): Promise<any> => await callAPI('addFinance', 'POST', { year, transaction }),
   addPayment: async (year: string, payment: Partial<PaymentRecord>): Promise<any> => await callAPI('addPayment', 'POST', { year, payment }),
   addPrintwayBatch: async (year: string, list: PrintwayRecord[]): Promise<any> => await callAPI('addPrintwayBatch', 'POST', { year, list }),
+  syncPrintwayData: async (month: string, list: PrintwayRecord[]): Promise<any> => await callAPI('syncPrintwayData', 'POST', { month, list }),
   addEbayBatch: async (year: string, list: EbayRecord[]): Promise<any> => await callAPI('addEbayBatch', 'POST', { year, list }),
   updateFinanceField: async (year: string, id: string, field: string, value: any): Promise<any> => await callAPI('updateFinanceField', 'POST', { year, id, field, value }),
   updatePaymentField: async (year: string, id: string, field: string, value: any): Promise<any> => await callAPI('updatePaymentField', 'POST', { year, id, field, value }),
   createFinanceFile: async (year: string): Promise<any> => await callAPI('createFinanceFile', 'POST', { year }),
   getFinanceMeta: async (): Promise<FinanceMeta> => await callAPI('getFinanceMeta', 'GET'),
-  addFinanceMeta: async (type: 'category' | 'subCategory' | 'payer', value: string): Promise<any> => await callAPI('addFinanceMeta', 'POST', { type, value }),
+  // --- FIXED: Added 'store' and 'region' to allowed meta types ---
+  addFinanceMeta: async (type: 'category' | 'subCategory' | 'payer' | 'store' | 'region', value: string): Promise<any> => await callAPI('addFinanceMeta', 'POST', { type, value }),
   getStaffSalarySummary: async (year: string): Promise<StaffSalarySummary[]> => await callAPI('getStaffSalarySummary', 'POST', { year }),
 
   // --- EXISTING METHODS ---

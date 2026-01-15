@@ -126,7 +126,6 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
     } catch (e) { alert("Lỗi khi lưu!"); } finally { setIsSaving(false); }
   };
 
-  // --- CHẤM CÔNG LOGIC V32.0 ---
   const getTimekeepingValue = (staff: ScheduleStaff, day: number) => {
     const username = staff.username || staff.name;
     if (manualTimekeeping[username] && manualTimekeeping[username][day]) {
@@ -157,7 +156,6 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
     return "RC";
   };
 
-  // --- HÀM LƯU TOÀN BỘ BẢNG CÔNG VỀ GOOGLE SHEET V32.0 ---
   const handleSaveFullTable = async (showSuccess = true) => {
     if (isTableSyncing) return;
     setIsTableSyncing(true);
@@ -199,7 +197,6 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
       if (res && res.success) {
           if (res.message) alert(res.message); 
           await fetchData();
-          // Tự động lưu bảng sau khi điểm danh thành công
           handleSaveFullTable(false);
       }
       else alert(res?.error || "Lỗi xử lý điểm danh");
@@ -227,7 +224,6 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
                 [username]: { ...(prev[username] || {}), [day]: newVal }
             }));
             setManualInputModal(null);
-            // Tự động lưu lại toàn bộ bảng sau khi chỉnh sửa thủ công
             setTimeout(() => handleSaveFullTable(false), 500);
         }
     } finally { setIsSaving(false); }
@@ -267,7 +263,15 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
 
   const todayStr = getTodayGMT7();
   const todayRecord = attendance.find(r => String(r.username) === String(user.username) && String(r.date).startsWith(todayStr));
-  const todayOTRecord = otAttendance.find(r => String(r.username) === String(user.username) && String(r.date).startsWith(todayStr) && !r.checkOut);
+  
+  // Sửa logic tìm ca OT hôm nay: Ưu tiên ca chưa checkout bất kể ngày bắt đầu (để support ca đêm)
+  const todayOTRecord = useMemo(() => {
+      return otAttendance.find(r => 
+          String(r.username) === String(user.username) && 
+          !r.checkOut && 
+          (String(r.date).startsWith(todayStr) || true) // Cho phép ca chưa đóng từ ngày hôm trước hiển thị
+      );
+  }, [otAttendance, user.username, todayStr]);
 
   if (loading) return (
     <div className="flex items-center justify-center h-full py-20 flex-col gap-6">
@@ -561,8 +565,8 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
                  <h3 className="text-xl font-black text-slate-900 uppercase mb-2 tracking-tight">Xác nhận xóa?</h3>
                  <p className="text-xs font-bold text-slate-500 leading-relaxed mb-8">Bạn có chắc chắn muốn xóa nhân sự <span className="text-rose-600 font-black">{deleteStaffConfirm.name}</span> khỏi bảng ca trực?</p>
                  <div className="flex gap-3">
-                    <button onClick={() => setDeleteStaffConfirm(null)} className="flex-1 py-3.5 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest">Hủy</button>
-                    <button onClick={executeActualRemove} disabled={isSaving} className="flex-1 py-3.5 bg-rose-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center justify-center gap-2">
+                    <button onClick={() => setDeleteStaffConfirm(null)} className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl text-[10px] font-black uppercase tracking-widest">Hủy</button>
+                    <button onClick={executeActualRemove} disabled={isSaving} className="flex-1 py-4 bg-rose-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center justify-center gap-2">
                        {isSaving ? <Loader2 size={14} className="animate-spin"/> : <Trash2 size={14}/>} Xóa ngay
                     </button>
                  </div>

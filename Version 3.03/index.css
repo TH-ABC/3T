@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -14,8 +15,8 @@
   }
   
   .admin-red-gradient {
-    color: #ff0000; /* Fallback color */
-    background: linear-gradient(to right, #ff0000, #ff4d4d, #ff9900, #ff4d4d, #ff0000);
+    color: #cc0000; /* Darker red fallback for better contrast */
+    background: linear-gradient(to right, #e11d48, #f43f5e, #fb923c, #f43f5e, #e11d48);
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -23,6 +24,7 @@
     background-size: 200% auto;
     animation: shine 3s linear infinite;
     font-weight: 900 !important;
+    text-shadow: 0 1px 0 rgba(255,255,255,0.1); /* Subtle shadow to pop */
   }
 
   .admin-logo-pulse {

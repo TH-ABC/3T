@@ -13,7 +13,7 @@ function getSheet(n) {
         // Header initialization
         if(n === SHEET_STORES) s.appendRow(['ID','Name','URL','Region','Status','Listing','Sale']);
         else if(n === SHEET_USERS) s.appendRow(['Username','Password','FullName','Role','Email','Phone','Status','Permissions']);
-        else if(n === SHEET_NEWS) s.appendRow(['ID','Title','Content','ImageUrl','Author','Timestamp']);
+        else if(n === SHEET_NEWS) s.appendRow(['ID','Title','Content','ImageUrl','Author','Timestamp', 'IsLocked']);
         else if(n === SHEET_NEWS_COMMENTS) s.appendRow(['ID','NewsID','Username','Comment','Timestamp']);
         else if(n === SHEET_NEWS_LIKES) s.appendRow(['NewsID','Username']);
         else if(n === SHEET_DAILY) s.appendRow(['Date','TotalListing','TotalSale']);
@@ -21,14 +21,19 @@ function getSheet(n) {
         else if(n === SHEET_FILE_INDEX) s.appendRow(['Month','FileID','FileName','CreatedDate']);
         else if(n === SHEET_PL_SKU) s.appendRow(['STT', 'SKU', 'Phân Loại']);
         else if(n === SHEET_PRICES) s.appendRow(['Category', 'Price']);
+        else if(n === SHEET_ATTENDANCE) s.appendRow(['Date', 'Username', 'Name', 'CheckIn', 'CheckOut', 'TotalHours']);
+        else if(n === SHEET_OT_ATTENDANCE) s.appendRow(['Date', 'Username', 'Name', 'CheckIn', 'CheckOut', 'TotalHours', 'Type']);
+        else if(n === SHEET_SCHEDULE_STAFF) s.appendRow(['Name', 'Role', 'Username']);
+        else if(n === SHEET_HANDOVER) s.appendRow(['ID', 'Date', 'Task', 'Assignee', 'DeadlineAt', 'IsSeen', 'Status', 'StartTime', 'EndTime', 'Report', 'FileLink', 'ImageLink', 'CreatedBy', 'ResultLink']);
+        else if(n === SHEET_USER_NOTES) s.appendRow(['Username', 'Date', 'Notes']);
         else if(n === SHEET_FINANCE_META) {
-            s.appendRow(['Categories', 'Payers']);
-            s.appendRow(['Thu Tiền', 'Hoàng']);
-            s.appendRow(['Chi Tiền', 'A Tâm']);
+            s.appendRow(['Categories', 'Payers', 'SubCategories']);
+            s.appendRow(['Thu Tiền', 'Hoàng', 'Lương']);
+            s.appendRow(['Chi Tiền', 'A Tâm', 'Cố định']);
         }
         
-        s.getRange(1, 1, 1, s.getLastColumn()).setFontWeight("bold").setBackground("#f8f9fa");
-        s.setFrozenRows(1);
+        s.getRange(1, 1, 1, s.getLastColumn() || 1).setFontWeight("bold").setBackground("#f8f9fa");
+        if (s.getLastColumn() > 0) s.setFrozenRows(1);
     }
     return s;
 }
