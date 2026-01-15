@@ -87,7 +87,7 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
       if (tab === 'transactions') return allowed.includes('funds');
       if (tab === 'payments') return allowed.includes('payment');
       if (tab === 'printway') return allowed.includes('printway');
-      if (tab === 'ebay') return allowed.includes('printway');
+      if (tab === 'ebay') return allowed.includes('ebay');
       if (tab === 'salary') return allowed.includes('funds');
       return false;
   };
@@ -193,7 +193,6 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
     });
   }, [payments]);
 
-  // Statistics for Payers
   const payerStats = useMemo(() => {
       const stats: Record<string, number> = {};
       transactions.forEach(t => {
@@ -205,7 +204,6 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
       return Object.entries(stats).sort((a, b) => b[1] - a[1]);
   }, [transactions]);
 
-  // Available Stores list
   const availableStores = useMemo(() => {
       const registryStores = meta.stores || [];
       const paymentStores = payments.map(p => p.storeName).filter(Boolean);
@@ -605,7 +603,7 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
                  </div>
                  <button onClick={() => setIsPayerStatsOpen(false)} className="p-3 bg-white border border-slate-200 rounded-2xl text-slate-400 hover:text-slate-900 transition-all hover:bg-slate-50"><X size={20}/></button>
               </div>
-              <div className="p-8 space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
+              <div className="p-8 space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
                  {payerStats.length === 0 ? (
                    <div className="py-20 text-center opacity-30 flex flex-col items-center gap-4">
                       <HelpCircle size={48} />
