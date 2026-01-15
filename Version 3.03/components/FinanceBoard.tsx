@@ -45,6 +45,10 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
   const [isDraggingPrintway, setIsDraggingPrintway] = useState(false);
   const [isDraggingEbay, setIsDraggingEbay] = useState(false);
 
+  // New state for inline editing Payer
+  const [editingPayerId, setEditingPayerId] = useState<string | null>(null);
+  const [updatingPayerIds, setUpdatingPayerIds] = useState<Set<string>>(new Set());
+
   // New states for Funds Modal (+) mechanism
   const [isNewStoreMode, setIsNewStoreMode] = useState(false);
   const [isNewRegionMode, setIsNewRegionMode] = useState(false);
@@ -110,7 +114,7 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
         regions: metaData.regions || ['Us', 'Au', 'VN']
       });
 
-      // Fetch Online Rates (API free không cần key cho basic usage)
+      // Fetch Online Rates
       try {
         const rateRes = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
         const rateJson = await rateRes.json();
@@ -120,7 +124,7 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
                 AUD: rateJson.rates.AUD || 1.54
             });
         }
-      } catch (e) { console.warn("Failed to fetch online rates, using defaults."); }
+      } catch (e) { console.warn("Failed to fetch online rates."); }
 
     } catch (e) { console.error(e); } 
     finally { setLoading(false); }
@@ -189,14 +193,25 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
     });
   }, [payments]);
 
-  // Danh sách Store hiển thị: Gộp từ Registry và từ Lịch sử giao dịch thực tế
+  // Statistics for Payers
+  const payerStats = useMemo(() => {
+      const stats: Record<string, number> = {};
+      transactions.forEach(t => {
+          if (t.category === 'Chi Tiền') {
+              const p = t.payer || "Hoàng";
+              stats[p] = (stats[p] || 0) + robustParseNumber(t.totalAmount);
+          }
+      });
+      return Object.entries(stats).sort((a, b) => b[1] - a[1]);
+  }, [transactions]);
+
+  // Available Stores list
   const availableStores = useMemo(() => {
       const registryStores = meta.stores || [];
       const paymentStores = payments.map(p => p.storeName).filter(Boolean);
       return Array.from(new Set([...registryStores, ...paymentStores])).sort();
   }, [meta.stores, payments]);
 
-  // Map Store -> Region từ lịch sử (dùng cho tự động điền Region)
   const storeRegionMap = useMemo(() => {
     const map: Record<string, string> = {};
     payments.forEach(p => {
@@ -220,26 +235,39 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
     } finally { setIsUploading(false); }
   };
 
+  const handleUpdatePayer = async (id: string, newValue: string) => {
+    if (!newValue || updatingPayerIds.has(id)) return;
+    setUpdatingPayerIds(prev => new Set(prev).add(id));
+    try {
+      const res = await sheetService.updateFinanceField(currentYear, id, 'Payer', newValue);
+      if (res && res.success) {
+        setTransactions(prev => prev.map(t => t.id === id ? { ...t, payer: newValue } : t));
+      } else alert("Lỗi cập nhật: " + (res?.error || "Lỗi lưu"));
+    } catch (e) { alert("Lỗi kết nối."); }
+    finally {
+      setUpdatingPayerIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+      setEditingPayerId(null);
+    }
+  };
+
   const handleAddPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!paymentData.storeName || !paymentData.region) return;
     setIsUploading(true);
     try {
-      // LOGIC CHUYỂN ĐỔI TIỀN TỆ THEO YÊU CẦU
       let convertedUsd = 0;
       const amount = robustParseNumber(paymentData.amount);
 
       if (paymentData.region === 'Us') {
-          convertedUsd = amount; // USD qua USD giữ nguyên
+          convertedUsd = amount;
       } else if (paymentData.region === 'Au') {
-          convertedUsd = amount / rates.AUD; // AU qua USD lấy tỉ giá AUD
+          convertedUsd = amount / rates.AUD; 
       } else if (paymentData.region === 'VN') {
-          convertedUsd = amount / rates.VND; // VNĐ qua USD lấy tỉ giá VND
+          convertedUsd = amount / rates.VND;
       } else {
-          convertedUsd = amount; // Mặc định Us
+          convertedUsd = amount; 
       }
       
-      // Nếu nhập mới (Mode +), lưu vào Registry BE để lần sau hiện ra list xổ
       if (isNewStoreMode && paymentData.storeName) await sheetService.addFinanceMeta('store', paymentData.storeName);
       if (isNewRegionMode && paymentData.region) await sheetService.addFinanceMeta('region', paymentData.region);
 
@@ -255,11 +283,7 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
 
   const handleStoreSelect = (storeName: string) => {
     const matchedRegion = storeRegionMap[storeName] || 'Us';
-    setPaymentData({
-        ...paymentData,
-        storeName,
-        region: matchedRegion as any
-    });
+    setPaymentData({ ...paymentData, storeName, region: matchedRegion as any });
   };
 
   const processPrintwayFile = (file: File) => {
@@ -296,8 +320,8 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
     if (uploadData.length === 0) return;
     setIsUploading(true);
     try {
-      const res = await sheetService.addPrintwayBatch(currentYear, uploadData);
-      if (res && res.success) { alert(`Đã lưu ${res.count} dòng mới.`); setIsPrintwayUploadOpen(false); setUploadData([]); loadData(); }
+      const res = await sheetService.syncPrintwayData(currentYear, uploadData);
+      if (res && res.success) { alert(`Đã đồng bộ ${res.updatedCount} dòng mới.`); setIsPrintwayUploadOpen(false); setUploadData([]); loadData(); }
       else alert("Lỗi: " + (res?.error || "Lỗi lưu"));
     } finally { setIsUploading(false); }
   };
@@ -403,6 +427,13 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
             <select value={currentYear} onChange={(e) => setCurrentYear(e.target.value)} className="px-4 py-2.5 bg-slate-100 border rounded-xl text-xs font-black">
                {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y.toString()}>Năm {y}</option>)}
             </select>
+            
+            {activeTab === 'transactions' && (
+              <button onClick={() => setIsPayerStatsOpen(true)} className="px-5 py-2.5 bg-white border border-slate-200 text-indigo-600 rounded-xl text-[10px] font-black uppercase shadow-sm hover:bg-slate-50 flex items-center gap-2">
+                 <PieChart size={16}/> Thống kê người chi
+              </button>
+            )}
+
             <button onClick={() => { 
                 if (activeTab === 'transactions') setIsAddModalOpen(true); 
                 else if (activeTab === 'payments') setIsAddPaymentOpen(true); 
@@ -415,7 +446,7 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
       </div>
 
       <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 overflow-hidden flex-1 flex flex-col min-h-[500px]">
-         <div className="p-5 border-b border-slate-100 flex justify-between items-center gap-4 bg-slate-50/30">
+         <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4 bg-slate-50/30">
             <div className="relative flex-1 max-w-md">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                 <input type="text" placeholder="Tìm kiếm..." className="pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-2xl text-xs font-bold w-full outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
@@ -491,16 +522,39 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
                         <td className="px-6 py-4 text-center text-slate-500 text-[10px] font-bold">{p.date.split(' ')[0]}</td>
                       </tr>
                     ))}
-                    {activeTab === 'transactions' && transactions.filter(t => t.description.toLowerCase().includes(searchTerm.toLowerCase())).map((t, i) => (
+                    {activeTab === 'transactions' && transactions.filter(t => t.description.toLowerCase().includes(searchTerm.toLowerCase())).map((t, i) => {
+                      const isUpdating = updatingPayerIds.has(t.id);
+                      return (
                       <tr key={i} className="hover:bg-slate-50/50">
                         <td className="px-6 py-4 text-center text-slate-500 font-mono text-xs">{i+1}</td>
                         <td className="px-6 py-4 font-bold text-slate-700">{t.description}</td>
                         <td className="px-6 py-4 text-[10px] font-black text-indigo-500 uppercase">{t.subCategory}</td>
                         <td className="px-6 py-4 text-right font-black text-slate-800">{t.totalAmount.toLocaleString()} đ</td>
-                        <td className="px-6 py-4 text-center text-[10px] font-black uppercase text-slate-500">{t.payer}</td>
+                        <td className="px-6 py-4 text-center align-middle">
+                           {isUpdating ? (
+                             <div className="flex justify-center"><Loader2 size={14} className="animate-spin text-indigo-500" /></div>
+                           ) : editingPayerId === t.id ? (
+                             <select 
+                               autoFocus
+                               value={t.payer} 
+                               onBlur={() => setEditingPayerId(null)}
+                               onChange={(e) => handleUpdatePayer(t.id, e.target.value)}
+                               className="bg-white border border-indigo-200 rounded-lg px-2 py-1 text-[10px] font-black uppercase text-indigo-600 outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm"
+                             >
+                               {meta.payers.map(p => <option key={p} value={p}>{p}</option>)}
+                             </select>
+                           ) : (
+                             <button 
+                               onClick={() => setEditingPayerId(t.id)}
+                               className="px-3 py-1 rounded-lg text-[10px] font-black uppercase text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 transition-all border border-transparent hover:border-indigo-100 flex items-center justify-center gap-1 mx-auto"
+                             >
+                               {t.payer} <Edit2 size={10} className="opacity-0 group-hover:opacity-100" />
+                             </button>
+                           )}
+                        </td>
                         <td className="px-6 py-4 text-center text-slate-500 text-[10px] font-bold">{t.date.split(' ')[0]}</td>
                       </tr>
-                    ))}
+                    )})}
                     {activeTab === 'payments' && sortedPayments.filter(p => p.storeName.toLowerCase().includes(searchTerm.toLowerCase())).map((p, i) => (
                       <tr key={i} className="hover:bg-slate-50/50">
                         <td className="px-6 py-4 text-center text-slate-500 font-mono text-xs">{i+1}</td>
@@ -534,6 +588,55 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
             )}
          </div>
       </div>
+
+      {/* PAYER STATS MODAL */}
+      {isPayerStatsOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[300] flex items-center justify-center p-4">
+           <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden animate-slide-in border border-white/20">
+              <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-gray-50/50">
+                 <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-100">
+                       <PieChart size={24} />
+                    </div>
+                    <div>
+                       <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Thống kê người chi</h3>
+                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Tổng hợp chi phí năm {currentYear}</p>
+                    </div>
+                 </div>
+                 <button onClick={() => setIsPayerStatsOpen(false)} className="p-3 bg-white border border-slate-200 rounded-2xl text-slate-400 hover:text-slate-900 transition-all hover:bg-slate-50"><X size={20}/></button>
+              </div>
+              <div className="p-8 space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                 {payerStats.length === 0 ? (
+                   <div className="py-20 text-center opacity-30 flex flex-col items-center gap-4">
+                      <HelpCircle size={48} />
+                      <p className="text-xs font-black uppercase tracking-widest">Chưa có dữ liệu chi</p>
+                   </div>
+                 ) : (
+                   payerStats.map(([name, total]) => (
+                     <div key={name} className="flex items-center justify-between p-5 bg-slate-50 rounded-2xl border border-slate-100 group hover:bg-white hover:shadow-md transition-all">
+                        <div className="flex items-center gap-4">
+                           <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center font-black text-indigo-600 text-xs shadow-sm group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                              {name.charAt(0).toUpperCase()}
+                           </div>
+                           <div>
+                              <p className="text-sm font-black text-slate-800 uppercase tracking-tighter">{name}</p>
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nhân sự hệ thống</p>
+                           </div>
+                        </div>
+                        <div className="text-right">
+                           <p className="text-sm font-black text-slate-900">{total.toLocaleString()} đ</p>
+                           <p className="text-[9px] font-bold text-indigo-500 uppercase tracking-tighter">~ {formatCurrency(total / rates.VND)}</p>
+                        </div>
+                     </div>
+                   ))
+                 )}
+              </div>
+              <div className="p-8 bg-gray-50 border-t border-slate-100 text-center">
+                 <button onClick={() => setIsPayerStatsOpen(false)} className="w-full py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-slate-200 active:scale-95 transition-all">Đóng báo cáo</button>
+              </div>
+           </div>
+        </div>
+      )}
 
       {/* ADD TRANSACTION MODAL */}
       {isAddModalOpen && (
