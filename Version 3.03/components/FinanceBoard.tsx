@@ -12,8 +12,29 @@ interface FinanceBoardProps {
 type FinanceTab = 'transactions' | 'payments' | 'printway' | 'ebay' | 'salary';
 
 export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
+  const isAdmin = user.role.toLowerCase() === 'admin';
+  const canViewSummary = isAdmin || user.permissions?.canViewFinanceSummary === true;
+  const financeScope = user.permissions?.finance || 'all';
+
+  const hasAccess = (tab: FinanceTab) => {
+      if (isAdmin || financeScope === 'all') return true;
+      const allowed = financeScope.split(',');
+      if (tab === 'transactions') return allowed.includes('funds');
+      if (tab === 'payments') return allowed.includes('payment');
+      if (tab === 'printway') return allowed.includes('printway');
+      if (tab === 'ebay') return allowed.includes('ebay');
+      if (tab === 'salary') return allowed.includes('funds');
+      return false;
+  };
+
+  // FIX: Tự động xác định tab mặc định dựa trên phân quyền thay vì cứng nhắc 'transactions'
+  const [activeTab, setActiveTab] = useState<FinanceTab>(() => {
+      const tabs: FinanceTab[] = ['transactions', 'payments', 'printway', 'ebay', 'salary'];
+      const firstAllowed = tabs.find(t => hasAccess(t));
+      return firstAllowed || 'transactions';
+  });
+
   const [currentYear, setCurrentYear] = useState<string>(new Date().getFullYear().toString());
-  const [activeTab, setActiveTab] = useState<FinanceTab>('transactions');
   const [transactions, setTransactions] = useState<FinanceTransaction[]>([]);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [printwayRecords, setPrintwayRecords] = useState<PrintwayRecord[]>([]);
@@ -45,11 +66,11 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
   const [isDraggingPrintway, setIsDraggingPrintway] = useState(false);
   const [isDraggingEbay, setIsDraggingEbay] = useState(false);
 
-  // New state for inline editing Payer
+  // Inline editing state
   const [editingPayerId, setEditingPayerId] = useState<string | null>(null);
   const [updatingPayerIds, setUpdatingPayerIds] = useState<Set<string>>(new Set());
 
-  // New states for Funds Modal (+) mechanism
+  // Funds Modal (+) mechanism
   const [isNewStoreMode, setIsNewStoreMode] = useState(false);
   const [isNewRegionMode, setIsNewRegionMode] = useState(false);
 
@@ -77,21 +98,6 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
     date: new Date().toISOString().split('T')[0]
   });
 
-  const isAdmin = user.role.toLowerCase() === 'admin';
-  const canViewSummary = isAdmin || user.permissions?.canViewFinanceSummary === true;
-  const financeScope = user.permissions?.finance || 'all';
-
-  const hasAccess = (tab: FinanceTab) => {
-      if (isAdmin || financeScope === 'all') return true;
-      const allowed = financeScope.split(',');
-      if (tab === 'transactions') return allowed.includes('funds');
-      if (tab === 'payments') return allowed.includes('payment');
-      if (tab === 'printway') return allowed.includes('printway');
-      if (tab === 'ebay') return allowed.includes('ebay');
-      if (tab === 'salary') return allowed.includes('funds');
-      return false;
-  };
-
   const loadData = async () => {
     setLoading(true);
     try {
@@ -114,7 +120,6 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
         regions: metaData.regions || ['Us', 'Au', 'VN']
       });
 
-      // Fetch Online Rates
       try {
         const rateRes = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
         const rateJson = await rateRes.json();
