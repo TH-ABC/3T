@@ -148,7 +148,6 @@ const UserManagement: React.FC = () => {
       finally { setIsSubmitting(false); }
   };
 
-  // Logic xử lý đa chọn cho Finance
   const toggleFinanceScope = (scopeId: string) => {
       let current = editPerms.finance || 'none';
       
@@ -161,7 +160,6 @@ const UserManagement: React.FC = () => {
           return;
       }
 
-      // Xử lý chuỗi nhiều scope
       if (current === 'all' || current === 'none') {
           setEditPerms({...editPerms, finance: scopeId});
       } else {
@@ -403,7 +401,6 @@ const UserManagement: React.FC = () => {
                   </div>
                   
                   <div className="p-8 overflow-y-auto custom-scrollbar space-y-8">
-                      {/* Section: Feature Rights */}
                       <div className="bg-orange-50 border border-orange-100 rounded-3xl p-6 space-y-6">
                         <h4 className="text-[11px] font-black text-orange-600 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
                            <Sparkles size={14} /> Đặc quyền bổ sung
@@ -466,15 +463,15 @@ const UserManagement: React.FC = () => {
                             </div>
                         ))}
 
-                        {/* Module Tài Chính hỗ trợ chọn nhiều cùng lúc */}
                         <div className="flex flex-col gap-2 col-span-1 md:col-span-2 mt-4 pt-4 border-t border-slate-100">
                             <label className="text-[11px] font-black text-indigo-600 uppercase tracking-widest ml-1">Module Tài Chính (Được chọn nhiều)</label>
-                            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                            <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
                                 {[
                                     { id: 'all', label: 'Toàn bộ' },
                                     { id: 'payment', label: 'Payment' },
                                     { id: 'funds', label: 'Sổ Quỹ' },
                                     { id: 'printway', label: 'Printway' },
+                                    { id: 'ebay', label: 'Ebay' },
                                     { id: 'none', label: 'Khóa' }
                                 ].map((scope) => (
                                     <label key={scope.id} className={`cursor-pointer border-2 rounded-xl px-2 py-3 text-[10px] font-black uppercase tracking-widest text-center transition-all flex items-center justify-center ${isFinanceScopeChecked(scope.id) ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg scale-105' : 'bg-white text-gray-400 border-gray-100 hover:border-indigo-200'}`}>
