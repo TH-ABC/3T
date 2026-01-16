@@ -1,114 +1,47 @@
 
 /**
  * ==========================================
- * LOGIC_ORDER_SYNC.GS: MAPPING & SYNC V38.0
+ * LOGIC_ORDER_SYNC.GS: MAPPING & SYNC V42.0
  * PHỤC VỤ COMPONENTS: OrderList, DesignerList, Dashboard
  * ==========================================
  */
 
-// 1. Lấy danh sách mapping SKU
-function getSkuMappings() {
-  const s = getSheet(SHEET_PL_SKU);
-  const d = s.getDataRange().getValues();
-  if (d.length <= 1) return [];
-  d.shift();
-  return d.map(r => ({ sku: r[1], category: r[2] }));
+function handleSyncPrintwayData(month, list) {
+    if (!list || list.length === 0) return { success: true, updatedCount: 0 };
+    const fileId = getFileIdForMonth(month);
+    if (!fileId) return { success: false, error: "Không tìm thấy File đơn hàng cho tháng " + month };
+    try {
+        const ss = SpreadsheetApp.openById(fileId);
+        const sheet = ss.getSheets()[0];
+        const data = sheet.getDataRange().getValues();
+        const invoiceIds = new Set();
+        list.forEach(item => { const id = String(item.invoiceId || "").trim(); if (id) invoiceIds.add(id); });
+        let count = 0;
+        for (let r = 1; r < data.length; r++) {
+            const orderId = String(data[r][1]).trim();
+            if (invoiceIds.has(orderId)) {
+                sheet.getRange(r + 1, 9).setValue("Fulfilled");
+                sheet.getRange(r + 1, 28).setValue("TRUE");
+                count++;
+            }
+        }
+        return { success: true, updatedCount: count };
+    } catch (e) {
+        return { success: false, error: e.toString() };
+    }
 }
 
-// 2. Cập nhật phân loại cho SKU
-function handleUpdateSkuCategory(sku, category) {
-  const s = getSheet(SHEET_PL_SKU);
-  const d = s.getDataRange().getValues();
-  const skuLower = sku ? String(sku).toLowerCase().trim() : '';
-  if (!skuLower) return { success: false };
-  for(let i = 1; i < d.length; i++){
-    const rowSku = d[i][1] ? String(d[i][1]).toLowerCase().trim() : '';
-    if(rowSku === skuLower){ s.getRange(i + 1, 3).setValue(category); return { success: true }; }
-  }
-  s.appendRow([d.length, sku, category]); return { success: true };
-}
-
-// 3. Lấy bảng giá theo phân loại
-function getPriceMappings() {
-  const s = getSheet(SHEET_PRICES);
-  const d = s.getDataRange().getValues();
-  if (d.length <= 1) return [];
-  d.shift();
-  return d.map(r => ({ category: r[0], price: r[1] }));
-}
-
-// 4. Cập nhật giá cho phân loại
-function handleUpdateCategoryPrice(category, price) {
-  const s = getSheet(SHEET_PRICES);
-  const d = s.getDataRange().getValues();
-  const catLower = category ? String(category).toLowerCase().trim() : '';
-  if (!catLower) return { success: false };
-  for(let i = 1; i < d.length; i++){
-    const rowCat = d[i][0] ? String(d[i][0]).toLowerCase().trim() : '';
-    if(rowCat === catLower){ s.getRange(i + 1, 2).setValue(price); return { success: true }; }
-  }
-  s.appendRow([category, price]); return { success: true };
-}
-
-// 5. Cập nhật đơn hàng hàng loạt
 function handleBatchUpdateOrder(data) {
     const s = SpreadsheetApp.openById(data.fileId).getSheets()[0];
     const v = s.getDataRange().getValues();
     const ids = new Set(data.orderIds.map(String));
-    const col = data.field === 'isChecked' ? 13 : 28; // 13: Paid, 28: Fulfilled
+    const col = data.field === 'isChecked' ? 13 : 28;
     const list = [];
     for (let r = 1; r < v.length; r++) if (ids.has(String(v[r][1]))) list.push(s.getRange(r+1, col).getA1Notation());
     if (list.length > 0) s.getRangeList(list).setValue(data.value ? "TRUE" : "FALSE");
     return { success: true };
 }
 
-/**
- * 6. Đồng bộ đơn hàng từ dữ liệu Printway (Invoice list)
- * Không lưu dữ liệu thô, chỉ dùng để đánh dấu Fulfilled
- */
-function handleSyncPrintwayData(month, list) {
-    if (!list || list.length === 0) return { success: true, updatedCount: 0 };
-    
-    const fileId = getFileIdForMonth(month);
-    if (!fileId) return { success: false, error: "Không tìm thấy File đơn hàng cho tháng " + month };
-    
-    try {
-        const ss = SpreadsheetApp.openById(fileId);
-        const sheet = ss.getSheets()[0];
-        const data = sheet.getDataRange().getValues();
-        
-        // Tạo Set các mã invoice hợp lệ từ file upload
-        const invoiceIds = new Set();
-        list.forEach(item => {
-            const id = String(item.invoiceId || "").trim();
-            if (id) invoiceIds.add(id);
-        });
-        
-        let count = 0;
-        const updatesStatus = [];
-        const updatesFulfilled = [];
-        
-        for (let r = 1; r < data.length; r++) {
-            const orderId = String(data[r][1]).trim();
-            if (invoiceIds.has(orderId)) {
-                // Cập nhật trạng thái (Cột 9 - Index 8) và Fulfilled (Cột 28 - Index 27)
-                updatesStatus.push({range: sheet.getRange(r + 1, 9), value: "Fulfilled"});
-                updatesFulfilled.push({range: sheet.getRange(r + 1, 28), value: "TRUE"});
-                count++;
-            }
-        }
-        
-        // Thực hiện ghi dữ liệu xuống sheet
-        updatesStatus.forEach(up => up.range.setValue(up.value));
-        updatesFulfilled.forEach(up => up.range.setValue(up.value));
-        
-        return { success: true, updatedCount: count };
-    } catch (e) {
-        return { success: false, error: "Lỗi đồng bộ: " + e.toString() };
-    }
-}
-
-// 7. Cập nhật trạng thái Designer hàng loạt
 function handleBatchUpdateDesigner(data) {
     const ss = SpreadsheetApp.openById(data.fileId);
     const ids = new Set(data.orderIds.map(String));
@@ -122,13 +55,12 @@ function handleBatchUpdateDesigner(data) {
         const s = ss.getSheetByName(name); if (!s) return;
         const d = s.getDataRange().getValues();
         const listSub = [];
-        for(let r=1; r<d0.length; r++) if(ids.has(String(d[r][2]))) listSub.push(s.getRange(r+1, 10).getA1Notation());
+        for(let r=1; r<d.length; r++) if(ids.has(String(d[r][1]))) listSub.push(s.getRange(r+1, 14).getA1Notation());
         if(listSub.length > 0) s.getRangeList(listSub).setValue(val);
     });
     return { success: true };
 }
 
-// 8. Đồng bộ trạng thái Printway
 function handleSyncPW(fid) {
   try {
     const ss = SpreadsheetApp.openById(fid);
@@ -151,7 +83,6 @@ function handleSyncPW(fid) {
   } catch(e) { return { success: false, error: e.toString() }; }
 }
 
-// 9. Đồng bộ trạng thái Fulfillment
 function handleSyncFF(fid) {
   try {
     const ss = SpreadsheetApp.openById(fid);
@@ -171,21 +102,58 @@ function handleSyncFF(fid) {
   } catch(e) { return { success: false, error: e.toString() }; }
 }
 
-// 10. Đồng bộ tổng hợp Fulfillment (PW + FF)
 function handleSyncFulfillment(fid) { 
   const resPW = handleSyncPW(fid); 
   const resFF = handleSyncFF(fid); 
   return { success: resPW.success || resFF.success, updatedCount: (resPW.updatedCount || 0) + (resFF.updatedCount || 0) }; 
 }
 
-// 11. Lấy lịch sử biến động Store (Listing/Sale)
+function getSkuMappings() {
+  const s = getSheet(SHEET_PL_SKU);
+  const d = s.getDataRange().getValues();
+  if (d.length <= 1) return [];
+  d.shift();
+  return d.map(r => ({ sku: r[1], category: r[2] }));
+}
+
+function handleUpdateSkuCategory(sku, category) {
+  const s = getSheet(SHEET_PL_SKU);
+  const d = s.getDataRange().getValues();
+  const skuLower = sku ? String(sku).toLowerCase().trim() : '';
+  if (!skuLower) return { success: false };
+  for(let i = 1; i < d.length; i++){
+    const rowSku = d[i][1] ? String(d[i][1]).toLowerCase().trim() : '';
+    if(rowSku === skuLower){ s.getRange(i + 1, 3).setValue(category); return { success: true }; }
+  }
+  s.appendRow([d.length, sku, category]); return { success: true };
+}
+
+function getPriceMappings() {
+  const s = getSheet(SHEET_PRICES);
+  const d = s.getDataRange().getValues();
+  if (d.length <= 1) return [];
+  d.shift();
+  return d.map(r => ({ category: r[0], price: r[1] }));
+}
+
+function handleUpdateCategoryPrice(category, price) {
+  const s = getSheet(SHEET_PRICES);
+  const d = s.getDataRange().getValues();
+  const catLower = category ? String(category).toLowerCase().trim() : '';
+  if (!catLower) return { success: false };
+  for(let i = 1; i < d.length; i++){
+    const rowCat = d[i][0] ? String(d[i][0]).toLowerCase().trim() : '';
+    if(rowCat === catLower){ s.getRange(i + 1, 2).setValue(price); return { success: true }; }
+  }
+  s.appendRow([category, price]); return { success: true };
+}
+
 function getStoreHistory(id) { 
   const d = getSheet(SHEET_STORE_HISTORY).getDataRange().getValues(); 
   d.shift(); 
   return d.filter(r => String(r[1]) == String(id)).map(r => ({ date: formatDate(r[0]), listing: r[2], sale: r[3] })); 
 }
 
-// 12. Chốt số liệu hàng ngày tự động (Snapshot)
 function autoRecordDailyStats(isDebug) {
   const st = getSheet(SHEET_STORES).getDataRange().getValues(); st.shift(); 
   let tL = 0; let tS = 0; 

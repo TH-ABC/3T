@@ -201,6 +201,28 @@ export interface EbayRecord {
   cardRemark: string;
 }
 
+export interface GKERecord {
+  orderNumber: string;
+  trackingNumber: string;
+  country: string;
+  consigneeName: string;
+  state: string;
+  city: string;
+  address: string;
+  postcode: string;
+  productName: string;
+  value: number;
+  quantity: number;
+  weightCustomer: number;
+  weightGKE: number;
+  cost: number;
+  creative: string;
+  dateReceived: string;
+  status: string;
+  linkLabel: string;
+  linkQR: string;
+}
+
 export interface StaffSalarySummary {
   month: string;
   amountVnd: number;
