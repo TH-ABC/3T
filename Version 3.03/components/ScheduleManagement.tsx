@@ -6,7 +6,7 @@ import {
   ChevronLeft, ChevronRight, User as UserIcon, Coffee,
   CalendarDays, Zap, MoreHorizontal, ChevronDown, Sparkles,
   Award, Star, Moon, Sun, Flag, ClipboardCheck, LayoutList, X, MousePointer2,
-  Check, AlertTriangle, Edit2, FileSpreadsheet
+  Check, AlertTriangle, Edit2, FileSpreadsheet, Info
 } from 'lucide-react';
 import { sheetService } from '../services/sheetService';
 import { User, ScheduleStaff, AttendanceRecord, OTRecord } from '../types';
@@ -124,6 +124,24 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
       if (res && res.success) alert("Lưu danh sách nhân sự thành công!");
       else alert("Lỗi: " + (res?.error || "Không thể lưu"));
     } catch (e) { alert("Lỗi khi lưu!"); } finally { setIsSaving(false); }
+  };
+
+  const handleToggleHoliday = async (day: number) => {
+    if (!isAdmin) return;
+    const dateStr = `${getSelectedMonthStr()}-${day.toString().padStart(2, '0')}`;
+    setIsSaving(true);
+    try {
+        const res = await sheetService.toggleHoliday(dateStr);
+        if (res.success) {
+            if (res.isHoliday) setHolidays([...holidays, dateStr]);
+            else setHolidays(holidays.filter(h => h !== dateStr));
+            await fetchData(); // Cập nhật lại toàn bộ để reset loại OT
+        }
+    } catch (e) {
+        alert("Lỗi khi cập nhật ngày lễ");
+    } finally {
+        setIsSaving(false);
+    }
   };
 
   const getTimekeepingValue = (staff: ScheduleStaff, day: number) => {
@@ -264,12 +282,11 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
   const todayStr = getTodayGMT7();
   const todayRecord = attendance.find(r => String(r.username) === String(user.username) && String(r.date).startsWith(todayStr));
   
-  // Sửa logic tìm ca OT hôm nay: Ưu tiên ca chưa checkout bất kể ngày bắt đầu (để support ca đêm)
   const todayOTRecord = useMemo(() => {
       return otAttendance.find(r => 
           String(r.username) === String(user.username) && 
           !r.checkOut && 
-          (String(r.date).startsWith(todayStr) || true) // Cho phép ca chưa đóng từ ngày hôm trước hiển thị
+          (String(r.date).startsWith(todayStr) || true)
       );
   }, [otAttendance, user.username, todayStr]);
 
@@ -360,6 +377,9 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
                     </div>
                     {isAdmin && (
                         <div className="flex gap-2">
+                            <div className="hidden sm:flex items-center gap-2 px-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest border-r border-slate-200 mr-2">
+                                <Info size={12} className="text-indigo-500" /> Nhấn vào cột ngày để đặt Ngày Lễ
+                            </div>
                             <button onClick={handleAddStaff} className="p-2.5 bg-slate-100 text-slate-500 rounded-xl hover:bg-indigo-600 hover:text-white transition-all"><Plus size={20}/></button>
                             <button onClick={handleSaveSchedule} disabled={isSaving} className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase flex items-center gap-2 active:scale-95 shadow-lg">
                                 {isSaving ? <Loader2 size={14} className="animate-spin"/> : <Save size={14}/>} Lưu Nhân Sự
@@ -373,9 +393,23 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
                         <thead className="bg-slate-50 text-[10px] uppercase text-slate-400 font-black tracking-widest border-b border-slate-100">
                             <tr>
                                 <th className="px-8 py-5 w-64 sticky left-0 bg-white z-20 border-r border-slate-100 shadow-[10px_0_15px_-10px_rgba(0,0,0,0.08)]">Nhân sự</th>
-                                {days.map(d => (
-                                    <th key={d} className="py-5 text-center border-l border-slate-50 w-24 font-black">{d}</th>
-                                ))}
+                                {days.map(d => {
+                                    const dateStr = `${getSelectedMonthStr()}-${d.toString().padStart(2, '0')}`;
+                                    const isHoli = holidays.includes(dateStr);
+                                    return (
+                                        <th 
+                                            key={d} 
+                                            onClick={() => handleToggleHoliday(d)}
+                                            className={`py-5 text-center border-l border-slate-50 w-24 font-black transition-colors ${isAdmin ? 'cursor-pointer hover:bg-indigo-100' : ''} ${isHoli ? 'bg-rose-100 text-rose-700 shadow-inner' : ''}`}
+                                            title={isAdmin ? "Nhấn để bật/tắt Ngày Lễ" : ""}
+                                        >
+                                            <div className="flex flex-col items-center gap-1">
+                                                {isHoli && <Flag size={10} className="text-rose-500 fill-rose-500" />}
+                                                <span>{d}</span>
+                                            </div>
+                                        </th>
+                                    );
+                                })}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
@@ -397,8 +431,10 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
                                     {days.map(d => {
                                         const data = getAttendanceData(staff.username || staff.name, d);
                                         const ot = getOTData(staff.username || staff.name, d);
+                                        const dateStr = `${getSelectedMonthStr()}-${d.toString().padStart(2, '0')}`;
+                                        const isHoli = holidays.includes(dateStr);
                                         return (
-                                            <td key={d} className="p-1.5 text-center border-l border-slate-50">
+                                            <td key={d} className={`p-1.5 text-center border-l border-slate-50 ${isHoli ? 'bg-rose-50/30' : ''}`}>
                                                 <div className="flex flex-col gap-1">
                                                     {data && <div className={`p-1 rounded-lg border text-[8px] font-black ${data.checkOut ? 'bg-indigo-50/50 border-indigo-100 text-indigo-700' : 'bg-amber-50 border-amber-200 animate-pulse text-amber-700'}`}>{data.checkIn?.slice(0,5)} - {data.checkOut?.slice(0,5) || "..."}</div>}
                                                     {ot && <div className="p-1 rounded-lg border bg-orange-50 border-orange-100 text-orange-700 text-[8px] font-black">OT: {ot.totalHours?.toFixed(2)}h</div>}
@@ -470,9 +506,23 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
                     <thead className="bg-slate-50 text-[10px] uppercase text-slate-400 font-black tracking-widest border-b border-slate-100">
                         <tr>
                             <th className="px-8 py-5 w-64 sticky left-0 bg-white z-20 border-r border-slate-100 shadow-[10px_0_15px_-10px_rgba(0,0,0,0.08)]">Nhân sự</th>
-                            {days.map(d => (
-                                <th key={d} className="py-5 text-center border-l border-slate-50 w-12 font-black">{d}</th>
-                            ))}
+                            {days.map(d => {
+                                const dateStr = `${getSelectedMonthStr()}-${d.toString().padStart(2, '0')}`;
+                                const isHoli = holidays.includes(dateStr);
+                                return (
+                                    <th 
+                                        key={d} 
+                                        onClick={() => handleToggleHoliday(d)}
+                                        className={`py-5 text-center border-l border-slate-50 w-12 font-black transition-colors ${isAdmin ? 'cursor-pointer hover:bg-indigo-100' : ''} ${isHoli ? 'bg-rose-100 text-rose-700' : ''}`}
+                                        title={isAdmin ? "Nhấn để bật/tắt Ngày Lễ" : ""}
+                                    >
+                                        <div className="flex flex-col items-center gap-1">
+                                            {isHoli && <Flag size={8} className="text-rose-500 fill-rose-500" />}
+                                            <span>{d}</span>
+                                        </div>
+                                    </th>
+                                );
+                            })}
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
@@ -487,7 +537,8 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
                                     const isManual = manualTimekeeping[staff.username || staff.name]?.[d];
                                     const dateObj = new Date(selectedYear, selectedMonth - 1, d);
                                     const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
-                                    const isHoli = holidays.includes(`${getSelectedMonthStr()}-${d.toString().padStart(2, '0')}`);
+                                    const dateStr = `${getSelectedMonthStr()}-${d.toString().padStart(2, '0')}`;
+                                    const isHoli = holidays.includes(dateStr);
                                     return (
                                         <td 
                                           key={d} 

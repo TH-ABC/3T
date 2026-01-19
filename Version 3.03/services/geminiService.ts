@@ -1,16 +1,11 @@
+
 import { GoogleGenAI } from "@google/genai";
 import { DashboardMetrics, DailyStat } from '../types';
 
-const getClient = () => {
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) return null;
-    return new GoogleGenAI({ apiKey });
-};
-
 export const geminiService = {
   analyzeBusiness: async (metrics: DashboardMetrics, chartData: DailyStat[]) => {
-    const ai = getClient();
-    if (!ai) return "Vui lòng cấu hình API KEY để sử dụng AI studio.";
+    // FIX: Obtain the API key exclusively from process.env.API_KEY and initialize right before the call
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
     const prompt = `
       Bạn là một trợ lý phân tích dữ liệu kinh doanh chuyên nghiệp cho Team 3T.
@@ -28,9 +23,11 @@ export const geminiService = {
 
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        // FIX: Using gemini-3-pro-preview for complex reasoning and business analysis
+        model: 'gemini-3-pro-preview',
         contents: prompt,
       });
+      // Accessing response.text directly as a property as per GenAI SDK guidelines
       return response.text;
     } catch (error) {
       console.error("Gemini Error:", error);

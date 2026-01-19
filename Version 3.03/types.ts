@@ -48,7 +48,6 @@ export interface DailyStat {
   totalSale: number;
 }
 
-// --- ATTENDANCE & SCHEDULE ---
 export interface ScheduleStaff {
   name: string;
   role: string;
@@ -74,7 +73,6 @@ export interface OTRecord {
   type: 'Normal' | 'Weekend' | 'Holiday';
 }
 
-// --- HANDOVER TYPES ---
 export type HandoverStatus = 'Pending' | 'Processing' | 'Completed' | 'Overdue';
 
 export interface HandoverItem {
@@ -107,7 +105,6 @@ export interface UserNote {
   showPlanner?: boolean; 
 }
 
-// --- NEWS TYPES ---
 export interface NewsItem {
   id: string;
   title: string;
@@ -129,7 +126,6 @@ export interface NewsComment {
   timestamp: string;
 }
 
-// --- AUTH & PERMISSIONS ---
 export type ViewScope = 'all' | 'own' | 'none';
 export type FinanceScope = string;
 
@@ -158,6 +154,12 @@ export interface User {
   phone?: string;
 }
 
+export interface AuthResponse {
+  success: boolean;
+  user?: User;
+  error?: string;
+}
+
 export interface FinanceTransaction {
   id: string;
   date: string;
@@ -181,6 +183,7 @@ export interface PaymentRecord {
   timestamp?: string;
 }
 
+// Fixed: Added fee property to PrintwayRecord
 export interface PrintwayRecord {
   invoiceId: string;
   type: string;
@@ -189,6 +192,7 @@ export interface PrintwayRecord {
   date: string;
   method: string;
   amountUsd: number;
+  fee?: number;
   totalAmount: number;
   note: string;
 }
@@ -202,31 +206,26 @@ export interface EbayRecord {
 }
 
 export interface GKERecord {
+  date: string;
   orderNumber: string;
   trackingNumber: string;
-  country: string;
-  consigneeName: string;
-  state: string;
-  city: string;
-  address: string;
-  postcode: string;
-  productName: string;
-  value: number;
-  quantity: number;
-  weightCustomer: number;
-  weightGKE: number;
-  cost: number;
-  creative: string;
-  dateReceived: string;
-  status: string;
-  linkLabel: string;
-  linkQR: string;
+  paymentAmount: number; 
+  topupAmount: number;    
+  note: string;
 }
 
 export interface StaffSalarySummary {
   month: string;
   amountVnd: number;
   amountUsd: number;
+}
+
+export interface FinanceMeta {
+  categories: string[];
+  subCategories: string[];
+  payers: string[];
+  stores: string[];
+  regions: string[];
 }
 
 export interface StoreHistoryItem {
@@ -243,18 +242,4 @@ export interface Role {
 export interface SkuMapping {
   sku: string;
   category: string;
-}
-
-export interface AuthResponse {
-  success: boolean;
-  user?: User;
-  error?: string;
-}
-
-export interface FinanceMeta {
-  categories: string[];
-  subCategories: string[];
-  payers: string[];
-  stores: string[];
-  regions: string[];
 }
