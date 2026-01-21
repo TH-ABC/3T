@@ -183,18 +183,29 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
     });
 
     let ebayOutUsd = 0;
-    ebayRecords.forEach(e => { if (robustParseNumber(e.amount) < 0) ebayOutUsd += Math.abs(robustParseNumber(e.amount)); });
+    let ebayRefundUsd = 0;
+    ebayRecords.forEach(e => { 
+        const amt = robustParseNumber(e.amount);
+        const typeNorm = (e.type || '').toLowerCase();
+        
+        // KIỂM TRA EBAY CỘT TYPE CÓ REFUND THÌ CỘNG VÀO TỔNG THU
+        if (typeNorm.includes('refund')) {
+            ebayRefundUsd += amt;
+        } else if (amt < 0) {
+            ebayOutUsd += Math.abs(amt); 
+        }
+    });
 
     let salaryOutUsd = 0;
     salaryRecords.forEach(sr => { salaryOutUsd += robustParseNumber(sr.amountUsd); });
 
-    const totalIncomeUsd = fundIncomeUsd + paymentTotalUsd + printwayRefundUsd;
+    const totalIncomeUsd = fundIncomeUsd + paymentTotalUsd + printwayRefundUsd + ebayRefundUsd;
     const totalExpenseUsd = fundExpenseUsd + printwayOutUsd + ebayOutUsd + salaryOutUsd + partnerFeesUsd;
     
     return { 
         totalIncomeUsd, totalExpenseUsd, balanceUsd: totalIncomeUsd - totalExpenseUsd, 
         paymentTotalUsd, fundIncomeUsd, fundExpenseUsd, printwayOutUsd, printwayRefundUsd, 
-        salaryOutUsd, ebayOutUsd, partnerFeesUsd,
+        salaryOutUsd, ebayOutUsd, ebayRefundUsd, partnerFeesUsd,
         storeNetFlowUsd: paymentTotalUsd - partnerFeesUsd - printwayOutUsd - ebayOutUsd 
     };
   }, [transactions, payments, printwayRecords, ebayRecords, salaryRecords, rates]);
@@ -416,11 +427,12 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
   const showDetailModal = (type: 'income' | 'expense') => {
     if (type === 'income') {
       setCalculationDetail({
-        title: "Chi tiết Tổng Thu Hệ Thống", formula: "Quỹ Công Ty + Funds (100%) + PW Refund (Loại bỏ Topup)",
+        title: "Chi tiết Tổng Thu Hệ Thống", formula: "Quỹ Công Ty + Funds (100%) + PW Refund + Ebay Refund",
         items: [
           { label: "Nguồn Quỹ Công Ty (USD)", value: formatCurrency(summary.fundIncomeUsd ?? 0), icon: Wallet },
           { label: "Gross Store Funds (USD)", value: formatCurrency(summary.paymentTotalUsd ?? 0), icon: Landmark },
-          { label: "Printway Refund (USD)", value: formatCurrency(summary.printwayRefundUsd ?? 0), icon: RefreshCw }
+          { label: "Printway Refund (USD)", value: formatCurrency(summary.printwayRefundUsd ?? 0), icon: RefreshCw },
+          { label: "Ebay Refunds (USD)", value: formatCurrency(summary.ebayRefundUsd ?? 0), icon: ShoppingBag }
         ]
       });
     } else {
@@ -608,7 +620,7 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
                     {activeTab === 'gke' && gkeRecords.filter(g => (g.orderNumber || '').toLowerCase().includes(searchTerm.toLowerCase()) || (g.trackingNumber || '').toLowerCase().includes(searchTerm.toLowerCase())).map((g, i) => (
                        <tr key={i} className="hover:bg-slate-50/50">
                         <td className="px-6 py-4 text-center text-slate-500 font-mono text-xs">{i+1}</td>
-                        <td className="px-6 py-4 text-[10px] font-bold text-slate-400">{g.date}</td>
+                        <td className="px-6 py-4 font-black text-slate-700">{g.date}</td>
                         <td className="px-6 py-4 font-black text-slate-700">{g.orderNumber || '---'}</td>
                         <td className="px-6 py-4 font-bold text-blue-600 text-xs">{g.trackingNumber || '---'}</td>
                         <td className="px-6 py-4 text-right font-bold text-rose-600">{(g.paymentAmount ?? 0).toLocaleString()} đ</td>
