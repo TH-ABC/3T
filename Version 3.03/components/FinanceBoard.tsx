@@ -166,7 +166,7 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
     payments.forEach(p => { 
         const convUsd = robustParseNumber(p.convertedUsd);
         paymentTotalUsd += convUsd; 
-        const feeRate = (p.region === 'Us' || p.region === 'Au') ? 0.05 : 0.03;
+        const feeRate = (p.region === 'Us' || p.region === 'Au') ? 0.05 : 0.025;
         partnerFeesUsd += convUsd * feeRate;
     });
     
