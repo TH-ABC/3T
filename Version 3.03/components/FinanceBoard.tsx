@@ -443,7 +443,7 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
           { label: "Printway Payment (USD)", value: formatCurrency(summary.printwayOutUsd ?? 0), icon: FileSpreadsheet },
           { label: "Chi Phí Ebay (USD)", value: formatCurrency(summary.ebayOutUsd ?? 0), icon: ShoppingBag },
           { label: "Lương Nhân Sự (USD)", value: formatCurrency(summary.salaryOutUsd ?? 0), icon: HandCoins },
-          { label: "Phí Partner 3-5% (USD)", value: formatCurrency(summary.partnerFeesUsd ?? 0), icon: Users }
+          { label: "Phí Partner 2.5-5% (USD)", value: formatCurrency(summary.partnerFeesUsd ?? 0), icon: Users }
         ]
       });
     }
