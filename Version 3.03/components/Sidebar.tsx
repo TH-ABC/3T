@@ -5,7 +5,7 @@ import {
   Wallet, X, LogOut, ChevronLeft, ChevronRight, 
   Palette, Key, PenTool, UserCheck, Home, FileText,
   CalendarDays, ClipboardList, Bell, Clock, ArrowRight,
-  CheckCircle, Zap, History, Megaphone, BarChart3, Landmark
+  CheckCircle, Zap, History, Megaphone, BarChart3, Landmark, TableProperties
 } from 'lucide-react';
 import { sheetService } from '../services/sheetService';
 import { User, UserPermissions, HandoverItem, NewsItem } from '../types';
@@ -111,6 +111,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       title: 'TÀI CHÍNH',
       items: [
         { id: 'finance', label: 'Thống kê', icon: <BarChart3 size={20} />, visible: hasAccess('finance') },
+        { id: 'finance_data', label: 'Báo cáo Data', icon: <TableProperties size={20} />, visible: hasAccess('finance') },
       ]
     },
     {

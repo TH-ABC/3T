@@ -1,5 +1,5 @@
 
-import { Order, Store, User, DashboardMetrics, DailyStat, StoreHistoryItem, SkuMapping, Role, AuthResponse, FinanceTransaction, FinanceMeta, NewsItem, NewsComment, ScheduleStaff, AttendanceRecord, OTRecord, HandoverItem, UserNote, PaymentRecord, PrintwayRecord, EbayRecord, GKERecord, StaffSalarySummary } from '../types';
+import { Order, Store, User, DashboardMetrics, DailyStat, StoreHistoryItem, SkuMapping, Role, AuthResponse, FinanceTransaction, FinanceMeta, NewsItem, NewsComment, ScheduleStaff, AttendanceRecord, OTRecord, HandoverItem, UserNote, DailyNoteItem, PaymentRecord, PrintwayRecord, EbayRecord, GKERecord, StaffSalarySummary, HoldRecord } from '../types';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbyw4ZdfirgKUHyXMH8Ro7UZ6-VWCdf1hgqU37ilLvNt2RwzusSPG_HUc_mi8z-9tInR/exec'; 
 
@@ -79,9 +79,10 @@ export const sheetService = {
   logout: async (username: string, type: string = 'LOGOUT'): Promise<any> => await callAPI('logout', 'POST', { username, type }),
 
   // --- FINANCE METHODS ---
-  getFinance: async (year: string): Promise<{ transactions: FinanceTransaction[], payments: PaymentRecord[], printway: PrintwayRecord[], ebay: EbayRecord[], gke: GKERecord[], fileId: string | null, error?: string }> => await callAPI('getFinance', 'POST', { year }),
+  getFinance: async (year: string): Promise<{ transactions: FinanceTransaction[], payments: PaymentRecord[], printway: PrintwayRecord[], ebay: EbayRecord[], gke: GKERecord[], hold: HoldRecord[], fileId: string | null, error?: string }> => await callAPI('getFinance', 'POST', { year }),
   addFinance: async (year: string, transaction: Partial<FinanceTransaction>): Promise<any> => await callAPI('addFinance', 'POST', { year, transaction }),
   addPayment: async (year: string, payment: Partial<PaymentRecord>): Promise<any> => await callAPI('addPayment', 'POST', { year, payment }),
+  addHold: async (year: string, hold: Partial<HoldRecord>): Promise<any> => await callAPI('addHold', 'POST', { year, hold }),
   addPrintwayBatch: async (year: string, list: PrintwayRecord[]): Promise<any> => await callAPI('addPrintwayBatch', 'POST', { year, list }),
   syncPrintwayData: async (month: string, list: PrintwayRecord[]): Promise<any> => await callAPI('syncPrintwayData', 'POST', { month, list }),
   addEbayBatch: async (year: string, list: EbayRecord[]): Promise<any> => await callAPI('addEbayBatch', 'POST', { year, list }),
@@ -92,6 +93,10 @@ export const sheetService = {
   getFinanceMeta: async (): Promise<FinanceMeta> => await callAPI('getFinanceMeta', 'GET'),
   addFinanceMeta: async (type: 'category' | 'subCategory' | 'payer' | 'store' | 'region', value: string): Promise<any> => await callAPI('addFinanceMeta', 'POST', { type, value }),
   getStaffSalarySummary: async (year: string): Promise<StaffSalarySummary[]> => await callAPI('getStaffSalarySummary', 'POST', { year }),
+  
+  // AI INSIGHTS
+  getAiInsight: async (monthKey: string, year: string): Promise<any> => await callAPI('getAiInsight', 'POST', { monthKey, year }),
+  saveAiInsight: async (monthKey: string, year: string, content: string): Promise<any> => await callAPI('saveAiInsight', 'POST', { monthKey, year, content }),
 
   // --- EXISTING METHODS ---
   getDashboardStats: async (): Promise<DashboardMetrics> => ({ revenue: 0, netIncome: 0, inventoryValue: 0, debt: 0 }),

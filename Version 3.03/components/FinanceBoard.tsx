@@ -1,15 +1,15 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Wallet, Plus, Calendar, Search, Loader2, Save, X, DollarSign, Users, Tag, Calculator, FileText, FileSpreadsheet, ExternalLink, TrendingUp, TrendingDown, RefreshCw, Layers, Globe, Store, CreditCard, Landmark, ArrowRightLeft, UserCheck, PieChart, Info, Upload, FileUp, AlertTriangle, CheckCircle, Clock, BarChart3, ShoppingBag, Edit2, ArrowUp, ArrowDown, HelpCircle, Check, MapPin, HandCoins, Box, User as UserIcon } from 'lucide-react';
+import { Wallet, Plus, Calendar, Search, Loader2, Save, X, DollarSign, Users, Tag, Calculator, FileText, FileSpreadsheet, ExternalLink, TrendingUp, TrendingDown, RefreshCw, Layers, Globe, Store, CreditCard, Landmark, ArrowRightLeft, UserCheck, PieChart, Info, Upload, FileUp, AlertTriangle, CheckCircle, Clock, BarChart3, ShoppingBag, Edit2, ArrowUp, ArrowDown, HelpCircle, Check, MapPin, HandCoins, Box, User as UserIcon, ShieldAlert } from 'lucide-react';
 import { sheetService } from '../services/sheetService';
-import { FinanceTransaction, FinanceMeta, PaymentRecord, User, PrintwayRecord, EbayRecord, GKERecord, StaffSalarySummary, Store as StoreType } from '../types';
+import { FinanceTransaction, FinanceMeta, PaymentRecord, User, PrintwayRecord, EbayRecord, GKERecord, StaffSalarySummary, Store as StoreType, HoldRecord } from '../types';
 import * as XLSX from 'xlsx';
 
 interface FinanceBoardProps {
   user: User;
 }
 
-type FinanceTab = 'transactions' | 'payments' | 'printway' | 'ebay' | 'salary' | 'gke';
+type FinanceTab = 'transactions' | 'payments' | 'printway' | 'ebay' | 'salary' | 'gke' | 'hold';
 
 export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
   const isAdmin = user.role.toLowerCase() === 'admin';
@@ -25,11 +25,12 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
       if (tab === 'ebay') return allowed.includes('ebay');
       if (tab === 'salary') return allowed.includes('funds');
       if (tab === 'gke') return allowed.includes('printway');
+      if (tab === 'hold') return true; 
       return false;
   };
 
   const [activeTab, setActiveTab] = useState<FinanceTab>(() => {
-      const tabs: FinanceTab[] = ['transactions', 'payments', 'printway', 'ebay', 'salary', 'gke'];
+      const tabs: FinanceTab[] = ['transactions', 'payments', 'printway', 'ebay', 'salary', 'gke', 'hold'];
       const firstAllowed = tabs.find(t => hasAccess(t));
       return firstAllowed || 'transactions';
   });
@@ -40,6 +41,7 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
   const [printwayRecords, setPrintwayRecords] = useState<PrintwayRecord[]>([]);
   const [ebayRecords, setEbayRecords] = useState<EbayRecord[]>([]);
   const [gkeRecords, setGkeRecords] = useState<GKERecord[]>([]);
+  const [holdRecords, setHoldRecords] = useState<HoldRecord[]>([]);
   const [salaryRecords, setSalaryRecords] = useState<StaffSalarySummary[]>([]);
   const [allSystemStores, setAllSystemStores] = useState<StoreType[]>([]);
   
@@ -57,6 +59,7 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
   
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isAddPaymentOpen, setIsAddPaymentOpen] = useState(false);
+  const [isAddHoldOpen, setIsAddHoldOpen] = useState(false);
   const [isPrintwayUploadOpen, setIsPrintwayUploadOpen] = useState(false);
   const [isEbayUploadOpen, setIsEbayUploadOpen] = useState(false); 
   const [isGKEUploadOpen, setIsGKEUploadOpen] = useState(false); 
@@ -97,6 +100,13 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
     date: new Date().toISOString().split('T')[0]
   });
 
+  const [holdInputData, setHoldInputData] = useState<Partial<HoldRecord>>({
+    storeName: '',
+    amount: 0,
+    region: 'Us',
+    date: new Date().toISOString().split('T')[0]
+  });
+
   const robustParseNumber = (val: any) => {
     if (val === undefined || val === null || val === "") return 0;
     if (typeof val === 'number') return val;
@@ -120,13 +130,21 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
         sheetService.getStores()
       ]);
       
-      setTransactions(Array.isArray(transResult.transactions) ? transResult.transactions : []);
-      setPayments(Array.isArray(transResult.payments) ? transResult.payments : []);
-      setPrintwayRecords(Array.isArray(transResult.printway) ? transResult.printway : []);
-      setEbayRecords(Array.isArray(transResult.ebay) ? transResult.ebay : []);
-      setGkeRecords(Array.isArray(transResult.gke) ? transResult.gke : []);
-      setSalaryRecords(Array.isArray(salaryResult) ? salaryResult : []);
+      setTransactions(Array.isArray(transResult?.transactions) ? transResult.transactions : []);
+      setPayments(Array.isArray(transResult?.payments) ? transResult.payments : []);
+      setPrintwayRecords(Array.isArray(transResult?.printway) ? transResult.printway : []);
+      setEbayRecords(Array.isArray(transResult?.ebay) ? transResult.ebay : []);
+      setGkeRecords(Array.isArray(transResult?.gke) ? transResult.gke : []);
+      setHoldRecords(Array.isArray(transResult?.hold) ? transResult.hold : []);
       setAllSystemStores(Array.isArray(storeList) ? storeList.filter(s => s.name && s.name.trim() !== "") : []);
+      
+      let finalSalaries: StaffSalarySummary[] = [];
+      if (Array.isArray(salaryResult)) {
+          finalSalaries = salaryResult;
+      } else if (salaryResult && Array.isArray((salaryResult as any).data)) {
+          finalSalaries = (salaryResult as any).data;
+      }
+      setSalaryRecords(finalSalaries);
       
       setMeta({
         categories: metaData.categories || ['Thu Tiền', 'Chi Tiền'],
@@ -143,8 +161,11 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
             setRates({ VND: rateJson.rates.VND || 25450, AUD: rateJson.rates.AUD || 1.54 });
         }
       } catch (e) {}
-    } catch (e) { console.error(e); } 
-    finally { setLoading(false); }
+    } catch (e) { 
+      console.error("Finance Load Error:", e); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   useEffect(() => { loadData(); }, [currentYear]);
@@ -166,7 +187,7 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
     payments.forEach(p => { 
         const convUsd = robustParseNumber(p.convertedUsd);
         paymentTotalUsd += convUsd; 
-        const feeRate = (p.region === 'Us' || p.region === 'Au') ? 0.05 : 0.025;
+        const feeRate = (p.region === 'Us' || p.region === 'Au') ? 0.05 : 0.03;
         partnerFeesUsd += convUsd * feeRate;
     });
     
@@ -175,7 +196,6 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
     printwayRecords.forEach(pw => {
       const typeNorm = (pw.type || '').toLowerCase().trim();
       if (typeNorm.includes('topup') || typeNorm.includes('top-up')) return;
-
       const amt = robustParseNumber(pw.totalAmount);
       const loaiNorm = (pw.loai || '').toLowerCase();
       if (loaiNorm.includes('thu')) printwayRefundUsd += amt;
@@ -187,28 +207,36 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
     ebayRecords.forEach(e => { 
         const amt = robustParseNumber(e.amount);
         const typeNorm = (e.type || '').toLowerCase();
-        
-        // KIỂM TRA EBAY CỘT TYPE CÓ REFUND THÌ CỘNG VÀO TỔNG THU
-        if (typeNorm.includes('refund')) {
-            ebayRefundUsd += amt;
-        } else if (amt < 0) {
-            ebayOutUsd += Math.abs(amt); 
-        }
+        if (typeNorm.includes('refund')) ebayRefundUsd += amt;
+        else if (amt < 0) ebayOutUsd += Math.abs(amt); 
     });
 
     let salaryOutUsd = 0;
-    salaryRecords.forEach(sr => { salaryOutUsd += robustParseNumber(sr.amountUsd); });
+    salaryRecords.forEach(sr => { 
+        salaryOutUsd += robustParseNumber(sr.amountUsd); 
+    });
 
-    const totalIncomeUsd = fundIncomeUsd + paymentTotalUsd + printwayRefundUsd + ebayRefundUsd;
-    const totalExpenseUsd = fundExpenseUsd + printwayOutUsd + ebayOutUsd + salaryOutUsd + partnerFeesUsd;
+    let totalHoldUsd = 0;
+    holdRecords.forEach(h => { totalHoldUsd += robustParseNumber(h.amount); });
+
+    // Net Calculations: Subtracting refunds directly from expenses
+    const netPrintwayOutUsd = printwayOutUsd - printwayRefundUsd;
+    const netEbayOutUsd = ebayOutUsd - ebayRefundUsd;
+
+    // Total Income now excludes refunds as per request
+    const totalIncomeUsd = fundIncomeUsd + paymentTotalUsd;
+    // Total Expense now uses the net values
+    const totalExpenseUsd = fundExpenseUsd + netPrintwayOutUsd + netEbayOutUsd + salaryOutUsd + partnerFeesUsd;
     
     return { 
         totalIncomeUsd, totalExpenseUsd, balanceUsd: totalIncomeUsd - totalExpenseUsd, 
         paymentTotalUsd, fundIncomeUsd, fundExpenseUsd, printwayOutUsd, printwayRefundUsd, 
         salaryOutUsd, ebayOutUsd, ebayRefundUsd, partnerFeesUsd,
-        storeNetFlowUsd: paymentTotalUsd - partnerFeesUsd - printwayOutUsd - ebayOutUsd 
+        totalHoldUsd,
+        netPrintwayOutUsd,
+        netEbayOutUsd
     };
-  }, [transactions, payments, printwayRecords, ebayRecords, salaryRecords, rates]);
+  }, [transactions, payments, printwayRecords, ebayRecords, holdRecords, salaryRecords, rates]);
 
   const payerStats = useMemo(() => {
     const stats: Record<string, number> = {};
@@ -258,8 +286,14 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
         const updatedMeta = await sheetService.getFinanceMeta();
         setMeta(updatedMeta);
         if (quickAddMeta.type === 'subCategory') setFormData(prev => ({ ...prev, subCategory: val }));
-        if (quickAddMeta.type === 'store') setPaymentData(prev => ({ ...prev, storeName: val }));
-        if (quickAddMeta.type === 'region') setPaymentData(prev => ({ ...prev, region: val as any }));
+        if (quickAddMeta.type === 'store') {
+          setPaymentData(prev => ({ ...prev, storeName: val }));
+          setHoldInputData(prev => ({ ...prev, storeName: val }));
+        }
+        if (quickAddMeta.type === 'region') {
+          setPaymentData(prev => ({ ...prev, region: val as any }));
+          setHoldInputData(prev => ({ ...prev, region: val as any }));
+        }
         setQuickAddMeta(null);
       }
     } catch (e) {
@@ -278,35 +312,49 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
       else if (paymentData.region === 'Au') convertedUsd = amount / (rates.AUD || 1.54); 
       else if (paymentData.region === 'VN') convertedUsd = amount / (rates.VND || 25450);
       else convertedUsd = amount; 
-      
       const res = await sheetService.addPayment(currentYear, { ...paymentData, convertedUsd });
       if (res && res.success) { setIsAddPaymentOpen(false); loadData(); }
     } finally { setIsUploading(false); }
   };
 
-  const handleStoreSelectChange = (val: string) => {
-    // TÌM STORE TRONG HỆ THỐNG ĐỂ LẤY REGION TỰ ĐỘNG
+  const handleAddHold = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!holdInputData.storeName || !holdInputData.region) return;
+    setIsUploading(true);
+    try {
+      let convertedToUsdAmount = 0;
+      const inputAmount = robustParseNumber(holdInputData.amount);
+      const region = holdInputData.region;
+
+      if (region === 'VN') {
+          convertedToUsdAmount = inputAmount / (rates.VND || 25450);
+      } else if (region === 'Au') {
+          convertedToUsdAmount = inputAmount / (rates.AUD || 1.54);
+      } else {
+          convertedToUsdAmount = inputAmount; 
+      }
+
+      const res = await sheetService.addHold(currentYear, { 
+          ...holdInputData, 
+          amount: Math.round(convertedToUsdAmount * 100) / 100 
+      });
+      
+      if (res && res.success) { 
+          setIsAddHoldOpen(false); 
+          loadData(); 
+      }
+    } finally { setIsUploading(false); }
+  };
+
+  const handleStoreSelectChange = (val: string, type: 'payment' | 'hold') => {
     const matchedStore = allSystemStores.find(s => String(s.name || '').trim().toLowerCase() === val.trim().toLowerCase());
-    
-    if (matchedStore) {
-        // TỰ ĐỘNG CẬP NHẬT CẢ TÊN VÀ VÙNG (REGION)
-        setPaymentData(prev => ({ 
-          ...prev, 
-          storeName: matchedStore.name, 
-          region: (matchedStore.region || 'Us') as any 
-        }));
+    const region = (matchedStore?.region || 'Us') as any;
+    const name = matchedStore ? matchedStore.name : val;
+
+    if (type === 'payment') {
+        setPaymentData(prev => ({ ...prev, storeName: name, region }));
     } else {
-        // NẾU LÀ STORE TRONG LỊCH SỬ PAYMENT (KHÔNG CÓ TRONG TAB STORES)
-        const historicalMatch = payments.find(p => String(p.storeName || '').trim().toLowerCase() === val.trim().toLowerCase());
-        if (historicalMatch) {
-            setPaymentData(prev => ({
-                ...prev,
-                storeName: historicalMatch.storeName,
-                region: (historicalMatch.region || 'Us') as any
-            }));
-        } else {
-            setPaymentData(prev => ({ ...prev, storeName: val }));
-        }
+        setHoldInputData(prev => ({ ...prev, storeName: name, region }));
     }
   };
 
@@ -323,16 +371,9 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
           const cols = jsonData[i];
           if (!cols || !cols[0]) continue; 
           rawParsed.push({
-            invoiceId: String(cols[0] || '').trim(), 
-            type: String(cols[1] || 'Payment').trim(), 
-            loai: String(cols[1] || 'Payment').trim(), 
-            status: String(cols[2] || 'Completed').trim(),    
-            date: cols[3] instanceof Date ? cols[3].toLocaleString('vi-VN') : String(cols[3] || ''), 
-            method: String(cols[4] || 'Wallet').trim(), 
-            amountUsd: robustParseNumber(cols[5]),   
-            fee: robustParseNumber(cols[6]),
-            totalAmount: robustParseNumber(cols[7] || cols[5]), 
-            note: String(cols[8] || '').trim(),
+            invoiceId: String(cols[0] || '').trim(), type: String(cols[1] || 'Payment').trim(), loai: String(cols[1] || 'Payment').trim(), status: String(cols[2] || 'Completed').trim(),    
+            date: cols[3] instanceof Date ? cols[3].toLocaleString('vi-VN') : String(cols[3] || ''), method: String(cols[4] || 'Wallet').trim(), amountUsd: robustParseNumber(cols[5]),   
+            fee: robustParseNumber(cols[6]), totalAmount: robustParseNumber(cols[7] || cols[5]), note: String(cols[8] || '').trim(),
           });
         }
         setUploadData(rawParsed);
@@ -363,11 +404,7 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
           const cols = jsonData[i];
           if (!cols || !cols[0]) continue;
           rawParsed.push({
-            recordId: String(cols[0]),
-            accountingTime: cols[1] instanceof Date ? cols[1].toLocaleString('vi-VN') : String(cols[1]),
-            type: String(cols[2] || ''),
-            amount: robustParseNumber(cols[3]),
-            cardRemark: String(cols[4] || '')
+            recordId: String(cols[0]), accountingTime: cols[1] instanceof Date ? cols[1].toLocaleString('vi-VN') : String(cols[1]), type: String(cols[2] || ''), amount: robustParseNumber(cols[3]), cardRemark: String(cols[4] || '')
           });
         }
         setEbayUploadData(rawParsed);
@@ -427,34 +464,32 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
   const showDetailModal = (type: 'income' | 'expense') => {
     if (type === 'income') {
       setCalculationDetail({
-        title: "Chi tiết Tổng Thu Hệ Thống", formula: "Quỹ Công Ty + Funds (100%) + PW Refund + Ebay Refund",
+        title: "Chi tiết Tổng Thu Hệ Thống", 
+        formula: "Nguồn Quỹ Công Ty + Gross Store Funds (100%)",
         items: [
           { label: "Nguồn Quỹ Công Ty (USD)", value: formatCurrency(summary.fundIncomeUsd ?? 0), icon: Wallet },
-          { label: "Gross Store Funds (USD)", value: formatCurrency(summary.paymentTotalUsd ?? 0), icon: Landmark },
-          { label: "Printway Refund (USD)", value: formatCurrency(summary.printwayRefundUsd ?? 0), icon: RefreshCw },
-          { label: "Ebay Refunds (USD)", value: formatCurrency(summary.ebayRefundUsd ?? 0), icon: ShoppingBag }
+          { label: "Gross Store Funds (USD)", value: formatCurrency(summary.paymentTotalUsd ?? 0), icon: Landmark }
         ]
       });
     } else {
       setCalculationDetail({
-        title: "Chi tiết Tổng Chi Vận Hành", formula: "Chi Quỹ + PW + Ebay + Lương + Phí Partner (Loại bỏ Topup)",
+        title: "Chi tiết Tổng Chi Vận Hành", 
+        formula: "Chi Quỹ + Net PW (Pay-Refund) + Net Ebay (Pay-Refund) + Lương + Phí Partner",
         items: [
           { label: "Chi Phí Vận Hành (USD)", value: formatCurrency(summary.fundExpenseUsd ?? 0), icon: Wallet },
-          { label: "Printway Payment (USD)", value: formatCurrency(summary.printwayOutUsd ?? 0), icon: FileSpreadsheet },
-          { label: "Chi Phí Ebay (USD)", value: formatCurrency(summary.ebayOutUsd ?? 0), icon: ShoppingBag },
+          { label: "Printway Payment (Net USD)", value: formatCurrency(summary.netPrintwayOutUsd ?? 0), icon: FileSpreadsheet },
+          { label: "Chi Phí Ebay (Net USD)", value: formatCurrency(summary.netEbayOutUsd ?? 0), icon: ShoppingBag },
           { label: "Lương Nhân Sự (USD)", value: formatCurrency(summary.salaryOutUsd ?? 0), icon: HandCoins },
-          { label: "Phí Partner 2.5-5% (USD)", value: formatCurrency(summary.partnerFeesUsd ?? 0), icon: Users }
+          { label: "Phí Partner 3-5% (USD)", value: formatCurrency(summary.partnerFeesUsd ?? 0), icon: Users }
         ]
       });
     }
   };
 
-  // TỔNG HỢP DANH SÁCH STORE DUY NHẤT VÀ LỌC TRỐNG
   const combinedStoreOptions = useMemo(() => {
       const storesFromSystem = allSystemStores.map(s => String(s.name || '').trim());
       const storesFromHistory = payments.map(p => String(p.storeName || '').trim());
       const storesFromMeta = (meta.stores || []).map(name => String(name || '').trim());
-      
       const all = [...storesFromSystem, ...storesFromHistory, ...storesFromMeta];
       return Array.from(new Set(all.filter(name => name !== ""))).sort();
   }, [allSystemStores, payments, meta.stores]);
@@ -476,23 +511,24 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
                 <div className="mt-4"><p className={`text-2xl font-black ${(summary.balanceUsd ?? 0) >= 0 ? 'text-indigo-600' : 'text-rose-600'}`}>{formatCurrency(summary.balanceUsd ?? 0)}</p></div>
             </div>
             <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200">
-                <div className="flex justify-between items-start"><div className="p-3 bg-amber-50 text-amber-600 rounded-2xl"><ArrowRightLeft size={24}/></div><span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Dòng Tiền Net Store</span></div>
-                <div className="mt-4"><p className={`text-2xl font-black ${(summary.storeNetFlowUsd ?? 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{formatCurrency(summary.storeNetFlowUsd ?? 0)}</p></div>
+                <div className="flex justify-between items-start"><div className="p-3 bg-amber-50 text-amber-600 rounded-2xl"><ShieldAlert size={24}/></div><span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Tiền Hold trên acc</span></div>
+                <div className="mt-4"><p className={`text-2xl font-black text-orange-600`}>{formatCurrency(summary.totalHoldUsd ?? 0)}</p></div>
             </div>
         </div>
       )}
 
       <div className="bg-white p-2 rounded-3xl shadow-sm border border-slate-200 flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="flex bg-slate-100 p-1.5 rounded-2xl gap-1 w-full md:w-auto overflow-x-auto">
+        <div className="flex bg-slate-100 p-1.5 rounded-2xl gap-1 w-full md:w-auto overflow-x-auto custom-scrollbar">
           {[
             { id: 'transactions', label: 'Chi phí', icon: <Wallet size={16}/> },
             { id: 'payments', label: 'Funds', icon: <Landmark size={16}/> },
             { id: 'printway', label: 'Printway', icon: <FileSpreadsheet size={16}/> },
             { id: 'ebay', label: 'Ebay', icon: <ShoppingBag size={16}/> },
             { id: 'salary', label: 'Lương', icon: <HandCoins size={16}/> },
-            { id: 'gke', label: 'GKE', icon: <Box size={16}/> }
+            { id: 'gke', label: 'GKE', icon: <Box size={16}/> },
+            { id: 'hold', label: 'Hold', icon: <ShieldAlert size={16}/> }
           ].filter(t => hasAccess(t.id as FinanceTab)).map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id as FinanceTab)} className={`px-6 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-500 hover:text-slate-800'}`}>
+            <button key={tab.id} onClick={() => setActiveTab(tab.id as FinanceTab)} className={`px-6 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all whitespace-nowrap flex items-center gap-2 ${activeTab === tab.id ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-500 hover:text-slate-800'}`}>
               {tab.icon} {tab.label}
             </button>
           ))}
@@ -509,68 +545,74 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
             <button onClick={() => { 
                 if (activeTab === 'transactions') setIsAddModalOpen(true); 
                 else if (activeTab === 'payments') setIsAddPaymentOpen(true); 
+                else if (activeTab === 'hold') setIsAddHoldOpen(true);
                 else if (activeTab === 'printway') setIsPrintwayUploadOpen(true); 
                 else if (activeTab === 'ebay') setIsEbayUploadOpen(true); 
                 else if (activeTab === 'gke') setIsGKEUploadOpen(true);
-            }} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase text-white shadow-lg ${['printway', 'ebay', 'gke', 'salary'].includes(activeTab) ? 'bg-emerald-600' : 'bg-indigo-600'}`}>
+            }} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase text-white shadow-lg ${['printway', 'ebay', 'gke', 'salary', 'hold'].includes(activeTab) ? 'bg-emerald-600' : 'bg-indigo-600'}`}>
               <Plus size={18} /> {['printway', 'ebay', 'gke'].includes(activeTab) ? 'Tải Excel' : 'Thêm mới'}
             </button>
         </div>
       </div>
 
       <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 overflow-hidden flex-1 flex flex-col min-h-[500px]">
-         <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4 bg-slate-50/30">
-            <div className="relative flex-1 max-w-md">
+        <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4 bg-slate-50/30">
+            <div className="relative flex-1 max-md:max-w-md">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                 <input type="text" placeholder="Tìm kiếm..." className="pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-2xl text-xs font-bold w-full outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
             </div>
-            
             {activeTab === 'gke' && (
               <div className="flex items-center gap-4 px-4 py-2 bg-indigo-50/50 rounded-2xl border border-indigo-100/50">
-                 <div className="flex flex-col items-center px-3 border-r border-indigo-200">
+                <div className="flex flex-col items-center px-3 border-r border-indigo-200">
                     <span className="text-[8px] font-black text-indigo-400 uppercase">Tổng nạp</span>
                     <span className="text-xs font-black text-emerald-600">{formatCurrency(gkeSummary.topup ?? 0)}</span>
-                 </div>
-                 <div className="flex flex-col items-center px-3 border-r border-indigo-200">
+                </div>
+                <div className="flex flex-col items-center px-3 border-r border-indigo-200">
                     <span className="text-[8px] font-black text-indigo-400 uppercase">Đã dùng</span>
                     <span className="text-xs font-black text-rose-600">{formatCurrency(gkeSummary.payment ?? 0)}</span>
-                 </div>
-                 <div className="flex flex-col items-center px-3">
+                </div>
+                <div className="flex flex-col items-center px-3">
                     <span className="text-[8px] font-black text-indigo-400 uppercase">Còn lại</span>
                     <span className="text-xs font-black text-indigo-600">{formatCurrency(gkeSummary.remaining ?? 0)}</span>
-                 </div>
+                </div>
               </div>
             )}
-
             <div className="flex items-center gap-4 px-4 py-2 bg-slate-50/50 rounded-2xl border border-slate-100/50">
-               <div className="flex items-center gap-2">
-                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Rate VND:</span>
-                 <span className="text-xs font-black text-slate-700">{(rates.VND ?? 0).toLocaleString()}</span>
-               </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Rate VND:</span>
+                <span className="text-xs font-black text-slate-700">{(rates.VND ?? 0).toLocaleString()}</span>
+              </div>
             </div>
-         </div>
-         <div className="flex-1 overflow-auto custom-scrollbar">
+        </div>
+        <div className="flex-1 overflow-auto custom-scrollbar">
             {loading ? <div className="py-20 text-center animate-pulse text-slate-400 uppercase font-black text-xs">Đang nạp dữ liệu...</div> : (
               <table className="w-full text-left border-collapse text-sm">
                 <thead className="bg-slate-100 sticky top-0 z-10 text-[10px] font-black uppercase text-slate-600">
                     <tr>
                         <th className="px-6 py-5 w-12 text-center">STT</th>
                         {activeTab === 'gke' ? (
-                           <>
-                             <th className="px-6 py-5">Ngày GD</th>
-                             <th className="px-6 py-5">Order #</th>
-                             <th className="px-6 py-5">Tracking #</th>
-                             <th className="px-6 py-5 text-right">Thanh toán (VND)</th>
-                             <th className="px-6 py-5 text-right text-indigo-600">Nạp tiền (USD)</th>
-                             <th className="px-6 py-5">Ghi chú</th>
-                           </>
+                          <>
+                            <th className="px-6 py-5">Ngày GD</th>
+                            <th className="px-6 py-5">Order #</th>
+                            <th className="px-6 py-5">Tracking #</th>
+                            <th className="px-6 py-5 text-right">Thanh toán (VND)</th>
+                            <th className="px-6 py-5 text-right text-indigo-600">Nạp tiền (USD)</th>
+                            <th className="px-6 py-5">Ghi chú</th>
+                          </>
                         ) : activeTab === 'salary' ? (
-                           <>
-                             <th className="px-6 py-5">Tháng</th>
-                             <th className="px-6 py-5 text-right">VNĐ (Ô D3)</th>
-                             <th className="px-6 py-5 text-right text-indigo-600">Quy đổi USD</th>
-                             <th className="px-6 py-5 text-center">Nguồn</th>
-                           </>
+                          <>
+                            <th className="px-6 py-5">Tháng</th>
+                            <th className="px-6 py-5 text-right">VNĐ (Ô D3)</th>
+                            <th className="px-6 py-5 text-right text-indigo-600">Quy đổi USD</th>
+                            <th className="px-6 py-5 text-center">Nguồn</th>
+                          </>
+                        ) : activeTab === 'hold' ? (
+                          <>
+                            <th className="px-6 py-5">Store</th>
+                            <th className="px-6 py-5 text-center">Vùng</th>
+                            <th className="px-6 py-5 text-right">Số tiền Hold (USD)</th>
+                            <th className="px-6 py-5 text-center">Ngày chốt</th>
+                          </>
                         ) : activeTab === 'payments' ? (
                           <>
                             <th className="px-6 py-5">Store</th>
@@ -589,11 +631,11 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
                           </>
                         ) : activeTab === 'ebay' ? (
                           <>
-                             <th className="px-6 py-5">RecordID</th>
-                             <th className="px-6 py-5">Accounting Time</th>
-                             <th className="px-6 py-5">Type</th>
-                             <th className="px-6 py-5 text-right">Amount</th>
-                             <th className="px-6 py-5">Remark</th>
+                            <th className="px-6 py-5">RecordID</th>
+                            <th className="px-6 py-5">Accounting Time</th>
+                            <th className="px-6 py-5">Type</th>
+                            <th className="px-6 py-5 text-right">Amount</th>
+                            <th className="px-6 py-5">Remark</th>
                           </>
                         ) : (
                           <>
@@ -607,6 +649,15 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
+                    {activeTab === 'hold' && holdRecords.filter(h => (h.storeName || '').toLowerCase().includes(searchTerm.toLowerCase())).map((h, i) => (
+                      <tr key={i} className="hover:bg-slate-50/50">
+                        <td className="px-6 py-4 text-center text-slate-500 font-mono text-xs">{i+1}</td>
+                        <td className="px-6 py-4 font-black uppercase text-slate-700">{h.storeName}</td>
+                        <td className="px-6 py-4 text-center"><span className="px-2 py-0.5 bg-orange-50 text-orange-600 rounded font-black text-[9px] uppercase">{h.region}</span></td>
+                        <td className="px-6 py-4 text-right font-black text-orange-600">{formatCurrency(h.amount ?? 0)}</td>
+                        <td className="px-6 py-4 text-center text-[10px] font-bold text-slate-500">{h.date}</td>
+                      </tr>
+                    ))}
                     {activeTab === 'ebay' && ebayRecords.filter(e => (e.recordId || '').toLowerCase().includes(searchTerm.toLowerCase())).map((e, i) => (
                       <tr key={i} className="hover:bg-slate-50/50">
                         <td className="px-6 py-4 text-center text-slate-500 font-mono text-xs">{i+1}</td>
@@ -618,7 +669,7 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
                       </tr>
                     ))}
                     {activeTab === 'gke' && gkeRecords.filter(g => (g.orderNumber || '').toLowerCase().includes(searchTerm.toLowerCase()) || (g.trackingNumber || '').toLowerCase().includes(searchTerm.toLowerCase())).map((g, i) => (
-                       <tr key={i} className="hover:bg-slate-50/50">
+                      <tr key={i} className="hover:bg-slate-50/50">
                         <td className="px-6 py-4 text-center text-slate-500 font-mono text-xs">{i+1}</td>
                         <td className="px-6 py-4 font-black text-slate-700">{g.date}</td>
                         <td className="px-6 py-4 font-black text-slate-700">{g.orderNumber || '---'}</td>
@@ -649,7 +700,7 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
                       </tr>
                     ))}
                     {activeTab === 'printway' && printwayRecords.filter(p => (p.invoiceId || '').toLowerCase().includes(searchTerm.toLowerCase())).map((p, i) => (
-                       <tr key={i} className="hover:bg-slate-50/50">
+                      <tr key={i} className="hover:bg-slate-50/50">
                         <td className="px-6 py-4 text-center text-slate-500 font-mono text-xs">{i+1}</td>
                         <td className="px-6 py-4 font-black text-slate-700">{p.invoiceId}</td>
                         <td className="px-6 py-4 text-right font-black text-slate-800">{formatCurrency(p.totalAmount ?? 0)}</td>
@@ -659,7 +710,7 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
                       </tr>
                     ))}
                     {activeTab === 'salary' && salaryRecords.map((sr, i) => (
-                       <tr key={i} className="hover:bg-slate-50/50">
+                      <tr key={i} className="hover:bg-slate-50/50">
                         <td className="px-6 py-4 text-center text-slate-500 font-mono text-xs">{i+1}</td>
                         <td className="px-6 py-4 font-black text-slate-700">Tháng {sr.month}</td>
                         <td className="px-6 py-4 text-right font-bold text-slate-800">{(sr.amountVnd ?? 0).toLocaleString()} đ</td>
@@ -670,8 +721,68 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
                 </tbody>
               </table>
             )}
-         </div>
+        </div>
       </div>
+
+      {/* HOLD MODAL */}
+      {isAddHoldOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[300] flex items-center justify-center p-4">
+           <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden animate-slide-in border border-white/20">
+              <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-gray-50/50">
+                 <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Thêm Tiền Hold</h3>
+                 <button onClick={() => setIsAddHoldOpen(false)} className="p-2 text-slate-400 hover:text-slate-900 transition-all"><X size={24}/></button>
+              </div>
+              <form onSubmit={handleAddHold} className="p-8 space-y-5">
+                 <div>
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 mb-1.5 block">Chọn Store</label>
+                    <div className="flex gap-2">
+                        <select 
+                            className="flex-1 bg-gray-50 border border-gray-200 rounded-xl p-3.5 text-sm font-bold focus:ring-2 focus:ring-indigo-500/20 shadow-sm outline-none cursor-pointer" 
+                            required 
+                            value={holdInputData.storeName} 
+                            onChange={e => handleStoreSelectChange(e.target.value, 'hold')}
+                        >
+                            <option value="">-- Chọn Store --</option>
+                            {combinedStoreOptions.map(name => (
+                                <option key={name} value={name}>{name}</option>
+                            ))}
+                        </select>
+                        <button type="button" onClick={() => handleTriggerQuickAdd('store')} className="p-3.5 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-600 hover:text-white transition-all shadow-sm">
+                            <Plus size={18}/>
+                        </button>
+                    </div>
+                 </div>
+                 <div className="grid grid-cols-2 gap-4">
+                    <div>
+                       <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 mb-1.5 block">Vùng (Region)</label>
+                       <select 
+                         value={holdInputData.region} 
+                         onChange={e => setHoldInputData({...holdInputData, region: e.target.value as any})} 
+                         className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3.5 text-sm font-bold outline-none cursor-pointer"
+                       >
+                          {meta.regions.map(r => <option key={r} value={r}>{r}</option>)}
+                       </select>
+                    </div>
+                    <div>
+                       <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 mb-1.5 block">Số tiền nhập ({holdInputData.region === 'VN' ? 'VND' : holdInputData.region === 'Au' ? 'AUD' : 'USD'})</label>
+                       <input type="number" value={holdInputData.amount === 0 ? '' : holdInputData.amount} onChange={e => setHoldInputData({...holdInputData, amount: Number(e.target.value)})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3.5 text-sm font-bold outline-none shadow-sm" required />
+                       <p className="text-[8px] font-bold text-indigo-400 mt-1 uppercase tracking-tighter">* Hệ thống tự động quy đổi về USD</p>
+                    </div>
+                 </div>
+                 <div>
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 mb-1.5 block">Ngày chốt số</label>
+                    <input type="date" value={holdInputData.date} onChange={e => setHoldInputData({...holdInputData, date: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3.5 text-sm font-bold outline-none shadow-sm" required />
+                 </div>
+                 <div className="pt-6 flex gap-4 border-t border-slate-100">
+                    <button type="button" onClick={() => setIsAddHoldOpen(false)} className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest active:scale-95 transition-all">Hủy</button>
+                    <button type="submit" disabled={isUploading} className="flex-[2] py-4 bg-emerald-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-xl shadow-emerald-100 hover:bg-emerald-700 active:scale-95 transition-all flex items-center justify-center gap-3">
+                       {isUploading ? <Loader2 size={16} className="animate-spin" /> : <><Save size={16}/> Lưu Tiền Hold</>}
+                    </button>
+                 </div>
+              </form>
+           </div>
+        </div>
+      )}
 
       {/* EBAY MODAL */}
       {isEbayUploadOpen && (
@@ -884,7 +995,7 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
         </div>
       )}
 
-      {/* ADD PAYMENT MODAL - HIỂN THỊ DANH SÁCH STORE CÓ SẴN KÈM REGION TỰ ĐỘNG */}
+      {/* ADD PAYMENT MODAL */}
       {isAddPaymentOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[300] flex items-center justify-center p-4">
            <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden animate-slide-in border border-white/20">
@@ -900,19 +1011,14 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
                             className="flex-1 bg-gray-50 border border-gray-200 rounded-xl p-3.5 text-sm font-bold focus:ring-2 focus:ring-indigo-500/20 shadow-sm outline-none cursor-pointer" 
                             required 
                             value={paymentData.storeName} 
-                            onChange={e => handleStoreSelectChange(e.target.value)}
+                            onChange={e => handleStoreSelectChange(e.target.value, 'payment')}
                         >
                             <option value="">-- Chọn Store --</option>
-                            {combinedStoreOptions.map(name => {
-                                const systemStore = allSystemStores.find(s => s.name.toLowerCase() === name.toLowerCase());
-                                return (
-                                    <option key={name} value={name}>
-                                        {name} {systemStore ? `(${systemStore.region})` : ''}
-                                    </option>
-                                );
-                            })}
+                            {combinedStoreOptions.map(name => (
+                                <option key={name} value={name}>{name}</option>
+                            ))}
                         </select>
-                        <button type="button" onClick={() => handleTriggerQuickAdd('store')} className="p-3.5 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-600 hover:text-white transition-all shadow-sm" title="Thêm store mới">
+                        <button type="button" onClick={() => handleTriggerQuickAdd('store')} className="p-3.5 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-600 hover:text-white transition-all shadow-sm">
                             <Plus size={18}/>
                         </button>
                     </div>
@@ -920,22 +1026,17 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
                  <div className="grid grid-cols-2 gap-4">
                     <div>
                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 mb-1.5 block">Vùng (Region)</label>
-                       <div className="flex gap-2">
-                           <select 
-                             value={paymentData.region} 
-                             onChange={e => setPaymentData({...paymentData, region: e.target.value as any})} 
-                             className="flex-1 bg-gray-50 border border-gray-200 rounded-xl p-3.5 text-sm font-bold focus:ring-2 focus:ring-indigo-500/20 shadow-sm outline-none cursor-pointer"
-                           >
-                              {meta.regions.map(r => <option key={r} value={r}>{r}</option>)}
-                           </select>
-                           <button type="button" onClick={() => handleTriggerQuickAdd('region')} className="p-3.5 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-600 hover:text-white transition-all shadow-sm" title="Thêm vùng mới">
-                                <Plus size={18}/>
-                           </button>
-                       </div>
+                       <select 
+                         value={paymentData.region} 
+                         onChange={e => setPaymentData({...paymentData, region: e.target.value as any})} 
+                         className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3.5 text-sm font-bold outline-none cursor-pointer"
+                       >
+                          {meta.regions.map(r => <option key={r} value={r}>{r}</option>)}
+                       </select>
                     </div>
                     <div>
                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 mb-1.5 block">Số tiền gốc</label>
-                       <input type="number" value={paymentData.amount === 0 ? '' : paymentData.amount} onChange={e => setPaymentData({...paymentData, amount: Number(e.target.value)})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3.5 text-sm font-bold focus:ring-2 focus:ring-indigo-500/20 shadow-sm outline-none" required />
+                       <input type="number" value={paymentData.amount === 0 ? '' : paymentData.amount} onChange={e => setPaymentData({...paymentData, amount: Number(e.target.value)})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3.5 text-sm font-bold outline-none shadow-sm" required />
                     </div>
                  </div>
                  <div className="pt-6 flex gap-4 border-t border-slate-100">
@@ -967,7 +1068,7 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
                     ) : payerStats.map(([name, amount], idx) => (
                        <div key={idx} className="flex items-center justify-between p-6 bg-slate-50 border border-slate-100 rounded-[1.5rem] group hover:bg-white hover:shadow-lg transition-all duration-300">
                           <div className="flex items-center gap-4">
-                             <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center text-indigo-600 font-black text-sm shadow-sm group-hover:bg-indigo-600 group-hover:text-white transition-all">
+                             <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center font-black text-sm shadow-sm group-hover:bg-indigo-600 group-hover:text-white transition-all">
                                 {name.charAt(0)}
                              </div>
                              <div>
@@ -1016,7 +1117,7 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
                        <span className="text-sm font-black text-slate-900">{item.value}</span>
                     </div>
                  ))}
-                 <div className="mt-8 pt-8 border-t border-dashed border-slate-100 flex justify-between items-end">
+                 <div className="mt-8 pt-8 border-t border-dashed border-slate-200 flex justify-between items-end">
                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tổng kết quy đổi</span>
                     <span className="text-2xl font-black text-indigo-600">
                         {calculationDetail.title.includes('Thu') ? formatCurrency(summary.totalIncomeUsd ?? 0) : formatCurrency(summary.totalExpenseUsd ?? 0)}

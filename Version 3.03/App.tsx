@@ -11,6 +11,7 @@ import StoreDetail from './components/StoreDetail';
 import { DesignerOnlineList } from './components/DesignerOnlineList';
 import { DesignerList } from './components/DesignerList';
 import { FinanceBoard } from './components/FinanceBoard';
+import FinanceDataReport from './components/FinanceDataReport';
 import ChangePasswordModal from './components/ChangePasswordModal';
 import ScheduleManagement from './components/ScheduleManagement';
 import DailyHandover from './components/DailyHandover';
@@ -244,6 +245,9 @@ function App() {
       case 'finance':
         if (!canAccess('finance')) return <div className="p-6">Không có quyền truy cập.</div>;
         return <FinanceBoard user={user} />;
+      case 'finance_data':
+        if (!canAccess('finance')) return <div className="p-6">Không có quyền truy cập.</div>;
+        return <FinanceDataReport />;
       case 'schedule':
         return <ScheduleManagement user={user} />;
       case 'users':

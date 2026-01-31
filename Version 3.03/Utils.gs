@@ -1,7 +1,7 @@
 
 /**
  * ==========================================
- * UTILS.GS: SHEET CORE & HELPERS V2.0
+ * UTILS.GS: SHEET CORE & HELPERS V2.1
  * ==========================================
  */
 
@@ -25,6 +25,7 @@ function getSheet(n) {
         else if(n === SHEET_SCHEDULE_STAFF) s.appendRow(['Name', 'Role', 'Username']);
         else if(n === SHEET_HANDOVER) s.appendRow(['ID', 'Date', 'Task', 'Assignee', 'DeadlineAt', 'IsSeen', 'Status', 'StartTime', 'EndTime', 'Report', 'FileLink', 'ImageLink', 'CreatedBy', 'ResultLink']);
         else if(n === SHEET_USER_NOTES) s.appendRow(['Username', 'Date', 'Notes']);
+        else if(n === SHEET_AI_INSIGHTS) s.appendRow(['Key', 'Content', 'UpdatedDate']); // Key dạng YYYY-MM
         else if(n === SHEET_FINANCE_META) {
             s.appendRow(['Categories', 'Payers', 'SubCategories', 'Stores', 'Regions']);
             s.appendRow(['Thu Tiền', 'Hoàng', 'Lương', 'Etsy Shop 1', 'Us']);

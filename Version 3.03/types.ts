@@ -183,7 +183,14 @@ export interface PaymentRecord {
   timestamp?: string;
 }
 
-// Fixed: Added fee property to PrintwayRecord
+export interface HoldRecord {
+  id: string;
+  storeName: string;
+  amount: number;
+  region: 'Au' | 'Us' | 'VN';
+  date: string;
+}
+
 export interface PrintwayRecord {
   invoiceId: string;
   type: string;
@@ -203,6 +210,7 @@ export interface EbayRecord {
   type: string;
   amount: number;
   cardRemark: string;
+  timestamp?: string;
 }
 
 export interface GKERecord {

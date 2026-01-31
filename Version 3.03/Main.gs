@@ -1,7 +1,7 @@
 
 /**
  * ==========================================
- * MAIN.GS: ĐIỀU HƯỚNG CHÍNH V34.0
+ * MAIN.GS: ĐIỀU HƯỚNG CHÍNH V34.2
  * ==========================================
  */
 
@@ -26,6 +26,7 @@ const SHEET_HANDOVER = 'Handover';
 const SHEET_USER_NOTES = 'UserNotes';
 const SHEET_HOLIDAYS = 'Holidays';
 const SHEET_USER_READ_STATUS = 'UserReadStatus';
+const SHEET_AI_INSIGHTS = 'AiInsights';
 
 function doPost(e) {
   const lock = LockService.getScriptLock();
@@ -48,10 +49,11 @@ function doPost(e) {
     else if (action === 'toggleLike') result = handleToggleLike(postData.newsId, postData.username);
     else if (action === 'updateLastReadTime') result = handleUpdateLastRead(postData.username);
 
-    // --- 2. FINANCE ACTIONS ---
+    // --- 2. FINANCE & AI ACTIONS ---
     else if (action === 'getFinance') result = getFinance(String(postData.year || "").trim()); 
     else if (action === 'addFinance') result = addFinance(String(postData.year || "").trim(), postData.transaction);
     else if (action === 'addPayment') result = addPayment(String(postData.year || "").trim(), postData.payment);
+    else if (action === 'addHold') result = addHold(String(postData.year || "").trim(), postData.hold);
     else if (action === 'updateFinanceField') result = updateFinanceField(postData.year, postData.id, postData.field, postData.value);
     else if (action === 'createFinanceFile') result = createFinanceFile(String(postData.year || "").trim());
     else if (action === 'getStaffSalarySummary') result = getStaffSalarySummary(postData.year);
@@ -60,6 +62,8 @@ function doPost(e) {
     else if (action === 'addGKEBatch') result = addGKEBatch(String(postData.year || "").trim(), postData.list);
     else if (action === 'getFinanceMeta') result = getFinanceMeta();
     else if (action === 'addFinanceMeta') result = addFinanceMeta(postData.type, postData.value);
+    else if (action === 'getAiInsight') result = handleGetAiInsight(postData.monthKey, postData.year);
+    else if (action === 'saveAiInsight') result = handleSaveAiInsight(postData.monthKey, postData.year, postData.content);
 
     // --- 3. ORDER & STORE ACTIONS ---
     else if (action === 'getOrders') result = getOrdersFromMonthFile(postData.month);
