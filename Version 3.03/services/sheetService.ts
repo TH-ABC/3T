@@ -129,4 +129,5 @@ export const sheetService = {
   getPriceMappings: async (): Promise<{category: string, price: number}[]> => await callAPI('getPriceMappings', 'GET'),
   updateCategoryPrice: async (category: string, price: number): Promise<any> => await callAPI('updateCategoryPrice', 'POST', { category, price }),
   changePassword: async (username: string, oldPass: string, newPass: string): Promise<any> => await callAPI('changePassword', 'POST', { username, oldPass, newPass }),
+  updateDesignerOnlineFields: async (fileId: string, orderId: string, updates: any): Promise<any> => await callAPI('handleUpdateDesignerOnlineFields', 'POST', { fileId, orderId, ...updates }),
 };
