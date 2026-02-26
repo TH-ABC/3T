@@ -17,7 +17,7 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
   const [dataError, setDataError] = useState<{ message: string, detail?: string, fileId?: string } | null>(null);
   
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortConfig, setSortConfig] = useState<{ key: keyof Order; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
+  const [sortConfig, setSortConfig] = useState<{ key: keyof Order; direction: 'asc' | 'desc' }>({ key: 'id', direction: 'desc' });
   const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>({});
   const [activeFilterColumn, setActiveFilterColumn] = useState<string | null>(null);
   const [filterSearchTerm, setFilterSearchTerm] = useState(''); 
@@ -28,6 +28,8 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
   const selectedMonthRef = useRef<string>(selectedMonth);
   const [currentFileId, setCurrentFileId] = useState<string | null>(null);
   const [updatingIds, setUpdatingIds] = useState<Set<string>>(new Set());
+  const [updatingLinkDsIds, setUpdatingLinkDsIds] = useState<Set<string>>(new Set());
+  const [editingLinkDs, setEditingLinkDs] = useState<Record<string, string>>({});
 
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
@@ -264,6 +266,40 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
   
   // Handle batch designer toggle updates
   const handleDesignerToggle = async (order: Order) => { if (!currentFileId) return; if (updatingIds.has(order.id)) return; const newValue = !order.isDesignDone; if (onProcessStart) onProcessStart(); setUpdatingIds(prev => new Set(prev).add(order.id)); try { await sheetService.updateDesignerStatus(currentFileId, order, "Designer Online", newValue); setOrders(prev => prev.map(o => o.id === order.id ? { ...o, isDesignDone: newValue } : o)); } catch (error) { setOrders(prev => prev.map(o => o.id === order.id ? { ...o, isDesignDone: !newValue } : o)); alert('Lỗi cập nhật trạng thái'); } finally { setUpdatingIds(prev => { const newSet = new Set(prev); newSet.delete(order.id); return newSet; }); if (onProcessEnd) onProcessEnd(); } };
+  
+  const handleUpdateLinkDs = async (order: Order) => {
+    if (!currentFileId) return;
+    const newValue = editingLinkDs[order.id] ?? order.linkDs ?? '';
+    // if (newValue === order.linkDs) return; // Allow update even if same to be sure
+
+    setUpdatingLinkDsIds(prev => new Set(prev).add(order.id));
+    if (onProcessStart) onProcessStart();
+    try {
+      const result = await sheetService.updateOrder(currentFileId, order.id, 'linkDs', newValue);
+      if (result.success) {
+        setOrders(prev => prev.map(o => o.id === order.id ? { ...o, linkDs: newValue } : o));
+        // Clear editing state for this row
+        setEditingLinkDs(prev => {
+          const newState = { ...prev };
+          delete newState[order.id];
+          return newState;
+        });
+      } else {
+        alert('Lỗi cập nhật Link DS: ' + result.error);
+      }
+    } catch (error) {
+      console.error(error);
+      alert('Lỗi kết nối khi cập nhật Link DS');
+    } finally {
+      setUpdatingLinkDsIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(order.id);
+        return newSet;
+      });
+      if (onProcessEnd) onProcessEnd();
+    }
+  };
+
   const formatPrice = (price: number) => { if (!price) return '-'; return price.toLocaleString('vi-VN') + ' đ'; };
   const [currentYearStr, currentMonthStr] = selectedMonth.split('-');
   
@@ -388,7 +424,42 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
           <div className="flex flex-col md:flex-row items-center gap-4 w-full xl:w-auto">
             <h2 className="text-xl font-bold text-gray-800 whitespace-nowrap flex items-center gap-2">DESIGNER ONLINE <span className="text-orange-600 uppercase text-sm border border-orange-200 bg-orange-50 px-2 py-0.5 rounded">Tháng {currentMonthStr}/{currentYearStr}</span><button onClick={() => loadData(selectedMonth)} className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 transition-colors" title="Làm mới"><RefreshCw size={16} className={loading ? "animate-spin" : ""} /></button></h2>
             <div className="flex items-center gap-2 w-full md:w-auto justify-center">
-                <div className="flex items-center bg-white rounded-lg border border-gray-300 shadow-sm p-1"><button onClick={() => handleMonthChange(-1)} className="p-1.5 hover:bg-gray-100 rounded-md text-gray-500 transition-colors"><ChevronLeft size={18} /></button><div className="flex items-center px-2 border-l border-r border-gray-100 gap-1 min-w-[160px] justify-center"><Calendar size={14} className="text-orange-500 mr-1" /><select value={currentMonthStr} onChange={(e) => setSelectedMonth(`${currentYearStr}-${e.target.value}`)} className="font-bold text-gray-700 bg-transparent cursor-pointer outline-none appearance-none hover:bg-gray-50 rounded px-1 py-1 text-center text-sm">{monthsList.map(m => (<option key={m} value={m}>Tháng {parseInt(m)}</option>))}</select><span className="text-gray-400">/</span><select value={currentYearStr} onChange={(e) => setSelectedMonth(`${e.target.value}-${currentMonthStr}`)} className="font-bold text-gray-700 bg-transparent cursor-pointer outline-none appearance-none hover:bg-gray-50 rounded px-1 py-1 text-sm">{yearsList.map(y => (<option key={y} value={y}>{y}</option>))}</select></div><button onClick={() => handleMonthChange(1)} className="p-1.5 hover:bg-gray-100 rounded-md text-gray-500 transition-colors"><ChevronRight size={18} /></button></div>
+                <div className="flex items-center bg-white rounded-lg border border-gray-300 shadow-sm p-1">
+                    <button 
+                        onClick={() => handleMonthChange(-1)} 
+                        disabled={updatingLinkDsIds.size > 0}
+                        className="p-1.5 hover:bg-gray-100 rounded-md text-gray-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <ChevronLeft size={18} />
+                    </button>
+                    <div className="flex items-center px-2 border-l border-r border-gray-100 gap-1 min-w-[160px] justify-center">
+                        <Calendar size={14} className="text-orange-500 mr-1" />
+                        <select 
+                            value={currentMonthStr} 
+                            disabled={updatingLinkDsIds.size > 0}
+                            onChange={(e) => setSelectedMonth(`${currentYearStr}-${e.target.value}`)} 
+                            className="font-bold text-gray-700 bg-transparent cursor-pointer outline-none appearance-none hover:bg-gray-50 rounded px-1 py-1 text-center text-sm disabled:opacity-50"
+                        >
+                            {monthsList.map(m => (<option key={m} value={m}>Tháng {parseInt(m)}</option>))}
+                        </select>
+                        <span className="text-gray-400">/</span>
+                        <select 
+                            value={currentYearStr} 
+                            disabled={updatingLinkDsIds.size > 0}
+                            onChange={(e) => setSelectedMonth(`${e.target.value}-${currentMonthStr}`)} 
+                            className="font-bold text-gray-700 bg-transparent cursor-pointer outline-none appearance-none hover:bg-gray-50 rounded px-1 py-1 text-sm disabled:opacity-50"
+                        >
+                            {yearsList.map(y => (<option key={y} value={y}>{y}</option>))}
+                        </select>
+                    </div>
+                    <button 
+                        onClick={() => handleMonthChange(1)} 
+                        disabled={updatingLinkDsIds.size > 0}
+                        className="p-1.5 hover:bg-gray-100 rounded-md text-gray-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <ChevronRight size={18} />
+                    </button>
+                </div>
                 {canManageSku && (<button onClick={() => setIsSkuModalOpen(true)} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm h-[42px] whitespace-nowrap ml-2"><Settings size={16} /> <span className="hidden sm:inline">Phân loại</span></button>)}
                 {canManagePrice && (<button onClick={() => setIsPriceModalOpen(true)} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm h-[42px] whitespace-nowrap ml-2"><DollarSign size={16} /> <span className="hidden sm:inline">Cấu hình Giá</span></button>)}
             </div>
@@ -403,13 +474,16 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                 <th className="px-2 py-2 bg-[#1a4019] border-r border-gray-600 sticky top-0 z-20 w-8">
                     <input type="checkbox" className="w-3 h-3 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer" checked={selectedOrderIds.size > 0 && selectedOrderIds.size === sortedOrdersResult.length} onChange={handleSelectAll} />
                 </th>
-                <th className="px-2 py-2 border-r border-gray-600 w-24 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-center gap-1 group cursor-pointer" onClick={() => setSortConfig({ key: 'date', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' })}>Date {sortConfig.key === 'date' && (sortConfig.direction === 'asc' ? <ArrowUp size={14}/> : <ArrowDown size={14}/>)}</div></th>
                 <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>ID Order Etsy</span><button onClick={(e) => handleFilterClick(e, 'id')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['id']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
                 <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>STORE</span><button onClick={(e) => handleFilterClick(e, 'storeName')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['storeName']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
                 <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>SKU</span><button onClick={(e) => handleFilterClick(e, 'sku')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['sku']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
                 <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-32 text-yellow-300"><div className="flex items-center justify-between gap-1"><span>Phân Loại</span><button onClick={(e) => handleFilterClick(e, 'category')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['category']?.length ? 'text-white' : 'text-yellow-600'}`}><Filter size={14} /></button></div></th>
                 <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-32 text-green-300">Giá Tiền</th>
-                <th className="px-1 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-10 text-center text-blue-300"><div className="flex flex-col items-center"><span className="mb-1">CHK</span><button onClick={(e) => handleFilterClick(e, 'isDesignDone')} className={`p-0.5 rounded hover:bg-[#235221] ${columnFilters['isDesignDone']?.length ? 'text-white' : 'text-blue-400'}`}><Filter size={12} /></button></div></th>
+                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-48 text-blue-300">Link DS</th>
+                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-24 text-blue-300">Check</th>
+                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-32 text-blue-300">Note</th>
+                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-32 text-blue-300">product_url</th>
+                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-48 text-blue-300">options_text</th>
                 <th className="px-2 py-2 border-r border-gray-600 w-32 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>Người xử lý</span><button onClick={(e) => handleFilterClick(e, 'handler')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['handler']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
                 <th className="px-2 py-2 border-l border-gray-600 w-32 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>Action Role</span><button onClick={(e) => handleFilterClick(e, 'actionRole')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['actionRole']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
               </tr>
@@ -428,19 +502,45 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                   const category = skuMap[normalizedSku] || '';
                   const price = getPriceForCategory(category);
                   const isUpdating = updatingIds.has(order.id);
+                  const isUpdatingLinkDs = updatingLinkDsIds.has(order.id);
                   const isHandlerAdmin = (order.handler || '').toLowerCase().includes('admin');
                   const isActionAdmin = (order.actionRole || '').toLowerCase().includes('admin');
 
                   return (
                       <tr key={order.id + idx} className={`hover:bg-gray-50 border-b border-gray-200 text-gray-800 transition-colors ${selectedOrderIds.has(order.id) ? 'bg-indigo-50' : ''}`}>
                           <td className="px-2 py-2 border-r text-center align-middle"><input type="checkbox" className="w-3 h-3 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" checked={selectedOrderIds.has(order.id)} onChange={() => handleSelectRow(order.id)} /></td>
-                          <td className="px-2 py-2 border-r text-center whitespace-nowrap text-gray-600">{formatDateDisplay(order.date)}</td>
                           <td className="px-2 py-2 border-r font-semibold text-gray-900 whitespace-nowrap"><div className="flex justify-between items-center group gap-1"><span>{order.id}</span><button className="text-gray-400 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => navigator.clipboard.writeText(order.id)} title="Copy ID"><Copy size={10} /></button></div></td>
                           <td className="px-2 py-2 border-r text-gray-700">{getStoreName(order.storeId)}</td>
                           <td className="px-2 py-2 border-r font-mono text-[10px] text-gray-600">{order.sku}</td>
                           <td className="px-2 py-2 border-r text-center font-medium text-indigo-600 bg-indigo-50/50">{category}</td>
                           <td className="px-2 py-2 border-r text-center font-bold text-green-700 bg-green-50/50">{formatPrice(price)}</td>
-                          <td className="px-1 py-1 border-r text-center align-middle bg-blue-50/30">{isUpdating ? (<div className="flex justify-center"><Loader2 size={14} className="animate-spin text-blue-500" /></div>) : (<button onClick={() => handleDesignerToggle(order)} disabled={!canCheckDesign} className={`p-1 rounded focus:outline-none transition-colors ${!canCheckDesign ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-100'}`} title={canCheckDesign ? "Check hoàn thành và Lưu sheet" : "Bạn không có quyền check"}>{order.isDesignDone ? <CheckSquare size={16} className="text-blue-600" /> : <Square size={16} className="text-gray-300" />}</button>)}</td>
+                          <td className="px-2 py-2 border-r bg-blue-50/10">
+                              <div className="flex items-center gap-1">
+                                  <input 
+                                      type="text" 
+                                      className="flex-1 min-w-0 border border-gray-300 rounded px-2 py-1 text-[10px] outline-none focus:ring-1 focus:ring-blue-500"
+                                      value={editingLinkDs[order.id] !== undefined ? editingLinkDs[order.id] : (order.linkDs || '')}
+                                      onChange={(e) => setEditingLinkDs(prev => ({ ...prev, [order.id]: e.target.value }))}
+                                      placeholder="Dán link..."
+                                  />
+                                  <button 
+                                      onClick={() => handleUpdateLinkDs(order)}
+                                      disabled={isUpdatingLinkDs}
+                                      className="p-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-blue-300 transition-colors"
+                                      title="Cập nhật Link DS"
+                                  >
+                                      {isUpdatingLinkDs ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                                  </button>
+                              </div>
+                          </td>
+                          <td className="px-2 py-2 border-r text-center text-[10px] text-gray-600">{order.check}</td>
+                          <td className="px-2 py-2 border-r text-center text-[10px] text-gray-600 truncate max-w-[100px]" title={order.designerNote}>{order.designerNote}</td>
+                          <td className="px-2 py-2 border-r text-center text-[10px] text-blue-600 truncate max-w-[100px]">
+                              {order.productUrl ? (
+                                  <a href={order.productUrl} target="_blank" rel="noreferrer" className="hover:underline" title={order.productUrl}>Link</a>
+                              ) : '-'}
+                          </td>
+                          <td className="px-2 py-2 border-r text-left text-[10px] text-gray-600 break-words min-w-[150px]" title={order.optionsText}>{order.optionsText}</td>
                           <td className="px-2 py-2 border-r text-center text-[10px] font-medium whitespace-nowrap bg-gray-50/50">
                               <div className="flex items-center justify-center gap-1.5">
                                   <UserCircle size={12} className={isHandlerAdmin ? 'text-red-500' : 'text-gray-400'}/>
