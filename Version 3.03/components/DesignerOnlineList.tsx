@@ -29,6 +29,7 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
   const [currentFileId, setCurrentFileId] = useState<string | null>(null);
   const [updatingIds, setUpdatingIds] = useState<Set<string>>(new Set());
   const [updatingLinkDsIds, setUpdatingLinkDsIds] = useState<Set<string>>(new Set());
+  const [updatingCheckIds, setUpdatingCheckIds] = useState<Set<string>>(new Set());
   const [editingLinkDs, setEditingLinkDs] = useState<Record<string, string>>({});
 
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
@@ -300,6 +301,31 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
     }
   };
 
+  const handleUpdateCheck = async (order: Order, newValue: string) => {
+    if (!currentFileId) return;
+    
+    setUpdatingCheckIds(prev => new Set(prev).add(order.id));
+    if (onProcessStart) onProcessStart();
+    try {
+      const result = await sheetService.updateDesignerOnlineFields(currentFileId, order.id, { check: newValue });
+      if (result.success) {
+        setOrders(prev => prev.map(o => o.id === order.id ? { ...o, check: newValue } : o));
+      } else {
+        alert('Lỗi cập nhật Check: ' + result.error);
+      }
+    } catch (error) {
+      console.error(error);
+      alert('Lỗi kết nối khi cập nhật Check');
+    } finally {
+      setUpdatingCheckIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(order.id);
+        return newSet;
+      });
+      if (onProcessEnd) onProcessEnd();
+    }
+  };
+
   const formatPrice = (price: number) => { if (!price) return '-'; return price.toLocaleString('vi-VN') + ' đ'; };
   const [currentYearStr, currentMonthStr] = selectedMonth.split('-');
   
@@ -427,7 +453,7 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                 <div className="flex items-center bg-white rounded-lg border border-gray-300 shadow-sm p-1">
                     <button 
                         onClick={() => handleMonthChange(-1)} 
-                        disabled={updatingLinkDsIds.size > 0}
+                        disabled={updatingLinkDsIds.size > 0 || updatingCheckIds.size > 0}
                         className="p-1.5 hover:bg-gray-100 rounded-md text-gray-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <ChevronLeft size={18} />
@@ -436,7 +462,7 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                         <Calendar size={14} className="text-orange-500 mr-1" />
                         <select 
                             value={currentMonthStr} 
-                            disabled={updatingLinkDsIds.size > 0}
+                            disabled={updatingLinkDsIds.size > 0 || updatingCheckIds.size > 0}
                             onChange={(e) => setSelectedMonth(`${currentYearStr}-${e.target.value}`)} 
                             className="font-bold text-gray-700 bg-transparent cursor-pointer outline-none appearance-none hover:bg-gray-50 rounded px-1 py-1 text-center text-sm disabled:opacity-50"
                         >
@@ -445,7 +471,7 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                         <span className="text-gray-400">/</span>
                         <select 
                             value={currentYearStr} 
-                            disabled={updatingLinkDsIds.size > 0}
+                            disabled={updatingLinkDsIds.size > 0 || updatingCheckIds.size > 0}
                             onChange={(e) => setSelectedMonth(`${e.target.value}-${currentMonthStr}`)} 
                             className="font-bold text-gray-700 bg-transparent cursor-pointer outline-none appearance-none hover:bg-gray-50 rounded px-1 py-1 text-sm disabled:opacity-50"
                         >
@@ -454,7 +480,7 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                     </div>
                     <button 
                         onClick={() => handleMonthChange(1)} 
-                        disabled={updatingLinkDsIds.size > 0}
+                        disabled={updatingLinkDsIds.size > 0 || updatingCheckIds.size > 0}
                         className="p-1.5 hover:bg-gray-100 rounded-md text-gray-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <ChevronRight size={18} />
@@ -533,7 +559,24 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                                   </button>
                               </div>
                           </td>
-                          <td className="px-2 py-2 border-r text-center text-[10px] text-gray-600">{order.check}</td>
+                          <td className="px-2 py-2 border-r text-center text-[10px] text-gray-600">
+                              <div className="flex flex-col items-center gap-1">
+                                  <span className={`font-medium ${order.check === 'Done Oder' ? 'text-green-600' : 'text-gray-500'}`}>
+                                      {order.check || '-'}
+                                  </span>
+                                  {order.check !== 'Done Oder' && (
+                                      <button 
+                                          onClick={() => handleUpdateCheck(order, 'Done Oder')}
+                                          disabled={updatingCheckIds.has(order.id)}
+                                          className="px-2 py-0.5 bg-orange-500 text-white rounded text-[9px] hover:bg-orange-600 disabled:bg-orange-300 transition-colors flex items-center justify-center gap-1 min-w-[70px]"
+                                          title="Xác nhận Done Oder"
+                                      >
+                                          {updatingCheckIds.has(order.id) ? <Loader2 size={10} className="animate-spin" /> : null}
+                                          Done Oder
+                                      </button>
+                                  )}
+                              </div>
+                          </td>
                           <td className="px-2 py-2 border-r text-center text-[10px] text-gray-600 truncate max-w-[100px]" title={order.designerNote}>{order.designerNote}</td>
                           <td className="px-2 py-2 border-r text-center text-[10px] text-blue-600 truncate max-w-[100px]">
                               {order.productUrl ? (
