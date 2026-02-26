@@ -23,6 +23,12 @@ export interface Order {
   actionRole?: string;
   itemName?: string;
   netPrice?: string | number;
+  linkDs?: string;
+  check?: string;
+  note?: string;
+  designerNote?: string;
+  productUrl?: string;
+  optionsText?: string;
 }
 
 export interface Store {
