@@ -102,13 +102,22 @@ export interface DailyNoteItem {
   id: string;
   text: string;
   completed: boolean;
+  columnId?: string; // Optional for backward compatibility
+}
+
+export interface PlannerColumn {
+  id: string;
+  title: string;
+  order: number;
 }
 
 export interface UserNote {
   username: string;
   date: string;
   items: DailyNoteItem[];
+  columns?: PlannerColumn[];
   showPlanner?: boolean; 
+  plannerPosition?: { x: number, y: number };
 }
 
 export interface NewsItem {
