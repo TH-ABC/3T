@@ -26,7 +26,11 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
   const [newColumnTitle, setNewColumnTitle] = useState('');
   const [addingColumn, setAddingColumn] = useState(false);
   const [activeColumnId, setActiveColumnId] = useState<string | null>(null);
+  const [newItemTitle, setNewItemTitle] = useState('');
   const [newItemText, setNewItemText] = useState('');
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
+  const [tempColumnTitle, setTempColumnTitle] = useState('');
 
   const fetchData = async () => {
     setLoading(true);
@@ -57,27 +61,34 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
     }
   }, [isOpen]);
 
-  const savePlanner = async (
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const savePlanner = (
     updatedItems: DailyNoteItem[] = items, 
     updatedColumns: PlannerColumn[] = columns,
     updatedPos: { x: number, y: number } = position
   ) => {
+    // Debounce saving to avoid too many requests
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    
     setSaving(true);
-    try {
-      const today = new Date().toISOString().split('T')[0];
-      await sheetService.saveUserNote({
-        username: user.username,
-        date: today,
-        items: updatedItems,
-        columns: updatedColumns,
-        plannerPosition: updatedPos,
-        showPlanner: true
-      });
-    } catch (error) {
-      console.error('Error saving planner:', error);
-    } finally {
-      setSaving(false);
-    }
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        await sheetService.saveUserNote({
+          username: user.username,
+          date: today,
+          items: updatedItems,
+          columns: updatedColumns,
+          plannerPosition: updatedPos,
+          showPlanner: true
+        });
+      } catch (error) {
+        console.error('Error saving planner:', error);
+      } finally {
+        setSaving(false);
+      }
+    }, 1000); // Wait 1 second after last change before saving
   };
 
   const addColumn = () => {
@@ -95,6 +106,7 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
   };
 
   const deleteColumn = (id: string) => {
+    if (!window.confirm('Bạn có chắc chắn muốn xóa cột này?')) return;
     const updatedCols = columns.filter(c => c.id !== id);
     const updatedItems = items.filter(i => i.columnId !== id);
     setColumns(updatedCols);
@@ -102,18 +114,38 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
     savePlanner(updatedItems, updatedCols);
   };
 
+  const updateColumnTitle = (id: string) => {
+    if (!tempColumnTitle.trim()) {
+      setEditingColumnId(null);
+      return;
+    }
+    const updated = columns.map(c => c.id === id ? { ...c, title: tempColumnTitle.trim() } : c);
+    setColumns(updated);
+    setEditingColumnId(null);
+    savePlanner(items, updated);
+  };
+
   const addItem = (columnId: string) => {
-    if (!newItemText.trim()) return;
+    if (!newItemTitle.trim()) return;
     const newItem: DailyNoteItem = {
       id: 'item-' + Date.now(),
+      title: newItemTitle.trim(),
       text: newItemText.trim(),
+      content: newItemText.trim(),
       completed: false,
       columnId: columnId
     };
     const updated = [...items, newItem];
     setItems(updated);
+    setNewItemTitle('');
     setNewItemText('');
     setActiveColumnId(null);
+    savePlanner(updated);
+  };
+
+  const updateItem = (id: string, updates: Partial<DailyNoteItem>) => {
+    const updated = items.map(item => item.id === id ? { ...item, ...updates } : item);
+    setItems(updated);
     savePlanner(updated);
   };
 
@@ -139,11 +171,30 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
     savePlanner(updated);
   };
 
-  // Simple drag and drop simulation for items
-  const handleDragEnd = (event: any, info: any, itemId: string) => {
-    // This is a simplified version. In a real app, we'd calculate which column the item was dropped over.
-    // For now, we'll use the "move to" buttons or a more complex calculation if needed.
-    // But since the user asked for "kéo di chuyển qua lại giữa các cột", I'll try to implement a basic drop detection.
+  // Drag and drop detection for columns
+  const handleDragEndItem = (event: any, info: any, itemId: string) => {
+    const dropX = info.point.x;
+    const dropY = info.point.y;
+    
+    // Find column under drop point
+    const columnElements = document.querySelectorAll('[data-column-id]');
+    let targetColumnId = null;
+
+    columnElements.forEach((el) => {
+      const rect = el.getBoundingClientRect();
+      if (
+        dropX >= rect.left && 
+        dropX <= rect.right && 
+        dropY >= rect.top && 
+        dropY <= rect.bottom
+      ) {
+        targetColumnId = el.getAttribute('data-column-id');
+      }
+    });
+
+    if (targetColumnId) {
+      moveItem(itemId, targetColumnId);
+    }
   };
 
   return (
@@ -223,18 +274,42 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
                 ) : (
                   <>
                     {columns.sort((a, b) => a.order - b.order).map(column => (
-                      <div key={column.id} className="w-72 flex-shrink-0 flex flex-col gap-4">
-                        <div className="flex items-center justify-between px-2">
-                          <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
-                            {column.title}
-                            <span className="ml-2 px-1.5 py-0.5 bg-slate-200 text-slate-500 rounded text-[8px]">
-                              {items.filter(i => i.columnId === column.id).length}
-                            </span>
-                          </h4>
+                      <div 
+                        key={column.id} 
+                        data-column-id={column.id}
+                        className="w-72 flex-shrink-0 flex flex-col gap-4"
+                      >
+                        <div className="flex items-center justify-between px-2 group">
+                          {editingColumnId === column.id ? (
+                            <div className="flex items-center gap-1 flex-1">
+                              <input
+                                autoFocus
+                                type="text"
+                                value={tempColumnTitle}
+                                onChange={(e) => setTempColumnTitle(e.target.value)}
+                                onBlur={() => updateColumnTitle(column.id)}
+                                onKeyDown={(e) => e.key === 'Enter' && updateColumnTitle(column.id)}
+                                className="flex-1 bg-white border border-indigo-300 rounded px-2 py-1 text-xs font-black uppercase outline-none"
+                              />
+                            </div>
+                          ) : (
+                            <h4 
+                              onClick={() => {
+                                setEditingColumnId(column.id);
+                                setTempColumnTitle(column.title);
+                              }}
+                              className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-2 cursor-pointer hover:text-indigo-600 transition-colors"
+                            >
+                              <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+                              {column.title}
+                              <span className="ml-2 px-1.5 py-0.5 bg-slate-200 text-slate-500 rounded text-[8px]">
+                                {items.filter(i => i.columnId === column.id).length}
+                              </span>
+                            </h4>
+                          )}
                           <button 
                             onClick={() => deleteColumn(column.id)}
-                            className="p-1 text-slate-300 hover:text-rose-500 transition-colors"
+                            className="p-1 text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"
                           >
                             <Trash2 size={14} />
                           </button>
@@ -245,62 +320,101 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
                             <motion.div
                               layout
                               key={item.id}
-                              drag="y"
-                              dragConstraints={{ top: 0, bottom: 0 }}
+                              drag
+                              dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
                               dragElastic={0.1}
-                              className="bg-white p-3 rounded-xl shadow-sm border border-slate-100 group hover:border-indigo-200 transition-all cursor-grab active:cursor-grabbing"
+                              onDragEnd={(e, info) => handleDragEndItem(e, info, item.id)}
+                              className="bg-white p-3 rounded-xl shadow-sm border border-slate-100 group hover:border-indigo-200 transition-all cursor-grab active:cursor-grabbing relative z-10"
                             >
-                              <div className="flex items-start gap-2">
-                                <button 
-                                  onClick={() => toggleItem(item.id)}
-                                  className={`mt-0.5 transition-colors ${item.completed ? 'text-emerald-500' : 'text-slate-300 hover:text-indigo-500'}`}
-                                >
-                                  {item.completed ? <CheckSquare size={16} /> : <Square size={16} />}
-                                </button>
-                                <span className={`flex-1 text-[11px] font-bold leading-relaxed ${item.completed ? 'text-slate-300 line-through italic' : 'text-slate-700'}`}>
-                                  {item.text}
-                                </span>
-                                <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <button onClick={() => deleteItem(item.id)} className="text-slate-300 hover:text-rose-500">
+                              <div className="flex flex-col gap-2">
+                                <div className="flex items-start gap-2">
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); toggleItem(item.id); }}
+                                    className={`mt-0.5 transition-colors ${item.completed ? 'text-emerald-500' : 'text-slate-300 hover:text-indigo-500'}`}
+                                  >
+                                    {item.completed ? <CheckSquare size={16} /> : <Square size={16} />}
+                                  </button>
+                                  <div 
+                                    className="flex-1 cursor-pointer"
+                                    onClick={() => setEditingItemId(editingItemId === item.id ? null : item.id)}
+                                  >
+                                    <h5 className={`text-[11px] font-black uppercase tracking-tight ${item.completed ? 'text-slate-300 line-through' : 'text-slate-800'}`}>
+                                      {item.title || item.text.substring(0, 20)}
+                                    </h5>
+                                    <p className={`text-[10px] font-medium mt-1 line-clamp-2 ${item.completed ? 'text-slate-200' : 'text-slate-500'}`}>
+                                      {item.text}
+                                    </p>
+                                  </div>
+                                  <button onClick={(e) => { e.stopPropagation(); deleteItem(item.id); }} className="text-slate-200 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <Trash2 size={12} />
                                   </button>
-                                  <div className="flex gap-1">
-                                    {columns.filter(c => c.id !== column.id).map(c => (
-                                      <button 
-                                        key={c.id}
-                                        onClick={() => moveItem(item.id, c.id)}
-                                        className="text-[8px] bg-slate-100 hover:bg-indigo-100 text-slate-400 hover:text-indigo-600 px-1 rounded"
-                                        title={`Move to ${c.title}`}
-                                      >
-                                        {c.title.charAt(0)}
-                                      </button>
-                                    ))}
-                                  </div>
                                 </div>
+
+                                {editingItemId === item.id && (
+                                  <motion.div 
+                                    initial={{ height: 0, opacity: 0 }}
+                                    animate={{ height: 'auto', opacity: 1 }}
+                                    className="pt-2 border-t border-slate-50 space-y-3"
+                                  >
+                                    <div>
+                                      <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Tiêu đề</label>
+                                      <input 
+                                        type="text"
+                                        value={item.title || ''}
+                                        onChange={(e) => updateItem(item.id, { title: e.target.value })}
+                                        className="w-full bg-slate-50 border border-slate-100 rounded-lg px-3 py-1.5 text-[10px] font-bold outline-none focus:ring-2 focus:ring-indigo-500/10"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Nội dung chi tiết</label>
+                                      <textarea 
+                                        value={item.text}
+                                        onChange={(e) => updateItem(item.id, { text: e.target.value, content: e.target.value })}
+                                        className="w-full bg-slate-50 border border-slate-100 rounded-lg px-3 py-1.5 text-[10px] font-bold outline-none focus:ring-2 focus:ring-indigo-500/10 resize-none"
+                                        rows={4}
+                                      />
+                                    </div>
+                                    <div className="flex justify-end">
+                                      <button 
+                                        onClick={() => setEditingItemId(null)}
+                                        className="text-[9px] font-black text-indigo-600 uppercase tracking-widest hover:text-indigo-700"
+                                      >
+                                        Đóng
+                                      </button>
+                                    </div>
+                                  </motion.div>
+                                )}
                               </div>
                             </motion.div>
                           ))}
 
                           {activeColumnId === column.id ? (
-                            <div className="space-y-2 animate-fade-in">
-                              <textarea
+                            <div className="bg-white p-3 rounded-2xl border border-indigo-100 shadow-sm space-y-3 animate-fade-in">
+                              <input
                                 autoFocus
+                                type="text"
+                                value={newItemTitle}
+                                onChange={(e) => setNewItemTitle(e.target.value)}
+                                placeholder="Tiêu đề thẻ..."
+                                className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-[11px] font-black uppercase outline-none focus:ring-2 focus:ring-indigo-500/10"
+                              />
+                              <textarea
                                 value={newItemText}
                                 onChange={(e) => setNewItemText(e.target.value)}
-                                placeholder="Nhập nội dung..."
-                                className="w-full bg-white border border-indigo-200 rounded-xl p-3 text-[11px] font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-inner resize-none"
+                                placeholder="Nội dung chi tiết..."
+                                className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-[11px] font-bold outline-none focus:ring-2 focus:ring-indigo-500/10 shadow-inner resize-none"
                                 rows={3}
                               />
                               <div className="flex gap-2">
                                 <button 
                                   onClick={() => addItem(column.id)}
-                                  className="flex-1 bg-indigo-600 text-white py-2 rounded-xl text-[10px] font-black uppercase hover:bg-indigo-700 transition-all"
+                                  className="flex-1 bg-indigo-600 text-white py-2 rounded-xl text-[10px] font-black uppercase hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200"
                                 >
                                   Thêm
                                 </button>
                                 <button 
                                   onClick={() => setActiveColumnId(null)}
-                                  className="px-3 bg-slate-200 text-slate-600 rounded-xl hover:bg-slate-300 transition-all"
+                                  className="px-3 bg-slate-100 text-slate-500 rounded-xl hover:bg-slate-200 transition-all"
                                 >
                                   <X size={14} />
                                 </button>
