@@ -20,8 +20,14 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
   const [saving, setSaving] = useState(false);
   const [columns, setColumns] = useState<PlannerColumn[]>([]);
   const [items, setItems] = useState<DailyNoteItem[]>([]);
-  const [position, setPosition] = useState({ x: 100, y: 100 });
-  const [size, setSize] = useState({ width: 800, height: 500 });
+  const [position, setPosition] = useState(() => {
+    const saved = localStorage.getItem('planner_position');
+    return saved ? JSON.parse(saved) : { x: 100, y: 100 };
+  });
+  const [size, setSize] = useState(() => {
+    const saved = localStorage.getItem('planner_size');
+    return saved ? JSON.parse(saved) : { width: 800, height: 500 };
+  });
   const [isMinimized, setIsMinimized] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   
@@ -46,12 +52,7 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
           { id: 'col-doing', title: 'Doing', order: 1 },
           { id: 'col-done', title: 'Done', order: 2 }
         ]);
-        if (res.plannerPosition) {
-          setPosition(res.plannerPosition);
-        }
-        if (res.plannerSize) {
-          setSize(res.plannerSize);
-        }
+        // We no longer load position/size from BE as per user request
       }
     } catch (error) {
       console.error('Error fetching planner data:', error);
@@ -70,9 +71,7 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
 
   const savePlanner = (
     updatedItems: DailyNoteItem[] = items, 
-    updatedColumns: PlannerColumn[] = columns,
-    updatedPos: { x: number, y: number } = position,
-    updatedSize: { width: number, height: number } = size
+    updatedColumns: PlannerColumn[] = columns
   ) => {
     // Debounce saving to avoid too many requests
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
@@ -86,8 +85,7 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
           date: today,
           items: updatedItems,
           columns: updatedColumns,
-          plannerPosition: updatedPos,
-          plannerSize: updatedSize,
+          // We no longer send position/size to BE
           showPlanner: true
         });
       } catch (error) {
@@ -278,13 +276,15 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
     const newWidth = Math.max(300, e.clientX - position.x);
     const newHeight = Math.max(200, e.clientY - position.y);
     
-    setSize({ width: newWidth, height: newHeight });
+    const newSize = { width: newWidth, height: newHeight };
+    setSize(newSize);
+    localStorage.setItem('planner_size', JSON.stringify(newSize));
   };
 
   const stopResizing = () => {
     if (isResizing) {
       setIsResizing(false);
-      savePlanner(items, columns, position, size);
+      // No longer saving size to BE
     }
   };
 
@@ -334,7 +334,8 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
                 y: position.y + info.offset.y 
               };
               setPosition(newPos);
-              savePlanner(items, columns, newPos, size);
+              localStorage.setItem('planner_position', JSON.stringify(newPos));
+              // No longer saving position to BE
             }}
             className="fixed z-[110] bg-white rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.2)] border border-slate-200 overflow-hidden flex flex-col"
             style={{ touchAction: 'none' }}
