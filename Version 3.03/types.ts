@@ -100,7 +100,10 @@ export interface HandoverItem {
 
 export interface DailyNoteItem {
   id: string;
+  title?: string;
   text: string;
+  content?: string;
+  images?: string[];
   completed: boolean;
   columnId?: string; // Optional for backward compatibility
 }
@@ -118,6 +121,7 @@ export interface UserNote {
   columns?: PlannerColumn[];
   showPlanner?: boolean; 
   plannerPosition?: { x: number, y: number };
+  plannerSize?: { width: number, height: number };
 }
 
 export interface NewsItem {
