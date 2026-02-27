@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Search, RefreshCw, Copy, ArrowUp, ArrowDown, Calendar, UserCircle, ChevronLeft, ChevronRight, Settings, Save, X, Loader2, CheckCircle, AlertCircle, Filter, ArrowDownAZ, ArrowUpAZ, AlertTriangle, Info, FileSpreadsheet, DollarSign, CheckSquare, Square, Users, Layers, Code, PenTool } from 'lucide-react';
+import { Search, RefreshCw, Copy, ArrowUp, ArrowDown, Calendar, UserCircle, ChevronLeft, ChevronRight, Settings, Save, X, Loader2, CheckCircle, AlertCircle, Filter, ArrowDownAZ, ArrowUpAZ, AlertTriangle, Info, FileSpreadsheet, DollarSign, CheckSquare, Square, Users, Layers, Code, PenTool, Edit, Shield } from 'lucide-react';
 import { sheetService } from '../services/sheetService';
 import { Order, Store, User } from '../types';
 
@@ -497,29 +497,26 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
           <table className="w-full text-left border-collapse text-xs relative">
             <thead className="text-white font-bold text-center uppercase text-xs tracking-wider sticky top-0 z-20">
               <tr>
-                <th className="px-2 py-2 bg-[#1a4019] border-r border-gray-600 sticky top-0 z-20 w-8">
-                    <input type="checkbox" className="w-3 h-3 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer" checked={selectedOrderIds.size > 0 && selectedOrderIds.size === sortedOrdersResult.length} onChange={handleSelectAll} />
-                </th>
-                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>ID Order Etsy</span><button onClick={(e) => handleFilterClick(e, 'id')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['id']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
+                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-fit"><div className="flex items-center justify-between gap-1"><span>ID Oder</span><button onClick={(e) => handleFilterClick(e, 'id')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['id']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
                 <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>STORE</span><button onClick={(e) => handleFilterClick(e, 'storeName')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['storeName']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
                 <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>SKU</span><button onClick={(e) => handleFilterClick(e, 'sku')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['sku']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
-                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-32 text-yellow-300"><div className="flex items-center justify-between gap-1"><span>Phân Loại</span><button onClick={(e) => handleFilterClick(e, 'category')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['category']?.length ? 'text-white' : 'text-yellow-600'}`}><Filter size={14} /></button></div></th>
-                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-32 text-green-300">Giá Tiền</th>
-                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-48 text-blue-300">Link DS</th>
-                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-24 text-blue-300">Check</th>
-                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-32 text-blue-300">Note</th>
-                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-32 text-blue-300">product_url</th>
-                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-48 text-blue-300">options_text</th>
-                <th className="px-2 py-2 border-r border-gray-600 w-32 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>Người xử lý</span><button onClick={(e) => handleFilterClick(e, 'handler')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['handler']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
-                <th className="px-2 py-2 border-l border-gray-600 w-32 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>Action Role</span><button onClick={(e) => handleFilterClick(e, 'actionRole')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['actionRole']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
+                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-fit text-yellow-300"><div className="flex items-center justify-between gap-1"><span>PL</span><button onClick={(e) => handleFilterClick(e, 'category')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['category']?.length ? 'text-white' : 'text-yellow-600'}`}><Filter size={14} /></button></div></th>
+                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-fit text-green-300">Giá Tiền</th>
+                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-fit text-blue-300">Link DS</th>
+                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-24 text-blue-300"><div className="flex items-center justify-between gap-1"><span>Check</span><button onClick={(e) => handleFilterClick(e, 'check')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['check']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
+                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-64 text-blue-300"><div className="flex items-center justify-between gap-1"><span>Note</span><button onClick={(e) => handleFilterClick(e, 'designerNote')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['designerNote']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
+                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-12 text-blue-300" title="Product URL">PU</th>
+                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-[500px] text-blue-300">options_text</th>
+                <th className="px-2 py-2 border-r border-gray-600 w-12 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>NXL</span><button onClick={(e) => handleFilterClick(e, 'handler')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['handler']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
+                <th className="px-2 py-2 border-l border-gray-600 w-12 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>AR</span><button onClick={(e) => handleFilterClick(e, 'actionRole')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['actionRole']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {loading ? (
-                <tr><td colSpan={10} className="text-center py-12 text-gray-500">Đang tải dữ liệu Tháng {currentMonthStr}...</td></tr>
+                <tr><td colSpan={12} className="text-center py-12 text-gray-500">Đang tải dữ liệu Tháng {currentMonthStr}...</td></tr>
               ) : sortedOrdersResult.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="text-center py-12 text-gray-500">
+                  <td colSpan={12} className="text-center py-12 text-gray-500">
                     {'Không có đơn hàng nào khớp với bộ lọc.'}
                   </td>
                 </tr>
@@ -534,29 +531,37 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
 
                   return (
                       <tr key={order.id + idx} className={`hover:bg-gray-50 border-b border-gray-200 text-gray-800 transition-colors ${selectedOrderIds.has(order.id) ? 'bg-indigo-50' : ''}`}>
-                          <td className="px-2 py-2 border-r text-center align-middle"><input type="checkbox" className="w-3 h-3 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" checked={selectedOrderIds.has(order.id)} onChange={() => handleSelectRow(order.id)} /></td>
                           <td className="px-2 py-2 border-r font-semibold text-gray-900 whitespace-nowrap"><div className="flex justify-between items-center group gap-1"><span>{order.id}</span><button className="text-gray-400 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => navigator.clipboard.writeText(order.id)} title="Copy ID"><Copy size={10} /></button></div></td>
                           <td className="px-2 py-2 border-r text-gray-700">{getStoreName(order.storeId)}</td>
                           <td className="px-2 py-2 border-r font-mono text-[10px] text-gray-600">{order.sku}</td>
                           <td className="px-2 py-2 border-r text-center font-medium text-indigo-600 bg-indigo-50/50">{category}</td>
                           <td className="px-2 py-2 border-r text-center font-bold text-green-700 bg-green-50/50">{formatPrice(price)}</td>
-                          <td className="px-2 py-2 border-r bg-blue-50/10">
+                          <td className="px-2 py-2 border-r bg-blue-50/10 w-fit whitespace-nowrap">
                               <div className="flex items-center gap-1">
-                                  <input 
-                                      type="text" 
-                                      className="flex-1 min-w-0 border border-gray-300 rounded px-2 py-1 text-[10px] outline-none focus:ring-1 focus:ring-blue-500"
-                                      value={editingLinkDs[order.id] !== undefined ? editingLinkDs[order.id] : (order.linkDs || '')}
-                                      onChange={(e) => setEditingLinkDs(prev => ({ ...prev, [order.id]: e.target.value }))}
-                                      placeholder="Dán link..."
-                                  />
-                                  <button 
-                                      onClick={() => handleUpdateLinkDs(order)}
-                                      disabled={isUpdatingLinkDs}
-                                      className="p-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-blue-300 transition-colors"
-                                      title="Cập nhật Link DS"
-                                  >
-                                      {isUpdatingLinkDs ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-                                  </button>
+                                  {order.linkDs && editingLinkDs[order.id] === undefined ? (
+                                      <div className="flex items-center gap-1">
+                                          <a href={order.linkDs} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-[10px] truncate max-w-[100px]" title={order.linkDs}>Link DS</a>
+                                          <button onClick={() => setEditingLinkDs(prev => ({ ...prev, [order.id]: order.linkDs || '' }))} className="text-gray-400 hover:text-blue-500"><Edit size={10}/></button>
+                                      </div>
+                                  ) : (
+                                      <>
+                                          <input 
+                                              type="text" 
+                                              className="flex-1 min-w-0 border border-gray-300 rounded px-2 py-1 text-[10px] outline-none focus:ring-1 focus:ring-blue-500"
+                                              value={editingLinkDs[order.id] !== undefined ? editingLinkDs[order.id] : (order.linkDs || '')}
+                                              onChange={(e) => setEditingLinkDs(prev => ({ ...prev, [order.id]: e.target.value }))}
+                                              placeholder="Dán link..."
+                                          />
+                                          <button 
+                                              onClick={() => handleUpdateLinkDs(order)}
+                                              disabled={isUpdatingLinkDs}
+                                              className="p-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-blue-300 transition-colors"
+                                              title="Cập nhật Link DS"
+                                          >
+                                              {isUpdatingLinkDs ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                                          </button>
+                                      </>
+                                  )}
                               </div>
                           </td>
                           <td className="px-2 py-2 border-r text-center text-[10px] text-gray-600">
@@ -577,20 +582,27 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                                   )}
                               </div>
                           </td>
-                          <td className="px-2 py-2 border-r text-center text-[10px] text-gray-600 truncate max-w-[100px]" title={order.designerNote}>{order.designerNote}</td>
+                          <td className="px-2 py-2 border-r text-left text-[10px] text-gray-600 whitespace-pre-wrap break-words max-w-[250px]" title={order.designerNote}>{order.designerNote}</td>
                           <td className="px-2 py-2 border-r text-center text-[10px] text-blue-600 truncate max-w-[100px]">
                               {order.productUrl ? (
-                                  <a href={order.productUrl} target="_blank" rel="noreferrer" className="hover:underline" title={order.productUrl}>Link</a>
+                                  <a href={order.productUrl} target="_blank" rel="noreferrer" className="hover:underline" title={order.productUrl}>PU</a>
                               ) : '-'}
                           </td>
-                          <td className="px-2 py-2 border-r text-left text-[10px] text-gray-600 break-words min-w-[150px]" title={order.optionsText}>{order.optionsText}</td>
-                          <td className="px-2 py-2 border-r text-center text-[10px] font-medium whitespace-nowrap bg-gray-50/50">
-                              <div className="flex items-center justify-center gap-1.5">
-                                  <UserCircle size={12} className={isHandlerAdmin ? 'text-red-500' : 'text-gray-400'}/>
-                                  <span className={isHandlerAdmin ? "admin-red-gradient" : "text-gray-600"}>{order.handler}</span>
+                          <td className="px-2 py-2 border-r text-left text-[10px] text-gray-600 break-words min-w-[500px] whitespace-pre-wrap" title={order.optionsText}>{order.optionsText}</td>
+                          <td className="px-2 py-2 border-r text-center text-[10px] font-medium whitespace-nowrap bg-gray-50/50 w-12">
+                              <div className="flex items-center justify-center" title={order.handler}>
+                                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] text-white font-bold ${isHandlerAdmin ? 'bg-red-500' : 'bg-indigo-500'}`}>
+                                      {order.handler ? order.handler.charAt(0).toUpperCase() : '?'}
+                                  </div>
                               </div>
                           </td>
-                          <td className={`px-2 py-2 border-l text-center bg-gray-50/30 font-bold ${isActionAdmin ? 'admin-red-gradient' : 'text-orange-600'}`}>{order.actionRole}</td>
+                          <td className={`px-2 py-2 border-l text-center bg-gray-50/30 font-bold w-12 ${isActionAdmin ? 'admin-red-gradient' : 'text-orange-600'}`} title={order.actionRole}>
+                              <div className="flex items-center justify-center">
+                                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] text-white font-bold ${isActionAdmin ? 'bg-red-600' : 'bg-orange-500'}`}>
+                                      {order.actionRole ? order.actionRole.charAt(0).toUpperCase() : '?'}
+                                  </div>
+                              </div>
+                          </td>
                       </tr>
                   );
               })}
