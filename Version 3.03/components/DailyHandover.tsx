@@ -337,364 +337,254 @@ const DailyHandover: React.FC<DailyHandoverProps> = ({ user }) => {
   };
 
   return (
-    <div className="p-4 sm:p-8 bg-[#f8fafc] min-h-screen flex flex-col lg:flex-row gap-8 animate-fade-in">
-      {/* --- LEFT: DAILY PLANNER --- */}
-      <aside className={`${showPlanner ? 'w-full lg:w-80' : 'w-full lg:w-16'} transition-all duration-500 space-y-6`}>
-         <div className="bg-white rounded-[2.5rem] p-6 shadow-[0_10px_30px_rgba(0,0,0,0.03)] border border-slate-200/60 h-fit sticky top-8 overflow-hidden">
-            <div className={`flex items-center justify-between ${showPlanner ? 'mb-6 pb-4 border-b border-slate-100' : ''}`}>
-               <div className={`flex items-center gap-3 ${!showPlanner ? 'hidden' : ''}`}>
-                  <div className="p-2 bg-amber-100 text-amber-600 rounded-xl shadow-sm">
-                    <StickyNote size={20} />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-black text-slate-800 uppercase leading-none">Planner</h3>
-                    <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-1">Ghi chú cá nhân</p>
-                  </div>
-               </div>
-               
-               <div className="flex items-center gap-2">
-                 {showPlanner && savingNote && <Loader2 size={14} className="animate-spin text-indigo-500" />}
-                 <button 
-                  onClick={handleTogglePlanner}
-                  title={showPlanner ? "Thu gọn" : "Mở rộng Planner"}
-                  className="p-2.5 bg-slate-50 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
-                 >
-                   {showPlanner ? <EyeOff size={18} /> : <StickyNote size={18} />}
-                 </button>
-               </div>
+    <div className="p-4 sm:p-8 bg-[#f8fafc] min-h-screen animate-fade-in">
+      {/* --- HEADER --- */}
+      <header className="flex flex-col xl:flex-row justify-between items-center gap-6 bg-white p-6 rounded-[2.5rem] shadow-[0_10px_30px_rgba(0,0,0,0.02)] border border-slate-200/60 mb-8">
+          <div className="flex items-center gap-4">
+            <div className="p-3.5 bg-gradient-to-tr from-indigo-600 to-indigo-800 text-white rounded-2xl shadow-xl shadow-indigo-100/50">
+              <ClipboardList size={26} strokeWidth={2.5} />
+            </div>
+            <div>
+              <h1 className="text-xl sm:text-2xl font-black bg-gradient-to-r from-slate-900 to-slate-600 bg-clip-text text-transparent uppercase tracking-tighter">Bàn Giao Công Việc</h1>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1 flex items-center gap-2">
+                  <Layers size={12} className="text-indigo-500" /> Hệ thống kiểm soát nhiệm vụ
+              </p>
+            </div>
+          </div>
+          
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200 shadow-inner">
+              <button 
+                onClick={() => setFilterMode('day')} 
+                className={`px-4 py-2 text-[9px] font-black uppercase rounded-xl transition-all ${filterMode === 'day' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-500 hover:text-slate-700'}`}
+              >Ngày</button>
+              <button 
+                onClick={() => setFilterMode('month')} 
+                className={`px-4 py-2 text-[9px] font-black uppercase rounded-xl transition-all ${filterMode === 'month' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-500 hover:text-slate-700'}`}
+              >Tháng</button>
+              <button 
+                onClick={() => setFilterMode('all')} 
+                className={`px-4 py-2 text-[9px] font-black uppercase rounded-xl transition-all ${filterMode === 'all' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-500 hover:text-slate-700'}`}
+              >Tất cả</button>
             </div>
 
-            {showPlanner && (
-              <div className="animate-fade-in">
-                <div className="flex gap-2 mb-6">
-                  <input 
-                    type="text" 
-                    value={newNoteInput}
-                    onChange={(e) => setNewNoteInput(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAddNoteItem()}
-                    placeholder="Ghi chú nhanh..."
-                    className="flex-1 bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-amber-500/20 transition-all shadow-inner"
-                  />
-                  <button 
-                    onClick={handleAddNoteItem}
-                    className="bg-amber-500 text-white p-2.5 rounded-xl hover:bg-amber-600 transition-all shadow-lg shadow-amber-200"
-                  >
-                    <Plus size={18} strokeWidth={3} />
-                  </button>
-                </div>
-
-                <div className="space-y-2 max-h-[450px] overflow-y-auto custom-scrollbar pr-2">
-                  {noteItems.length === 0 ? (
-                    <div className="py-10 text-center flex flex-col items-center gap-3 opacity-20">
-                      <ClipboardList size={32} />
-                      <p className="text-[9px] font-black uppercase tracking-widest leading-relaxed">Chưa có kế hoạch</p>
-                    </div>
-                  ) : (
-                    noteItems.map((item) => (
-                      <div key={item.id} className="group flex items-start gap-3 p-3 bg-slate-50/50 hover:bg-white border border-transparent hover:border-slate-100 rounded-2xl transition-all shadow-sm">
-                        <button 
-                          onClick={() => toggleNoteItem(item.id)}
-                          className={`mt-0.5 transition-colors ${item.completed ? 'text-emerald-500' : 'text-slate-300 hover:text-indigo-500'}`}
-                        >
-                          {item.completed ? <CheckSquare size={18} /> : <Square size={18} />}
-                        </button>
-                        <span className={`flex-1 text-xs font-bold leading-relaxed ${item.completed ? 'text-slate-300 line-through italic' : 'text-slate-700'}`}>
-                          {item.text}
-                        </span>
-                        <button 
-                          onClick={() => deleteNoteItem(item.id)}
-                          className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
+            {filterMode === 'day' && (
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-indigo-500" size={16} />
+                <input 
+                  type="date" 
+                  value={selectedDate} 
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm"
+                />
               </div>
             )}
-         </div>
-      </aside>
 
-      {/* --- RIGHT: ALL HANDOVER LIST --- */}
-      <div className="flex-1 space-y-6">
-        <header className="flex flex-col xl:flex-row justify-between items-center gap-6 bg-white p-6 rounded-[2.5rem] shadow-[0_10px_30px_rgba(0,0,0,0.02)] border border-slate-200/60">
-           <div className="flex items-center gap-4">
-              <div className="p-3.5 bg-gradient-to-tr from-indigo-600 to-indigo-800 text-white rounded-2xl shadow-xl shadow-indigo-100/50">
-                <ClipboardList size={26} strokeWidth={2.5} />
+            {filterMode === 'month' && (
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-indigo-500" size={16} />
+                <input 
+                  type="month" 
+                  value={selectedMonth} 
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm"
+                />
               </div>
-              <div>
-                <h1 className="text-xl sm:text-2xl font-black bg-gradient-to-r from-slate-900 to-slate-600 bg-clip-text text-transparent uppercase tracking-tighter">Bàn Giao Công Việc</h1>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1 flex items-center gap-2">
-                   <Layers size={12} className="text-indigo-500" /> Hệ thống kiểm soát nhiệm vụ
-                </p>
-              </div>
-           </div>
-           
-           <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200 shadow-inner">
-                <button 
-                  onClick={() => setFilterMode('day')} 
-                  className={`px-4 py-2 text-[9px] font-black uppercase rounded-xl transition-all ${filterMode === 'day' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-500 hover:text-slate-700'}`}
-                >Ngày</button>
-                <button 
-                  onClick={() => setFilterMode('month')} 
-                  className={`px-4 py-2 text-[9px] font-black uppercase rounded-xl transition-all ${filterMode === 'month' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-500 hover:text-slate-700'}`}
-                >Tháng</button>
-                <button 
-                  onClick={() => setFilterMode('all')} 
-                  className={`px-4 py-2 text-[9px] font-black uppercase rounded-xl transition-all ${filterMode === 'all' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-500 hover:text-slate-700'}`}
-                >Tất cả</button>
-              </div>
+            )}
 
-              {filterMode === 'day' && (
-                <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-indigo-500" size={16} />
-                  <input 
-                    type="date" 
-                    value={selectedDate} 
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    className="bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm"
-                  />
+            {isAdmin && (
+              <button onClick={() => { setEditingId(null); setNewHandover({task:'', assignee:'', deadlineAt:'', imageLink:'', fileLink: ''}); setIsAddModalOpen(true); }} className="bg-indigo-600 text-white px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 active:scale-95">
+                <Plus size={16} strokeWidth={3} /> Giao việc
+              </button>
+            )}
+          </div>
+      </header>
+
+      {/* --- STATS SUMMARY --- */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8">
+          <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-200/60 flex items-center justify-between group hover:shadow-md transition-all">
+            <div className="flex items-center gap-4">
+                <div className="p-4 bg-indigo-50 text-indigo-600 rounded-2xl shadow-inner"><BarChart3 size={24}/></div>
+                <div className="text-left">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tổng cộng</p>
+                  <p className="text-3xl font-black text-slate-900">{statsTasks.total}</p>
                 </div>
-              )}
-
-              {filterMode === 'month' && (
-                <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-indigo-500" size={16} />
-                  <input 
-                    type="month" 
-                    value={selectedMonth} 
-                    onChange={(e) => setSelectedMonth(e.target.value)}
-                    className="bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm"
-                  />
+            </div>
+          </div>
+          
+          <div onClick={() => setIsStatsDetailOpen('Processing')} className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-200/60 flex items-center justify-between hover:border-amber-200 hover:shadow-md transition-all cursor-pointer group">
+            <div className="flex items-center gap-4">
+                <div className="p-4 bg-amber-50 text-amber-600 rounded-2xl group-hover:bg-amber-600 group-hover:text-white transition-all shadow-inner"><Activity size={24}/></div>
+                <div className="text-left">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Đang xử lý</p>
+                  <p className="text-3xl font-black text-amber-600">{statsTasks.processing}</p>
                 </div>
-              )}
+            </div>
+            <ChevronRight size={20} className="text-slate-200 group-hover:text-amber-400 transition-colors" />
+          </div>
 
-              {isAdmin && (
-                <button onClick={() => { setEditingId(null); setNewHandover({task:'', assignee:'', deadlineAt:'', imageLink:'', fileLink: ''}); setIsAddModalOpen(true); }} className="bg-indigo-600 text-white px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 active:scale-95">
-                  <Plus size={16} strokeWidth={3} /> Giao việc
-                </button>
-              )}
-           </div>
-        </header>
+          <div onClick={() => setIsStatsDetailOpen('Overdue')} className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-200/60 flex items-center justify-between hover:border-rose-200 hover:shadow-md transition-all cursor-pointer group">
+            <div className="flex items-center gap-4">
+                <div className="p-4 bg-rose-50 text-rose-600 rounded-2xl group-hover:bg-rose-600 group-hover:text-white transition-all shadow-inner"><AlertOctagon size={24}/></div>
+                <div className="text-left">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Trễ hạn</p>
+                  <p className="text-3xl font-black text-rose-600">{statsTasks.overdue}</p>
+                </div>
+            </div>
+            <ChevronRight size={20} className="text-slate-200 group-hover:text-rose-400 transition-colors" />
+          </div>
 
-        {/* --- STATS SUMMARY --- */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-           <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-200/60 flex items-center justify-between group">
-              <div className="flex items-center gap-3">
-                 <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl shadow-inner"><BarChart3 size={20}/></div>
-                 <div className="text-left">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Tổng cộng</p>
-                    <p className="text-2xl font-black text-slate-900">{statsTasks.total}</p>
-                 </div>
-              </div>
-           </div>
-           
-           <div onClick={() => setIsStatsDetailOpen('Processing')} className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-200/60 flex items-center justify-between hover:border-amber-200 transition-all cursor-pointer group">
-              <div className="flex items-center gap-3">
-                 <div className="p-3 bg-amber-50 text-amber-600 rounded-xl group-hover:bg-amber-600 group-hover:text-white transition-all shadow-inner"><Activity size={20}/></div>
-                 <div className="text-left">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Đang xử lý</p>
-                    <p className="text-2xl font-black text-amber-600">{statsTasks.processing}</p>
-                 </div>
-              </div>
-              <ChevronRight size={16} className="text-slate-200 group-hover:text-amber-400 transition-colors" />
-           </div>
+          <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-200/60 flex items-center justify-between group hover:shadow-md transition-all">
+            <div className="flex items-center gap-4">
+                <div className="p-4 bg-emerald-50 text-emerald-600 rounded-2xl shadow-inner"><UserCheck size={24}/></div>
+                <div className="text-left">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Hoàn tất</p>
+                  <p className="text-3xl font-black text-emerald-600">{statsTasks.completed}</p>
+                </div>
+            </div>
+          </div>
+      </div>
 
-           <div onClick={() => setIsStatsDetailOpen('Overdue')} className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-200/60 flex items-center justify-between hover:border-rose-200 transition-all cursor-pointer group">
-              <div className="flex items-center gap-3">
-                 <div className="p-3 bg-rose-50 text-rose-600 rounded-xl group-hover:bg-rose-600 group-hover:text-white transition-all shadow-inner"><AlertOctagon size={20}/></div>
-                 <div className="text-left">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Trễ hạn</p>
-                    <p className="text-2xl font-black text-rose-600">{statsTasks.overdue}</p>
-                 </div>
-              </div>
-              <ChevronRight size={16} className="text-slate-200 group-hover:text-rose-400 transition-colors" />
-           </div>
+      {/* --- TASK GRID (MODERN CARD VIEW) --- */}
+      <div className="space-y-6">
+        {loading ? (
+          <div className="py-32 text-center flex flex-col items-center gap-4 bg-white rounded-[3rem] border border-slate-100 shadow-sm">
+            <Loader2 className="animate-spin text-indigo-600" size={48} />
+            <span className="text-xs font-black text-slate-300 uppercase tracking-[0.3em]">Đang đồng bộ máy chủ...</span>
+          </div>
+        ) : sortedAndPaginatedData.currentItems.length === 0 ? (
+          <div className="py-20 text-center bg-white rounded-[3rem] border border-slate-100 shadow-sm">
+            <p className="text-slate-400 font-bold uppercase text-xs italic tracking-widest opacity-30">Không tìm thấy dữ liệu trong thời gian này</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {sortedAndPaginatedData.currentItems.map((item) => {
+              const [nameOnly] = (item.createdBy || '').split(' (');
+              const isToday = item.date.split(' ')[0] === new Date().toISOString().split('T')[0];
+              const isAssignee = item.assignee.toLowerCase() === user.fullName.toLowerCase();
 
-           <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-200/60 flex items-center justify-between group">
-              <div className="flex items-center gap-3">
-                 <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl shadow-inner"><UserCheck size={20}/></div>
-                 <div className="text-left">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Hoàn tất</p>
-                    <p className="text-2xl font-black text-emerald-600">{statsTasks.completed}</p>
-                 </div>
-              </div>
-           </div>
-        </div>
+              return (
+                <div 
+                  key={item.id} 
+                  onClick={() => handleViewTaskDetail(item)}
+                  className={`relative bg-white rounded-[2rem] p-6 shadow-sm border border-slate-200/60 hover:shadow-xl hover:border-indigo-200 transition-all group cursor-pointer flex flex-col h-full ${item.status === 'Overdue' ? 'bg-rose-50/30' : ''}`}
+                >
+                  {/* Status Badge */}
+                  <div className="absolute top-4 right-4">
+                    {getStatusBadge(item.status)}
+                  </div>
 
-        {/* --- MAIN PAGINATED TABLE --- */}
-        <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200/50 overflow-hidden flex flex-col min-h-[600px]">
-           <div className="overflow-x-auto custom-scrollbar flex-1">
-              <table className="w-full text-left border-collapse text-sm">
-                 <thead className="bg-slate-50/80 border-b border-slate-100 sticky top-0 z-10 backdrop-blur-sm">
-                    <tr className="text-[10px] uppercase text-slate-400 font-black tracking-widest">
-                       <th className="px-6 py-5 w-44">Nhân sự & Ngày</th>
-                       <th className="px-6 py-5">Nội dung công việc</th>
-                       <th className="px-6 py-5 text-center">Tư liệu</th>
-                       <th className="px-6 py-5 text-center">Hạn định</th>
-                       <th className="px-6 py-5 text-center">Trạng thái</th>
-                       <th className="px-6 py-5 text-center">Xử lý</th>
-                    </tr>
-                 </thead>
-                 <tbody className="divide-y divide-slate-50">
-                    {loading ? (
-                      <tr><td colSpan={6} className="py-32 text-center flex flex-col items-center gap-4">
-                        <Loader2 className="animate-spin text-indigo-600" size={40} />
-                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">Đang đồng bộ máy chủ...</span>
-                      </td></tr>
-                    ) : sortedAndPaginatedData.currentItems.length === 0 ? (
-                      <tr><td colSpan={6} className="py-20 text-center text-slate-400 font-bold uppercase text-[10px] italic tracking-widest opacity-30">Không tìm thấy dữ liệu trong thời gian này</td></tr>
-                    ) : (
-                      sortedAndPaginatedData.currentItems.map((item) => {
-                        const [nameOnly, rolePart] = (item.createdBy || '').split(' (');
-                        const isToday = item.date.split(' ')[0] === new Date().toISOString().split('T')[0];
-
-                        return (
-                        <tr key={item.id} className={`hover:bg-slate-100/30 transition-all group ${getRowStyle(item)}`}>
-                           <td className="px-6 py-5">
-                              <div className="flex items-center gap-3">
-                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black flex-shrink-0 border-2 ${isToday ? 'bg-indigo-600 border-indigo-400 text-white shadow-lg shadow-indigo-100' : 'bg-slate-100 border-slate-200 text-slate-400'}`}>
-                                  {getAvatarChar(item.assignee)}
-                                </div>
-                                <div className="flex flex-col overflow-hidden">
-                                  <span className="font-black text-slate-800 text-xs truncate max-w-[120px]">{item.assignee}</span>
-                                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter flex items-center gap-1">
-                                    <Calendar size={8}/> {item.date.split(' ')[0]} {isToday && <span className="text-indigo-600 font-black">• TODAY</span>}
-                                  </span>
-                                </div>
-                              </div>
-                           </td>
-                           <td className="px-6 py-5 cursor-pointer" onClick={() => handleViewTaskDetail(item)}>
-                              <div className="flex flex-col">
-                                <span className={`font-bold text-sm leading-tight transition-colors line-clamp-2 ${item.isSeen ? 'text-slate-600' : 'text-slate-900 font-black group-hover:text-indigo-600 underline decoration-indigo-200 decoration-2 underline-offset-4'}`}>{item.task}</span>
-                                <div className="flex items-center gap-3 mt-2">
-                                    <span className="text-[9px] font-bold text-slate-400 uppercase flex items-center gap-1"><User size={10} className="text-slate-300"/> Giao bởi: {nameOnly}</span>
-                                    {!item.isSeen && <span className="text-[8px] bg-red-500 text-white px-1.5 py-0.5 rounded font-black uppercase animate-pulse">Mới</span>}
-                                </div>
-                              </div>
-                           </td>
-                           <td className="px-6 py-5 text-center">
-                              <div className="flex items-center justify-center gap-2">
-                                {item.imageLink ? (
-                                  <div onClick={(e) => { e.stopPropagation(); setViewImage(item.imageLink!); }} className="w-10 h-10 rounded-lg bg-slate-100 flex-shrink-0 overflow-hidden cursor-zoom-in border border-slate-200 relative group/img shadow-sm hover:border-indigo-400 transition-colors">
-                                     <img src={item.imageLink} className="w-full h-full object-cover" />
-                                     <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center text-white"><Maximize2 size={12}/></div>
-                                  </div>
-                                ) : null}
-                                
-                                {item.fileLink ? (
-                                  <a href={item.fileLink} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="w-10 h-10 rounded-lg bg-blue-50 text-blue-500 flex items-center justify-center border border-blue-100 hover:bg-blue-600 hover:text-white transition-all shadow-sm" title="Link giao việc">
-                                    <LinkIcon size={16} />
-                                  </a>
-                                ) : null}
-
-                                {item.resultLink ? (
-                                  <a href={item.resultLink} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 hover:bg-emerald-600 hover:text-white transition-all shadow-sm" title="Link kết quả">
-                                    <FileCheck size={16} />
-                                  </a>
-                                ) : null}
-
-                                {!item.imageLink && !item.fileLink && !item.resultLink && <span className="text-[8px] text-slate-300 font-bold uppercase tracking-widest italic">Trống</span>}
-                              </div>
-                           </td>
-                           <td className="px-6 py-5 text-center">
-                              <div className="flex flex-col items-center gap-0.5">
-                                 <span className={`font-mono font-black px-3 py-1 rounded-lg text-xs whitespace-nowrap border ${item.status === 'Overdue' ? 'bg-rose-100 border-rose-200 text-rose-700' : 'bg-indigo-50 border-indigo-100 text-indigo-700'}`}>
-                                   {formatDeadline(item.deadlineAt)}
-                                 </span>
-                              </div>
-                           </td>
-                           <td className="px-6 py-5 text-center">
-                              {getStatusBadge(item.status)}
-                           </td>
-                           <td className="px-6 py-5 text-center">
-                              <div className="flex justify-center items-center gap-2">
-                                {isAdmin && (
-                                  <button onClick={(e) => handleEditClick(e, item)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title="Chỉnh sửa"><Edit2 size={16}/></button>
-                                )}
-                                
-                                {item.assignee.toLowerCase() === user.fullName.toLowerCase() || isAdmin ? (
-                                  <>
-                                    {item.status === 'Pending' && (
-                                      <button 
-                                        onClick={(e) => handleAcceptTask(e, item.id)}
-                                        disabled={processingId === item.id}
-                                        className="bg-indigo-600 text-white px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-2 shadow-lg shadow-indigo-100"
-                                      >
-                                        {processingId === item.id ? <Loader2 size={12} className="animate-spin" /> : <ArrowRight size={14} />} Nhận
-                                      </button>
-                                    )}
-                                    {item.status === 'Processing' && (
-                                      <button 
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setReportForm({ report: '', resultLink: '' });
-                                            setIsReportModalOpen(item.id);
-                                        }}
-                                        className="bg-emerald-600 text-white px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase hover:bg-emerald-700 active:scale-95 transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-100"
-                                      >
-                                        <CheckCircle size={14} /> Xong
-                                      </button>
-                                    )}
-                                    {(item.status === 'Completed' || item.status === 'Overdue') && (
-                                      <button 
-                                        onClick={(e) => { e.stopPropagation(); setIsViewReportOpen(item); }}
-                                        className="text-indigo-600 hover:bg-indigo-50 p-2.5 rounded-xl border border-indigo-100 transition-all active:scale-90 shadow-sm" 
-                                        title="Báo cáo"
-                                      >
-                                        <FileCheck size={18} />
-                                      </button>
-                                    )}
-                                  </>
-                                ) : null}
-                              </div>
-                           </td>
-                        </tr>
-                        );
-                      })
-                    )}
-                 </tbody>
-              </table>
-           </div>
-
-           {/* --- PAGINATION CONTROLS --- */}
-           {!loading && sortedAndPaginatedData.totalPages > 1 && (
-              <div className="px-10 py-6 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row justify-between items-center gap-4">
-                 <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    Hiển thị {sortedAndPaginatedData.currentItems.length} / {sortedAndPaginatedData.totalItems} nhiệm vụ
-                 </div>
-                 <div className="flex items-center gap-2">
-                    <button 
-                       onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                       disabled={currentPage === 1}
-                       className="p-2.5 bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-indigo-600 hover:border-indigo-200 transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-sm"
-                    >
-                       <ChevronLeft size={20} />
-                    </button>
-                    <div className="flex gap-1.5">
-                       {Array.from({length: sortedAndPaginatedData.totalPages}, (_, i) => i + 1).map(page => (
-                          <button 
-                             key={page}
-                             onClick={() => setCurrentPage(page)}
-                             className={`w-10 h-10 rounded-xl text-[11px] font-black transition-all border ${currentPage === page ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-100' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-200 hover:text-indigo-600 shadow-sm'}`}
-                          >
-                             {page}
-                          </button>
-                       ))}
+                  {/* Assignee Info */}
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black flex-shrink-0 border-2 ${isToday ? 'bg-indigo-600 border-indigo-400 text-white shadow-lg shadow-indigo-100' : 'bg-slate-100 border-slate-200 text-slate-400'}`}>
+                      {getAvatarChar(item.assignee)}
                     </div>
-                    <button 
-                       onClick={() => setCurrentPage(prev => Math.min(sortedAndPaginatedData.totalPages, prev + 1))}
-                       disabled={currentPage === sortedAndPaginatedData.totalPages}
-                       className="p-2.5 bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-indigo-600 hover:border-indigo-200 transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-sm"
-                    >
-                       <ChevronRight size={20} />
-                    </button>
-                 </div>
-              </div>
-           )}
-        </div>
+                    <div className="flex flex-col overflow-hidden">
+                      <span className="font-black text-slate-800 text-xs truncate">{item.assignee}</span>
+                      <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter flex items-center gap-1">
+                        <Calendar size={8}/> {item.date.split(' ')[0]} {isToday && <span className="text-indigo-600 font-black">• TODAY</span>}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Task Content */}
+                  <div className="flex-1 mb-6">
+                    <h3 className={`font-bold text-sm leading-relaxed line-clamp-3 ${item.isSeen ? 'text-slate-600' : 'text-slate-900 font-black group-hover:text-indigo-600'}`}>
+                      {item.task}
+                    </h3>
+                  </div>
+
+                  {/* Metadata & Actions */}
+                  <div className="mt-auto space-y-4">
+                    <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+                      <div className="flex flex-col">
+                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Hạn định</span>
+                        <span className={`text-[10px] font-mono font-black px-2 py-0.5 rounded border ${item.status === 'Overdue' ? 'bg-rose-100 border-rose-200 text-rose-700' : 'bg-indigo-50 border-indigo-100 text-indigo-700'}`}>
+                          {formatDeadline(item.deadlineAt)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {item.imageLink && <ImageIcon size={14} className="text-slate-300" />}
+                        {item.fileLink && <LinkIcon size={14} className="text-slate-300" />}
+                        {item.resultLink && <FileCheck size={14} className="text-emerald-500" />}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <span className="text-[8px] font-bold text-slate-400 uppercase">Giao bởi: {nameOnly}</span>
+                      <div className="flex gap-2">
+                        {isAdmin && (
+                          <button 
+                            onClick={(e) => handleEditClick(e, item)} 
+                            className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                          >
+                            <Edit2 size={14}/>
+                          </button>
+                        )}
+                        {(isAssignee || isAdmin) && (
+                          <>
+                            {item.status === 'Pending' && (
+                              <button 
+                                onClick={(e) => handleAcceptTask(e, item.id)}
+                                disabled={processingId === item.id}
+                                className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-lg shadow-indigo-100"
+                              >
+                                {processingId === item.id ? <Loader2 size={10} className="animate-spin" /> : <ArrowRight size={12} />} Nhận
+                              </button>
+                            )}
+                            {item.status === 'Processing' && (
+                              <button 
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setReportForm({ report: '', resultLink: '' });
+                                    setIsReportModalOpen(item.id);
+                                }}
+                                className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase hover:bg-emerald-700 transition-all flex items-center gap-2 shadow-lg shadow-emerald-100"
+                              >
+                                <CheckCircle size={12} /> Xong
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* --- PAGINATION --- */}
+        {!loading && sortedAndPaginatedData.totalPages > 1 && (
+          <div className="flex justify-center items-center gap-3 mt-12">
+            <button 
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className="p-3 bg-white border border-slate-200 rounded-2xl text-slate-400 hover:text-indigo-600 hover:border-indigo-200 transition-all disabled:opacity-30 shadow-sm"
+            >
+              <ChevronLeft size={20} />
+            </button>
+            <div className="flex gap-2">
+              {Array.from({length: sortedAndPaginatedData.totalPages}, (_, i) => i + 1).map(page => (
+                <button 
+                  key={page}
+                  onClick={() => setCurrentPage(page)}
+                  className={`w-12 h-12 rounded-2xl text-xs font-black transition-all border ${currentPage === page ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-100' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-200 hover:text-indigo-600 shadow-sm'}`}
+                >
+                  {page}
+                </button>
+              ))}
+            </div>
+            <button 
+              onClick={() => setCurrentPage(prev => Math.min(sortedAndPaginatedData.totalPages, prev + 1))}
+              disabled={currentPage === sortedAndPaginatedData.totalPages}
+              className="p-3 bg-white border border-slate-200 rounded-2xl text-slate-400 hover:text-indigo-600 hover:border-indigo-200 transition-all disabled:opacity-30 shadow-sm"
+            >
+              <ChevronRight size={20} />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* --- MODAL STATS DETAIL (NEW) --- */}
