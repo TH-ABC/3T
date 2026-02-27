@@ -21,7 +21,9 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
   const [columns, setColumns] = useState<PlannerColumn[]>([]);
   const [items, setItems] = useState<DailyNoteItem[]>([]);
   const [position, setPosition] = useState({ x: 100, y: 100 });
+  const [size, setSize] = useState({ width: 800, height: 500 });
   const [isMinimized, setIsMinimized] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
   
   const [newColumnTitle, setNewColumnTitle] = useState('');
   const [addingColumn, setAddingColumn] = useState(false);
@@ -47,6 +49,9 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
         if (res.plannerPosition) {
           setPosition(res.plannerPosition);
         }
+        if (res.plannerSize) {
+          setSize(res.plannerSize);
+        }
       }
     } catch (error) {
       console.error('Error fetching planner data:', error);
@@ -66,7 +71,8 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
   const savePlanner = (
     updatedItems: DailyNoteItem[] = items, 
     updatedColumns: PlannerColumn[] = columns,
-    updatedPos: { x: number, y: number } = position
+    updatedPos: { x: number, y: number } = position,
+    updatedSize: { width: number, height: number } = size
   ) => {
     // Debounce saving to avoid too many requests
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
@@ -81,6 +87,7 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
           items: updatedItems,
           columns: updatedColumns,
           plannerPosition: updatedPos,
+          plannerSize: updatedSize,
           showPlanner: true
         });
       } catch (error) {
@@ -132,6 +139,7 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
       title: newItemTitle.trim(),
       text: newItemText.trim(),
       content: newItemText.trim(),
+      images: newItemImages,
       completed: false,
       columnId: columnId
     };
@@ -139,6 +147,7 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
     setItems(updated);
     setNewItemTitle('');
     setNewItemText('');
+    setNewItemImages([]);
     setActiveColumnId(null);
     savePlanner(updated);
   };
@@ -172,6 +181,7 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
   };
 
   // Drag and drop detection for columns
+  // Drag and drop detection for columns
   const handleDragEndItem = (event: any, info: any, itemId: string) => {
     const dropX = info.point.x;
     const dropY = info.point.y;
@@ -197,6 +207,98 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
     }
   };
 
+  const [newItemImages, setNewItemImages] = useState<string[]>([]);
+
+  const handlePaste = async (e: React.ClipboardEvent, itemId: string | null = null) => {
+    const items_clipboard = e.clipboardData.items;
+    for (let i = 0; i < items_clipboard.length; i++) {
+      if (items_clipboard[i].type.indexOf('image') !== -1) {
+        const blob = items_clipboard[i].getAsFile();
+        if (!blob) continue;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => {
+            // Compress image using canvas
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 800;
+            const MAX_HEIGHT = 600;
+            let width = img.width;
+            let height = img.height;
+
+            if (width > height) {
+              if (width > MAX_WIDTH) {
+                height *= MAX_WIDTH / width;
+                width = MAX_WIDTH;
+              }
+            } else {
+              if (height > MAX_HEIGHT) {
+                width *= MAX_HEIGHT / height;
+                height = MAX_HEIGHT;
+              }
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx?.drawImage(img, 0, 0, width, height);
+            
+            // Use lower quality to save space in Google Sheets
+            const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6);
+            
+            if (itemId) {
+              const item = items.find(it => it.id === itemId);
+              if (item) {
+                const updatedImages = [...(item.images || []), compressedBase64];
+                updateItem(itemId, { images: updatedImages });
+              }
+            } else {
+              setNewItemImages(prev => [...prev, compressedBase64]);
+            }
+          };
+          img.src = event.target?.result as string;
+        };
+        reader.readAsDataURL(blob);
+      }
+    }
+  };
+
+  const removeImage = (itemId: string, index: number) => {
+    const item = items.find(it => it.id === itemId);
+    if (item && item.images) {
+      const updatedImages = item.images.filter((_, i) => i !== index);
+      updateItem(itemId, { images: updatedImages });
+    }
+  };
+
+  const handleResize = (e: React.MouseEvent) => {
+    if (!isResizing) return;
+    
+    const newWidth = Math.max(300, e.clientX - position.x);
+    const newHeight = Math.max(200, e.clientY - position.y);
+    
+    setSize({ width: newWidth, height: newHeight });
+  };
+
+  const stopResizing = () => {
+    if (isResizing) {
+      setIsResizing(false);
+      savePlanner(items, columns, position, size);
+    }
+  };
+
+  useEffect(() => {
+    if (isResizing) {
+      window.addEventListener('mousemove', handleResize as any);
+      window.addEventListener('mouseup', stopResizing);
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleResize as any);
+      window.removeEventListener('mouseup', stopResizing);
+    };
+  }, [isResizing, position, size]);
+
   return (
     <>
       {/* Floating Icon */}
@@ -215,20 +317,24 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
           <motion.div
             drag
             dragMomentum={false}
-            initial={{ opacity: 0, scale: 0.9, x: position.x, y: position.y }}
+            dragListener={!isResizing}
+            initial={{ opacity: 0, scale: 0.9, left: position.x, top: position.y }}
             animate={{ 
               opacity: 1, 
               scale: 1, 
-              x: position.x, 
-              y: position.y,
-              width: isMinimized ? 300 : 800,
-              height: isMinimized ? 60 : 500
+              left: position.x, 
+              top: position.y,
+              width: isMinimized ? 300 : size.width,
+              height: isMinimized ? 60 : size.height
             }}
             exit={{ opacity: 0, scale: 0.9 }}
             onDragEnd={(e, info) => {
-              const newPos = { x: info.point.x - 400, y: info.point.y - 250 }; // Adjust based on center
+              const newPos = { 
+                x: position.x + info.offset.x, 
+                y: position.y + info.offset.y 
+              };
               setPosition(newPos);
-              savePlanner(items, columns, newPos);
+              savePlanner(items, columns, newPos, size);
             }}
             className="fixed z-[110] bg-white rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.2)] border border-slate-200 overflow-hidden flex flex-col"
             style={{ touchAction: 'none' }}
@@ -366,14 +472,43 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
                                       />
                                     </div>
                                     <div>
-                                      <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Nội dung chi tiết</label>
+                                      <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block flex justify-between items-center">
+                                        <span>Nội dung chi tiết (Có thể dán ảnh Ctrl+V)</span>
+                                        {item.images && item.images.length > 0 && (
+                                          <span className="text-indigo-500">{item.images.length} ảnh</span>
+                                        )}
+                                      </label>
                                       <textarea 
                                         value={item.text}
+                                        onPaste={(e) => handlePaste(e, item.id)}
                                         onChange={(e) => updateItem(item.id, { text: e.target.value, content: e.target.value })}
                                         className="w-full bg-slate-50 border border-slate-100 rounded-lg px-3 py-1.5 text-[10px] font-bold outline-none focus:ring-2 focus:ring-indigo-500/10 resize-none"
                                         rows={4}
                                       />
                                     </div>
+
+                                    {/* Image Preview Area */}
+                                    {item.images && item.images.length > 0 && (
+                                      <div className="grid grid-cols-2 gap-2 mt-2">
+                                        {item.images.map((img, idx) => (
+                                          <div key={idx} className="relative group/img rounded-lg overflow-hidden border border-slate-200 aspect-video bg-slate-100">
+                                            <img 
+                                              src={img} 
+                                              alt={`Pasted ${idx}`} 
+                                              className="w-full h-full object-cover"
+                                              referrerPolicy="no-referrer"
+                                            />
+                                            <button 
+                                              onClick={() => removeImage(item.id, idx)}
+                                              className="absolute top-1 right-1 p-1 bg-rose-500 text-white rounded-full opacity-0 group-hover/img:opacity-100 transition-opacity shadow-lg"
+                                            >
+                                              <X size={10} />
+                                            </button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+
                                     <div className="flex justify-end">
                                       <button 
                                         onClick={() => setEditingItemId(null)}
@@ -400,11 +535,29 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
                               />
                               <textarea
                                 value={newItemText}
+                                onPaste={(e) => handlePaste(e, null)}
                                 onChange={(e) => setNewItemText(e.target.value)}
                                 placeholder="Nội dung chi tiết..."
                                 className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-[11px] font-bold outline-none focus:ring-2 focus:ring-indigo-500/10 shadow-inner resize-none"
                                 rows={3}
                               />
+                              
+                              {/* New Item Image Preview */}
+                              {newItemImages.length > 0 && (
+                                <div className="grid grid-cols-3 gap-2 px-1">
+                                  {newItemImages.map((img, idx) => (
+                                    <div key={idx} className="relative group rounded-lg overflow-hidden border border-slate-200 aspect-square bg-slate-100">
+                                      <img src={img} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                      <button 
+                                        onClick={() => setNewItemImages(prev => prev.filter((_, i) => i !== idx))}
+                                        className="absolute top-0.5 right-0.5 p-0.5 bg-rose-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                      >
+                                        <X size={8} />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                               <div className="flex gap-2">
                                 <button 
                                   onClick={() => addItem(column.id)}
@@ -472,6 +625,19 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
                     </div>
                   </>
                 )}
+              </div>
+            )}
+
+            {/* Resize Handle */}
+            {!isMinimized && (
+              <div 
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  setIsResizing(true);
+                }}
+                className="absolute bottom-0 right-0 w-6 h-6 cursor-nwse-resize flex items-center justify-center group/resize"
+              >
+                <div className="w-1.5 h-1.5 bg-slate-300 rounded-full group-hover/resize:bg-indigo-500 transition-colors" />
               </div>
             )}
           </motion.div>
