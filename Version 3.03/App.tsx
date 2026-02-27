@@ -15,6 +15,7 @@ import FinanceDataReport from './components/FinanceDataReport';
 import ChangePasswordModal from './components/ChangePasswordModal';
 import ScheduleManagement from './components/ScheduleManagement';
 import DailyHandover from './components/DailyHandover';
+import { Planner } from './components/Planner';
 import { User, Store, UserPermissions, HandoverItem } from './types';
 import { sheetService } from './services/sheetService';
 
@@ -278,6 +279,7 @@ function App() {
         </div>
         <main className="flex-1 overflow-y-auto custom-scrollbar">{renderContent()}</main>
         <footer className="bg-white border-t border-gray-200 py-4 text-center text-[10px] text-gray-400 font-bold uppercase tracking-widest">© OMS v5.0 | Team 3T</footer>
+        <Planner user={user} />
       </div>
       {isChangePasswordOpen && <ChangePasswordModal user={user} onClose={() => setIsChangePasswordOpen(false)} onSuccess={() => {}} />}
     </div>
