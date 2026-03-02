@@ -79,18 +79,43 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
       const ordersInMonth = rawOrders.filter(o => { 
         if (!o.date) return false; 
         const dateStr = String(o.date).trim();
-        const [targetY, targetM] = monthToFetch.split('-');
-        const isIsoMatch = dateStr.includes(`${targetY}-${targetM}`);
-        const isVnMatch = dateStr.includes(`/${targetM}/${targetY}`);
-        const isStartWithMatch = dateStr.startsWith(monthToFetch);
-        return isIsoMatch || isVnMatch || isStartWithMatch;
+        if (!dateStr) return false;
+
+        const [targetY, targetM] = monthToFetch.split('-').map(Number);
+        
+        // 1. Thử parse định dạng ISO: YYYY-MM-DD
+        const isoMatch = dateStr.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+        if (isoMatch) {
+          return parseInt(isoMatch[1]) === targetY && parseInt(isoMatch[2]) === targetM;
+        }
+        
+        // 2. Thử parse định dạng VN: DD/MM/YYYY
+        const vnMatch = dateStr.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+        if (vnMatch) {
+          return parseInt(vnMatch[3]) === targetY && parseInt(vnMatch[2]) === targetM;
+        }
+
+        // 3. Fallback: Prefix match hoặc includes (Lenient)
+        const tMStr = String(targetM).padStart(2, '0');
+        const tYStr = String(targetY);
+        const shortMStr = String(targetM);
+        
+        // Chấp nhận các kiểu: "2026-03", "03/2026", "3/2026", "2026/03", "03-2026"
+        const patterns = [
+          `${tYStr}-${tMStr}`, `${tYStr}-${shortMStr}`,
+          `${tMStr}/${tYStr}`, `${shortMStr}/${tYStr}`,
+          `${tYStr}/${tMStr}`, `${tYStr}/${shortMStr}`,
+          `${tMStr}-${tYStr}`, `${shortMStr}-${tYStr}`
+        ];
+
+        return patterns.some(p => dateStr.includes(p));
       });
 
       if (rawOrders.length > 0 && ordersInMonth.length === 0) {
-          const sampleDate = rawOrders[0].date;
+          const sampleDates = rawOrders.slice(0, 5).map(o => o.date).filter(Boolean).join(', ');
           setDataError({ 
             message: `Lỗi kết nối: Không tìm thấy đơn hàng tháng ${monthToFetch}.`, 
-            detail: `File nguồn (ID: ${orderResult.fileId}) chứa dữ liệu của ngày ${sampleDate}. Vui lòng kiểm tra tab FileIndex.`, 
+            detail: `File nguồn (ID: ${orderResult.fileId}) chứa dữ liệu của các ngày: [${sampleDates}]. Vui lòng kiểm tra tab FileIndex hoặc định dạng ngày trong file.`, 
             fileId: orderResult.fileId 
           });
           setCurrentFileId(orderResult.fileId);
@@ -566,10 +591,10 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                           </td>
                           <td className="px-2 py-2 border-r text-center text-[10px] text-gray-600">
                               <div className="flex flex-col items-center gap-1">
-                                  <span className={`font-medium ${order.check === 'Done Oder' ? 'text-green-600' : 'text-gray-500'}`}>
+                                  <span className={`font-medium ${(order.check === 'Done Oder' || order.check === 'Done FF') ? 'text-green-600' : 'text-gray-500'}`}>
                                       {order.check || '-'}
                                   </span>
-                                  {order.check !== 'Done Oder' && (
+                                  {order.check !== 'Done Oder' && order.check !== 'Done FF' && (
                                       <button 
                                           onClick={() => handleUpdateCheck(order, 'Done Oder')}
                                           disabled={updatingCheckIds.has(order.id)}
