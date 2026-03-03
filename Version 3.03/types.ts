@@ -29,6 +29,7 @@ export interface Order {
   designerNote?: string;
   productUrl?: string;
   optionsText?: string;
+  rowNumber?: number;
 }
 
 export interface Store {
