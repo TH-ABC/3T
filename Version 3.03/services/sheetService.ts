@@ -109,7 +109,7 @@ export const sheetService = {
   getUsers: async (): Promise<User[]> => await callAPI('getUsers', 'GET'),
   getOrders: async (month: string): Promise<{ orders: Order[], fileId: string }> => await callAPI('getOrders', 'GET', { month }),
   createMonthFile: async (month: string): Promise<any> => await callAPI('createMonthFile', 'POST', { month }),
-  updateOrder: async (fileId: string, orderId: string, field: string, value: string): Promise<any> => await callAPI('updateOrder', 'POST', { fileId, orderId, field, value }),
+  updateOrder: async (fileId: string, orderId: string, field: string, value: string, rowNumber?: number): Promise<any> => await callAPI('updateOrder', 'POST', { fileId, orderId, field, value, rowNumber }),
   updateDesignerStatus: async (fileId: string, order: Order, sheetName: string, isDone: boolean): Promise<any> => await callAPI('updateDesignerStatus', 'POST', { fileId, order, sheetName, isDone }),
   batchUpdateOrder: async (fileId: string, orderIds: string[], field: string, value: any): Promise<any> => await callAPI('batchUpdateOrder', 'POST', { fileId, orderIds, field, value: value ? "TRUE" : "FALSE" }),
   batchUpdateDesigner: async (fileId: string, orderIds: string[], value: any): Promise<any> => await callAPI('batchUpdateDesigner', 'POST', { fileId, orderIds, value: value ? "TRUE" : "FALSE" }),
@@ -129,5 +129,5 @@ export const sheetService = {
   getPriceMappings: async (): Promise<{category: string, price: number}[]> => await callAPI('getPriceMappings', 'GET'),
   updateCategoryPrice: async (category: string, price: number): Promise<any> => await callAPI('updateCategoryPrice', 'POST', { category, price }),
   changePassword: async (username: string, oldPass: string, newPass: string): Promise<any> => await callAPI('changePassword', 'POST', { username, oldPass, newPass }),
-  updateDesignerOnlineFields: async (fileId: string, orderId: string, updates: any): Promise<any> => await callAPI('handleUpdateDesignerOnlineFields', 'POST', { fileId, orderId, ...updates }),
+  updateDesignerOnlineFields: async (fileId: string, orderId: string, updates: any, rowNumber?: number): Promise<any> => await callAPI('handleUpdateDesignerOnlineFields', 'POST', { fileId, orderId, rowNumber, ...updates }),
 };
