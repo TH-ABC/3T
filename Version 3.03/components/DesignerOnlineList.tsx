@@ -291,7 +291,7 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
   const handleSavePrices = async () => { setIsSavingPrices(true); try { const categories = Object.keys(tempPriceMap); for (const cat of categories) { await sheetService.updateCategoryPrice(cat, tempPriceMap[cat]); } setIsPriceModalOpen(false); fetchLatestPrices(); } catch (e) { alert('Lỗi khi lưu bảng giá.'); } finally { setIsSavingPrices(false); } };
   
   // Handle batch designer toggle updates
-  const handleDesignerToggle = async (order: Order) => { if (!currentFileId) return; if (updatingIds.has(order.id)) return; const newValue = !order.isDesignDone; if (onProcessStart) onProcessStart(); setUpdatingIds(prev => new Set(prev).add(order.id)); try { await sheetService.updateDesignerStatus(currentFileId, order, "Designer Online", newValue); setOrders(prev => prev.map(o => o.id === order.id ? { ...o, isDesignDone: newValue } : o)); } catch (error) { setOrders(prev => prev.map(o => o.id === order.id ? { ...o, isDesignDone: !newValue } : o)); alert('Lỗi cập nhật trạng thái'); } finally { setUpdatingIds(prev => { const newSet = new Set(prev); newSet.delete(order.id); return newSet; }); if (onProcessEnd) onProcessEnd(); } };
+  const handleDesignerToggle = async (order: Order) => { if (!currentFileId) return; if (updatingIds.has(order.id)) return; const newValue = !order.isDesignDone; if (onProcessStart) onProcessStart(); setUpdatingIds(prev => new Set(prev).add(order.id)); try { await sheetService.updateDesignerStatus(currentFileId, order, "Designer Online", newValue); setOrders(prev => prev.map(o => (o.id === order.id && o.rowNumber === order.rowNumber) ? { ...o, isDesignDone: newValue } : o)); } catch (error) { setOrders(prev => prev.map(o => (o.id === order.id && o.rowNumber === order.rowNumber) ? { ...o, isDesignDone: !newValue } : o)); alert('Lỗi cập nhật trạng thái'); } finally { setUpdatingIds(prev => { const newSet = new Set(prev); newSet.delete(order.id); return newSet; }); if (onProcessEnd) onProcessEnd(); } };
   
   const handleUpdateLinkDs = async (order: Order) => {
     if (!currentFileId) return;
@@ -301,9 +301,9 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
     setUpdatingLinkDsIds(prev => new Set(prev).add(order.id));
     if (onProcessStart) onProcessStart();
     try {
-      const result = await sheetService.updateOrder(currentFileId, order.id, 'linkDs', newValue);
+      const result = await sheetService.updateOrder(currentFileId, order.id, 'linkDs', newValue, order.rowNumber);
       if (result.success) {
-        setOrders(prev => prev.map(o => o.id === order.id ? { ...o, linkDs: newValue } : o));
+        setOrders(prev => prev.map(o => (o.id === order.id && o.rowNumber === order.rowNumber) ? { ...o, linkDs: newValue } : o));
         // Clear editing state for this row
         setEditingLinkDs(prev => {
           const newState = { ...prev };
@@ -332,9 +332,9 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
     setUpdatingCheckIds(prev => new Set(prev).add(order.id));
     if (onProcessStart) onProcessStart();
     try {
-      const result = await sheetService.updateDesignerOnlineFields(currentFileId, order.id, { check: newValue });
+      const result = await sheetService.updateDesignerOnlineFields(currentFileId, order.id, { check: newValue }, order.rowNumber);
       if (result.success) {
-        setOrders(prev => prev.map(o => o.id === order.id ? { ...o, check: newValue } : o));
+        setOrders(prev => prev.map(o => (o.id === order.id && o.rowNumber === order.rowNumber) ? { ...o, check: newValue } : o));
       } else {
         alert('Lỗi cập nhật Check: ' + result.error);
       }
