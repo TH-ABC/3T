@@ -161,6 +161,8 @@ export interface UserPermissions {
   customers?: ViewScope;      
   finance?: FinanceScope;        
   system?: ViewScope;         
+  canEditDesignerOnlineNote?: boolean;
+  allowedDesignerOnlineChecks?: string; // Comma separated list of allowed options
 }
 
 export interface User {
