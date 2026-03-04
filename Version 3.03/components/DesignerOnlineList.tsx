@@ -31,6 +31,12 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
   const [updatingLinkDsIds, setUpdatingLinkDsIds] = useState<Set<string>>(new Set());
   const [updatingCheckIds, setUpdatingCheckIds] = useState<Set<string>>(new Set());
   const [editingLinkDs, setEditingLinkDs] = useState<Record<string, string>>({});
+  const [editingDesignerNote, setEditingDesignerNote] = useState<Record<string, string>>({});
+  const [updatingDesignerNoteIds, setUpdatingDesignerNoteIds] = useState<Set<string>>(new Set());
+  const [activeCheckDropdown, setActiveCheckDropdown] = useState<string | null>(null);
+  const [tempCheckSelections, setTempCheckSelections] = useState<Record<string, string>>({});
+  const [editingNoteIds, setEditingNoteIds] = useState<Set<string>>(new Set());
+  const checkDropdownRef = useRef<HTMLDivElement>(null);
 
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
@@ -326,15 +332,65 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
     }
   };
 
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (checkDropdownRef.current && !checkDropdownRef.current.contains(event.target as Node)) {
+        if (activeCheckDropdown) {
+          const order = orders.find(o => o.id === activeCheckDropdown);
+          if (order) {
+            const finalValue = tempCheckSelections[order.id] ?? order.check ?? '';
+            if (finalValue !== (order.check || '')) {
+              handleUpdateCheck(order, finalValue);
+            }
+          }
+          setActiveCheckDropdown(null);
+        }
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [activeCheckDropdown, tempCheckSelections, orders]);
+
   const handleUpdateCheck = async (order: Order, newValue: string) => {
     if (!currentFileId) return;
     
+    // Check permissions
+    const isAdmin = user.role?.toLowerCase() === 'admin' || user.role?.toLowerCase() === 'ceo' || user.role?.toLowerCase() === 'leader';
+    const allowedChecks = (user.permissions?.allowedDesignerOnlineChecks || '').split(',').map(s => s.trim()).filter(s => s !== '');
+    
+    // Check if user is trying to ADD or DELETE restricted items
+    const currentValues = (order.check || '').split(',').map(s => s.trim()).filter(s => s !== '');
+    const newValues = newValue.split(',').map(s => s.trim()).filter(s => s !== '');
+    
+    if (!isAdmin) {
+        const isSettingDoneOder = newValue === 'Done Oder';
+        
+        // If setting to exactly Done Oder, we allow it for everyone (as requested: "Done Oder ai cũng được bấm")
+        if (!isSettingDoneOder) {
+            // Check if any NEWLY added value is not allowed
+            const addedValues = newValues.filter(v => !currentValues.includes(v));
+            const isAddingAllowed = addedValues.every(v => v === 'Done Oder' || allowedChecks.includes(v));
+            
+            // Check if any REMOVED value is restricted
+            const removedValues = currentValues.filter(v => !newValues.includes(v));
+            const isRemovingAllowed = removedValues.every(v => v === 'Done Oder' || allowedChecks.includes(v));
+
+            if (!isAddingAllowed || !isRemovingAllowed) {
+                alert('Bạn không có quyền thực hiện thay đổi này (Vui lòng kiểm tra quyền hạn của bạn đối với các mục trong cột Check).');
+                return;
+            }
+        }
+    }
+
+    // If it's Done Oder, we clear other selections as requested
+    const finalValue = newValue === 'Done Oder' ? 'Done Oder' : newValue;
+
     setUpdatingCheckIds(prev => new Set(prev).add(order.id));
     if (onProcessStart) onProcessStart();
     try {
-      const result = await sheetService.updateDesignerOnlineFields(currentFileId, order.id, { check: newValue }, order.rowNumber);
+      const result = await sheetService.updateDesignerOnlineFields(currentFileId, order.id, { check: finalValue }, order.rowNumber);
       if (result.success) {
-        setOrders(prev => prev.map(o => (o.id === order.id && o.rowNumber === order.rowNumber) ? { ...o, check: newValue } : o));
+        setOrders(prev => prev.map(o => (o.id === order.id && o.rowNumber === order.rowNumber) ? { ...o, check: finalValue } : o));
       } else {
         alert('Lỗi cập nhật Check: ' + result.error);
       }
@@ -343,6 +399,45 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
       alert('Lỗi kết nối khi cập nhật Check');
     } finally {
       setUpdatingCheckIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(order.id);
+        return newSet;
+      });
+      if (onProcessEnd) onProcessEnd();
+    }
+  };
+
+  const handleUpdateDesignerNote = async (order: Order) => {
+    if (!currentFileId) return;
+    
+    // Check permissions
+    const isAdmin = user.role?.toLowerCase() === 'admin' || user.role?.toLowerCase() === 'ceo' || user.role?.toLowerCase() === 'leader';
+    if (!isAdmin && !user.permissions?.canEditDesignerOnlineNote) {
+        alert('Bạn không có quyền chỉnh sửa cột Note.');
+        return;
+    }
+
+    const newValue = editingDesignerNote[order.id] ?? order.designerNote ?? '';
+    
+    setUpdatingDesignerNoteIds(prev => new Set(prev).add(order.id));
+    if (onProcessStart) onProcessStart();
+    try {
+      const result = await sheetService.updateDesignerOnlineFields(currentFileId, order.id, { designerNote: newValue }, order.rowNumber);
+      if (result.success) {
+        setOrders(prev => prev.map(o => (o.id === order.id && o.rowNumber === order.rowNumber) ? { ...o, designerNote: newValue } : o));
+        setEditingDesignerNote(prev => {
+          const newState = { ...prev };
+          delete newState[order.id];
+          return newState;
+        });
+      } else {
+        alert('Lỗi cập nhật Note: ' + result.error);
+      }
+    } catch (error) {
+      console.error(error);
+      alert('Lỗi kết nối khi cập nhật Note');
+    } finally {
+      setUpdatingDesignerNoteIds(prev => {
         const newSet = new Set(prev);
         newSet.delete(order.id);
         return newSet;
@@ -589,25 +684,182 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                                   )}
                               </div>
                           </td>
-                          <td className="px-2 py-2 border-r text-center text-[10px] text-gray-600">
-                              <div className="flex flex-col items-center gap-1">
-                                  <span className={`font-medium ${(order.check === 'Done Oder' || order.check === 'Done FF') ? 'text-green-600' : 'text-gray-500'}`}>
-                                      {order.check || '-'}
-                                  </span>
-                                  {order.check !== 'Done Oder' && order.check !== 'Done FF' && (
+                          <td className="px-2 py-2 border-r text-center text-[10px] text-gray-600 relative min-w-[140px]">
+                              <div className="flex flex-col items-center gap-2">
+                                  <div className="flex flex-wrap gap-1 justify-center">
+                                      {(order.check || '').split(',').map(s => s.trim()).filter(s => s !== '').map(val => (
+                                          <div key={val} className={`px-1.5 py-0.5 rounded-md flex items-center gap-1 text-[9px] font-black border shadow-sm animate-fade-in group ${val === 'Done Oder' ? 'bg-orange-50 text-orange-700 border-orange-100' : 'bg-indigo-50 text-indigo-700 border-indigo-100'}`}>
+                                              {val}
+                                              <button 
+                                                  onClick={() => {
+                                                      const currentValues = (order.check || '').split(',').map(s => s.trim()).filter(s => s !== '');
+                                                      const newValues = currentValues.filter(v => v !== val);
+                                                      handleUpdateCheck(order, newValues.join(', '));
+                                                  }}
+                                                  className="text-gray-300 hover:text-red-500 transition-colors"
+                                                  title="Xóa"
+                                              >
+                                                  <X size={10} strokeWidth={3} />
+                                              </button>
+                                          </div>
+                                      ))}
+                                      <button 
+                                          onClick={() => {
+                                              if (updatingCheckIds.has(order.id)) return;
+                                              if (activeCheckDropdown === order.id) {
+                                                  // Close and save
+                                                  const finalValue = tempCheckSelections[order.id] ?? order.check ?? '';
+                                                  if (finalValue !== (order.check || '')) {
+                                                      handleUpdateCheck(order, finalValue);
+                                                  }
+                                                  setActiveCheckDropdown(null);
+                                              } else {
+                                                  // Open
+                                                  setTempCheckSelections(prev => ({ ...prev, [order.id]: order.check || '' }));
+                                                  setActiveCheckDropdown(order.id);
+                                              }
+                                          }}
+                                          className={`w-6 h-6 rounded-full border border-dashed flex items-center justify-center transition-all ${activeCheckDropdown === order.id ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-gray-300 text-gray-400 hover:border-indigo-500 hover:text-indigo-500 hover:bg-indigo-50'} ${updatingCheckIds.has(order.id) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                          title="Chỉnh sửa Check"
+                                          disabled={updatingCheckIds.has(order.id)}
+                                      >
+                                          {activeCheckDropdown === order.id ? <Save size={12} /> : <Settings size={12} />}
+                                      </button>
+                                  </div>
+
+                                  {/* Done Oder Button */}
+                                  {order.check !== 'Done Oder' && (
                                       <button 
                                           onClick={() => handleUpdateCheck(order, 'Done Oder')}
                                           disabled={updatingCheckIds.has(order.id)}
-                                          className="px-2 py-0.5 bg-orange-500 text-white rounded text-[9px] hover:bg-orange-600 disabled:bg-orange-300 transition-colors flex items-center justify-center gap-1 min-w-[70px]"
+                                          className="px-2 py-0.5 bg-orange-500 text-white rounded text-[9px] font-black hover:bg-orange-600 disabled:bg-orange-300 transition-colors flex items-center justify-center gap-1 min-w-[70px] shadow-sm active:scale-95"
                                           title="Xác nhận Done Oder"
                                       >
                                           {updatingCheckIds.has(order.id) ? <Loader2 size={10} className="animate-spin" /> : null}
                                           Done Oder
                                       </button>
                                   )}
+
+                                  {activeCheckDropdown === order.id && (
+                                      <div 
+                                          ref={checkDropdownRef}
+                                          className="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-white border border-gray-200 shadow-2xl rounded-xl z-[110] w-48 p-2 animate-fade-in ring-4 ring-black/5"
+                                      >
+                                          <div className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-2 px-2 flex justify-between items-center">
+                                              <span>Chọn nội dung</span>
+                                              <span className="text-indigo-600 bg-indigo-50 px-1 rounded">Temp</span>
+                                          </div>
+                                          
+                                          {/* Selected items in temp state (Jumped up) */}
+                                          <div className="flex flex-wrap gap-1 mb-3 px-1 border-b border-gray-100 pb-2">
+                                              {(tempCheckSelections[order.id] || '').split(',').map(s => s.trim()).filter(s => s !== '').map(val => (
+                                                  <div key={val} className="bg-indigo-600 text-white px-1.5 py-0.5 rounded flex items-center gap-1 text-[8px] font-bold">
+                                                      {val}
+                                                      <button 
+                                                          onClick={() => {
+                                                              const current = (tempCheckSelections[order.id] || '').split(',').map(s => s.trim()).filter(s => s !== '');
+                                                              const next = current.filter(v => v !== val);
+                                                              setTempCheckSelections(prev => ({ ...prev, [order.id]: next.join(', ') }));
+                                                          }}
+                                                      >
+                                                          <X size={8} />
+                                                      </button>
+                                                  </div>
+                                              ))}
+                                              {!(tempCheckSelections[order.id]) && <span className="text-[8px] text-gray-300 italic">Chưa chọn...</span>}
+                                          </div>
+
+                                          <div className="flex flex-col gap-1 max-h-48 overflow-y-auto custom-scrollbar">
+                                              {['Fix', 'Đã check File', 'Done FF', 'Chờ CF', 'New', 'Gift Card', 'Demo', 'Done Oder'].map(opt => {
+                                                  const currentValues = (tempCheckSelections[order.id] || '').split(',').map(s => s.trim()).filter(s => s !== '');
+                                                  const isSelected = currentValues.includes(opt);
+                                                  
+                                                  return (
+                                                      <button 
+                                                          key={opt} 
+                                                          onClick={() => {
+                                                              let nextValues = [...currentValues];
+                                                              if (isSelected) {
+                                                                  nextValues = nextValues.filter(v => v !== opt);
+                                                              } else {
+                                                                  nextValues.push(opt);
+                                                              }
+                                                              setTempCheckSelections(prev => ({ ...prev, [order.id]: nextValues.join(', ') }));
+                                                          }}
+                                                          className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-[10px] font-bold text-left group ${isSelected ? 'bg-indigo-50 text-indigo-600' : 'hover:bg-gray-50 text-gray-700'}`}
+                                                      >
+                                                          <div className={`w-1.5 h-1.5 rounded-full transition-colors ${isSelected ? 'bg-indigo-600' : 'bg-gray-300 group-hover:bg-indigo-400'}`} />
+                                                          {opt}
+                                                      </button>
+                                                  );
+                                              })}
+                                          </div>
+                                          <button 
+                                              onClick={() => {
+                                                  const finalValue = tempCheckSelections[order.id] ?? order.check ?? '';
+                                                  if (finalValue !== (order.check || '')) {
+                                                      handleUpdateCheck(order, finalValue);
+                                                  }
+                                                  setActiveCheckDropdown(null);
+                                              }}
+                                              className="w-full mt-2 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[9px] font-black uppercase tracking-widest transition-all shadow-md active:scale-95"
+                                          >
+                                              Cập nhật & Đóng
+                                          </button>
+                                      </div>
+                                  )}
+
+                                  {updatingCheckIds.has(order.id) && (
+                                      <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-lg">
+                                          <Loader2 size={14} className="animate-spin text-indigo-600" />
+                                      </div>
+                                  )}
                               </div>
                           </td>
-                          <td className="px-2 py-2 border-r text-left text-[10px] text-gray-600 whitespace-pre-wrap break-words max-w-[250px]" title={order.designerNote}>{order.designerNote}</td>
+                          <td className="px-2 py-2 border-r text-left text-[10px] text-gray-600 min-w-[150px]">
+                              <div className="flex items-center gap-1">
+                                  {editingNoteIds.has(order.id) ? (
+                                      <>
+                                          <textarea
+                                              className="flex-1 p-1 border border-gray-200 rounded text-[10px] outline-none focus:ring-1 focus:ring-indigo-500 min-h-[40px] resize-y"
+                                              value={editingDesignerNote[order.id] ?? order.designerNote ?? ''}
+                                              onChange={(e) => setEditingDesignerNote(prev => ({ ...prev, [order.id]: e.target.value }))}
+                                              placeholder="Ghi chú..."
+                                              autoFocus
+                                          />
+                                          <button 
+                                              onClick={async () => {
+                                                  await handleUpdateDesignerNote(order);
+                                                  setEditingNoteIds(prev => {
+                                                      const next = new Set(prev);
+                                                      next.delete(order.id);
+                                                      return next;
+                                                  });
+                                              }}
+                                              disabled={updatingDesignerNoteIds.has(order.id)}
+                                              className="p-1 bg-teal-600 text-white rounded hover:bg-teal-700 disabled:bg-teal-300 transition-colors"
+                                              title="Lưu Note"
+                                          >
+                                              {updatingDesignerNoteIds.has(order.id) ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                                          </button>
+                                      </>
+                                  ) : (
+                                      <>
+                                          <div className="flex-1 whitespace-pre-wrap break-words">{order.designerNote || '-'}</div>
+                                          <button 
+                                              onClick={() => {
+                                                  setEditingDesignerNote(prev => ({ ...prev, [order.id]: order.designerNote || '' }));
+                                                  setEditingNoteIds(prev => new Set(prev).add(order.id));
+                                              }}
+                                              className="p-1 text-gray-400 hover:text-indigo-600 transition-colors"
+                                              title="Sửa Note"
+                                          >
+                                              <Edit size={12} />
+                                          </button>
+                                      </>
+                                  )}
+                              </div>
+                          </td>
                           <td className="px-2 py-2 border-r text-center text-[10px] text-blue-600 truncate max-w-[100px]">
                               {order.productUrl ? (
                                   <a href={order.productUrl} target="_blank" rel="noreferrer" className="hover:underline" title={order.productUrl}>PU</a>
