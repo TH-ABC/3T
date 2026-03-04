@@ -133,6 +133,8 @@ const UserManagement: React.FC = () => {
           customers: user.permissions?.customers || 'none',
           finance: user.permissions?.finance || 'none',
           system: user.permissions?.system || 'none',
+          canEditDesignerOnlineNote: user.permissions?.canEditDesignerOnlineNote || false,
+          allowedDesignerOnlineChecks: user.permissions?.allowedDesignerOnlineChecks || '',
       });
       setIsPermModalOpen(true);
   };
@@ -445,7 +447,51 @@ const UserManagement: React.FC = () => {
                                 />
                                 <span className="text-sm font-black text-gray-800 uppercase tracking-widest">Quản lý SKU & Bảng Giá</span>
                             </label>
+
+                            <label className="flex items-center gap-4 cursor-pointer group">
+                                <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${editPerms.canEditDesignerOnlineNote ? 'bg-teal-600 border-teal-600 text-white shadow-lg' : 'bg-white border-gray-300'}`}>
+                                    {editPerms.canEditDesignerOnlineNote && <Check size={14} strokeWidth={4} />}
+                                </div>
+                                <input 
+                                    type="checkbox" 
+                                    className="hidden" 
+                                    checked={editPerms.canEditDesignerOnlineNote} 
+                                    onChange={() => setEditPerms({...editPerms, canEditDesignerOnlineNote: !editPerms.canEditDesignerOnlineNote})} 
+                                />
+                                <span className="text-sm font-black text-gray-800 uppercase tracking-widest">Nhập Note Designer Online</span>
+                            </label>
                         </div>
+                      </div>
+
+                      <div className="bg-indigo-50 border border-indigo-100 rounded-3xl p-6 space-y-4">
+                        <h4 className="text-[11px] font-black text-indigo-600 uppercase tracking-[0.2em] flex items-center gap-2">
+                           <Settings size={14} /> Quyền chọn mục Check (Designer Online)
+                        </h4>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            {['Fix', 'Đã check File', 'Done FF', 'Chờ CF', 'New', 'Gift Card', 'Demo'].map(opt => {
+                                const allowed = (editPerms.allowedDesignerOnlineChecks || '').split(',').map(s => s.trim()).includes(opt);
+                                return (
+                                    <label key={opt} className={`cursor-pointer border-2 rounded-xl px-2 py-2 text-[10px] font-black uppercase tracking-widest text-center transition-all flex items-center justify-center ${allowed ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-white text-gray-400 border-gray-100 hover:border-indigo-200'}`}>
+                                        <input 
+                                            type="checkbox" 
+                                            className="hidden" 
+                                            checked={allowed} 
+                                            onChange={() => {
+                                                let current = (editPerms.allowedDesignerOnlineChecks || '').split(',').map(s => s.trim()).filter(s => s !== '');
+                                                if (allowed) {
+                                                    current = current.filter(s => s !== opt);
+                                                } else {
+                                                    current.push(opt);
+                                                }
+                                                setEditPerms({...editPerms, allowedDesignerOnlineChecks: current.join(',')});
+                                            }} 
+                                        />
+                                        {opt}
+                                    </label>
+                                );
+                            })}
+                        </div>
+                        <p className="text-[9px] text-gray-400 font-bold italic">* Done Oder luôn được phép cho tất cả user.</p>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-6">
