@@ -30,7 +30,11 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
   const [updatingIds, setUpdatingIds] = useState<Set<string>>(new Set());
   const [updatingLinkDsIds, setUpdatingLinkDsIds] = useState<Set<string>>(new Set());
   const [updatingCheckIds, setUpdatingCheckIds] = useState<Set<string>>(new Set());
+  const [updatingUrlArtworkFrontIds, setUpdatingUrlArtworkFrontIds] = useState<Set<string>>(new Set());
+  const [updatingUrlMockupIds, setUpdatingUrlMockupIds] = useState<Set<string>>(new Set());
   const [editingLinkDs, setEditingLinkDs] = useState<Record<string, string>>({});
+  const [editingUrlArtworkFront, setEditingUrlArtworkFront] = useState<Record<string, string>>({});
+  const [editingUrlMockup, setEditingUrlMockup] = useState<Record<string, string>>({});
   const [editingDesignerNote, setEditingDesignerNote] = useState<Record<string, string>>({});
   const [updatingDesignerNoteIds, setUpdatingDesignerNoteIds] = useState<Set<string>>(new Set());
   const [activeCheckDropdown, setActiveCheckDropdown] = useState<string | null>(null);
@@ -302,7 +306,6 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
   const handleUpdateLinkDs = async (order: Order) => {
     if (!currentFileId) return;
     const newValue = editingLinkDs[order.id] ?? order.linkDs ?? '';
-    // if (newValue === order.linkDs) return; // Allow update even if same to be sure
 
     setUpdatingLinkDsIds(prev => new Set(prev).add(order.id));
     if (onProcessStart) onProcessStart();
@@ -310,7 +313,6 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
       const result = await sheetService.updateOrder(currentFileId, order.id, 'linkDs', newValue, order.rowNumber);
       if (result.success) {
         setOrders(prev => prev.map(o => (o.id === order.id && o.rowNumber === order.rowNumber) ? { ...o, linkDs: newValue } : o));
-        // Clear editing state for this row
         setEditingLinkDs(prev => {
           const newState = { ...prev };
           delete newState[order.id];
@@ -324,6 +326,86 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
       alert('Lỗi kết nối khi cập nhật Link DS');
     } finally {
       setUpdatingLinkDsIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(order.id);
+        return newSet;
+      });
+      if (onProcessEnd) onProcessEnd();
+    }
+  };
+
+  const handleUpdateUrlArtworkFront = async (order: Order) => {
+    if (!currentFileId) return;
+    
+    const isAdmin = user.role?.toLowerCase() === 'admin' || user.role?.toLowerCase() === 'ceo' || user.role?.toLowerCase() === 'leader';
+    const canEditUrls = isAdmin || user.permissions?.canEditDesignerOnlineUrls;
+    
+    if (!canEditUrls) {
+      alert('Bạn không có quyền chỉnh sửa URL Artwork.');
+      return;
+    }
+
+    const newValue = editingUrlArtworkFront[order.id] ?? order.urlArtworkFront ?? '';
+
+    setUpdatingUrlArtworkFrontIds(prev => new Set(prev).add(order.id));
+    if (onProcessStart) onProcessStart();
+    try {
+      const result = await sheetService.updateDesignerOnlineFields(currentFileId, order.id, { urlArtworkFront: newValue }, order.rowNumber);
+      if (result.success) {
+        setOrders(prev => prev.map(o => (o.id === order.id && o.rowNumber === order.rowNumber) ? { ...o, urlArtworkFront: newValue } : o));
+        setEditingUrlArtworkFront(prev => {
+          const newState = { ...prev };
+          delete newState[order.id];
+          return newState;
+        });
+      } else {
+        alert('Lỗi cập nhật URL_artwork_front: ' + result.error);
+      }
+    } catch (error) {
+      console.error(error);
+      alert('Lỗi kết nối khi cập nhật URL_artwork_front');
+    } finally {
+      setUpdatingUrlArtworkFrontIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(order.id);
+        return newSet;
+      });
+      if (onProcessEnd) onProcessEnd();
+    }
+  };
+
+  const handleUpdateUrlMockup = async (order: Order) => {
+    if (!currentFileId) return;
+
+    const isAdmin = user.role?.toLowerCase() === 'admin' || user.role?.toLowerCase() === 'ceo' || user.role?.toLowerCase() === 'leader';
+    const canEditUrls = isAdmin || user.permissions?.canEditDesignerOnlineUrls;
+    
+    if (!canEditUrls) {
+      alert('Bạn không có quyền chỉnh sửa URL Mockup.');
+      return;
+    }
+
+    const newValue = editingUrlMockup[order.id] ?? order.urlMockup ?? '';
+
+    setUpdatingUrlMockupIds(prev => new Set(prev).add(order.id));
+    if (onProcessStart) onProcessStart();
+    try {
+      const result = await sheetService.updateDesignerOnlineFields(currentFileId, order.id, { urlMockup: newValue }, order.rowNumber);
+      if (result.success) {
+        setOrders(prev => prev.map(o => (o.id === order.id && o.rowNumber === order.rowNumber) ? { ...o, urlMockup: newValue } : o));
+        setEditingUrlMockup(prev => {
+          const newState = { ...prev };
+          delete newState[order.id];
+          return newState;
+        });
+      } else {
+        alert('Lỗi cập nhật URL_mockup: ' + result.error);
+      }
+    } catch (error) {
+      console.error(error);
+      alert('Lỗi kết nối khi cập nhật URL_mockup');
+    } finally {
+      setUpdatingUrlMockupIds(prev => {
         const newSet = new Set(prev);
         newSet.delete(order.id);
         return newSet;
@@ -627,6 +709,8 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                 <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-64 text-blue-300"><div className="flex items-center justify-between gap-1"><span>Note</span><button onClick={(e) => handleFilterClick(e, 'designerNote')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['designerNote']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
                 <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-12 text-blue-300" title="Product URL">PU</th>
                 <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-[500px] text-blue-300">options_text</th>
+                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-32 text-blue-300">URL_artwork_front</th>
+                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-32 text-blue-300">URL_mockup</th>
                 <th className="px-2 py-2 border-r border-gray-600 w-12 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>NXL</span><button onClick={(e) => handleFilterClick(e, 'handler')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['handler']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
                 <th className="px-2 py-2 border-l border-gray-600 w-12 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>AR</span><button onClick={(e) => handleFilterClick(e, 'actionRole')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['actionRole']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
               </tr>
@@ -690,21 +774,31 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                                       {(order.check || '').split(',').map(s => s.trim()).filter(s => s !== '').map(val => (
                                           <div key={val} className={`px-1.5 py-0.5 rounded-md flex items-center gap-1 text-[9px] font-black border shadow-sm animate-fade-in group ${val === 'Done Oder' ? 'bg-orange-50 text-orange-700 border-orange-100' : 'bg-indigo-50 text-indigo-700 border-indigo-100'}`}>
                                               {val}
-                                              <button 
-                                                  onClick={() => {
-                                                      const currentValues = (order.check || '').split(',').map(s => s.trim()).filter(s => s !== '');
-                                                      const newValues = currentValues.filter(v => v !== val);
-                                                      handleUpdateCheck(order, newValues.join(', '));
-                                                  }}
-                                                  className="text-gray-300 hover:text-red-500 transition-colors"
-                                                  title="Xóa"
-                                              >
-                                                  <X size={10} strokeWidth={3} />
-                                              </button>
+                                              {val !== 'Done Oder' && (
+                                                  <button 
+                                                      onClick={() => {
+                                                          const currentValues = (order.check || '').split(',').map(s => s.trim()).filter(s => s !== '');
+                                                          const newValues = currentValues.filter(v => v !== val);
+                                                          handleUpdateCheck(order, newValues.join(', '));
+                                                      }}
+                                                      className="text-gray-300 hover:text-red-500 transition-colors"
+                                                      title="Xóa"
+                                                  >
+                                                      <X size={10} strokeWidth={3} />
+                                                  </button>
+                                              )}
                                           </div>
                                       ))}
                                       <button 
                                           onClick={() => {
+                                              const isAdmin = user.role?.toLowerCase() === 'admin' || user.role?.toLowerCase() === 'ceo' || user.role?.toLowerCase() === 'leader';
+                                              const hasCheckPermission = isAdmin || (user.permissions?.allowedDesignerOnlineChecks || '').trim() !== '';
+                                              
+                                              if (!hasCheckPermission) {
+                                                  alert('Bạn không có quyền chỉnh sửa nội dung cột Check.');
+                                                  return;
+                                              }
+
                                               if (updatingCheckIds.has(order.id)) return;
                                               if (activeCheckDropdown === order.id) {
                                                   // Close and save
@@ -866,6 +960,78 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                               ) : '-'}
                           </td>
                           <td className="px-2 py-2 border-r text-left text-[10px] text-gray-600 break-words min-w-[500px] whitespace-pre-wrap" title={order.optionsText}>{order.optionsText}</td>
+                          <td className="px-2 py-2 border-r bg-blue-50/10 w-32 whitespace-nowrap">
+                              <div className="flex items-center gap-1">
+                                  {order.urlArtworkFront && editingUrlArtworkFront[order.id] === undefined ? (
+                                      <div className="flex items-center gap-1">
+                                          <a href={order.urlArtworkFront} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-[10px] truncate max-w-[100px]" title={order.urlArtworkFront}>URL_artwork_front</a>
+                                          <button onClick={() => {
+                                              const isAdmin = user.role?.toLowerCase() === 'admin' || user.role?.toLowerCase() === 'ceo' || user.role?.toLowerCase() === 'leader';
+                                              const canEditUrls = isAdmin || user.permissions?.canEditDesignerOnlineUrls;
+                                              if (!canEditUrls) {
+                                                  alert('Bạn không có quyền chỉnh sửa URL Artwork.');
+                                                  return;
+                                              }
+                                              setEditingUrlArtworkFront(prev => ({ ...prev, [order.id]: order.urlArtworkFront || '' }));
+                                          }} className="text-gray-400 hover:text-blue-500"><Edit size={10}/></button>
+                                      </div>
+                                  ) : (
+                                      <>
+                                          <input 
+                                              type="text" 
+                                              className="flex-1 min-w-0 border border-gray-300 rounded px-2 py-1 text-[10px] outline-none focus:ring-1 focus:ring-blue-500"
+                                              value={editingUrlArtworkFront[order.id] !== undefined ? editingUrlArtworkFront[order.id] : (order.urlArtworkFront || '')}
+                                              onChange={(e) => setEditingUrlArtworkFront(prev => ({ ...prev, [order.id]: e.target.value }))}
+                                              placeholder="Dán link..."
+                                          />
+                                          <button 
+                                              onClick={() => handleUpdateUrlArtworkFront(order)}
+                                              disabled={updatingUrlArtworkFrontIds.has(order.id)}
+                                              className="p-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-blue-300 transition-colors"
+                                              title="Cập nhật URL_artwork_front"
+                                          >
+                                              {updatingUrlArtworkFrontIds.has(order.id) ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                                          </button>
+                                      </>
+                                  )}
+                              </div>
+                          </td>
+                          <td className="px-2 py-2 border-r bg-blue-50/10 w-32 whitespace-nowrap">
+                              <div className="flex items-center gap-1">
+                                  {order.urlMockup && editingUrlMockup[order.id] === undefined ? (
+                                      <div className="flex items-center gap-1">
+                                          <a href={order.urlMockup} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-[10px] truncate max-w-[100px]" title={order.urlMockup}>URL_mockup</a>
+                                          <button onClick={() => {
+                                              const isAdmin = user.role?.toLowerCase() === 'admin' || user.role?.toLowerCase() === 'ceo' || user.role?.toLowerCase() === 'leader';
+                                              const canEditUrls = isAdmin || user.permissions?.canEditDesignerOnlineUrls;
+                                              if (!canEditUrls) {
+                                                  alert('Bạn không có quyền chỉnh sửa URL Mockup.');
+                                                  return;
+                                              }
+                                              setEditingUrlMockup(prev => ({ ...prev, [order.id]: order.urlMockup || '' }));
+                                          }} className="text-gray-400 hover:text-blue-500"><Edit size={10}/></button>
+                                      </div>
+                                  ) : (
+                                      <>
+                                          <input 
+                                              type="text" 
+                                              className="flex-1 min-w-0 border border-gray-300 rounded px-2 py-1 text-[10px] outline-none focus:ring-1 focus:ring-blue-500"
+                                              value={editingUrlMockup[order.id] !== undefined ? editingUrlMockup[order.id] : (order.urlMockup || '')}
+                                              onChange={(e) => setEditingUrlMockup(prev => ({ ...prev, [order.id]: e.target.value }))}
+                                              placeholder="Dán link..."
+                                          />
+                                          <button 
+                                              onClick={() => handleUpdateUrlMockup(order)}
+                                              disabled={updatingUrlMockupIds.has(order.id)}
+                                              className="p-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-blue-300 transition-colors"
+                                              title="Cập nhật URL_mockup"
+                                          >
+                                              {updatingUrlMockupIds.has(order.id) ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                                          </button>
+                                      </>
+                                  )}
+                              </div>
+                          </td>
                           <td className="px-2 py-2 border-r text-center text-[10px] font-medium whitespace-nowrap bg-gray-50/50 w-12">
                               <div className="flex items-center justify-center" title={order.handler}>
                                   <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] text-white font-bold ${isHandlerAdmin ? 'bg-red-500' : 'bg-indigo-500'}`}>
