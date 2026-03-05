@@ -29,6 +29,8 @@ export interface Order {
   designerNote?: string;
   productUrl?: string;
   optionsText?: string;
+  urlArtworkFront?: string;
+  urlMockup?: string;
   rowNumber?: number;
 }
 
@@ -162,6 +164,7 @@ export interface UserPermissions {
   finance?: FinanceScope;        
   system?: ViewScope;         
   canEditDesignerOnlineNote?: boolean;
+  canEditDesignerOnlineUrls?: boolean;
   allowedDesignerOnlineChecks?: string; // Comma separated list of allowed options
 }
 
