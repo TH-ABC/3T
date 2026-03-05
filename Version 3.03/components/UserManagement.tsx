@@ -34,7 +34,9 @@ const UserManagement: React.FC = () => {
       designerOnline: 'none',
       customers: 'none',
       finance: 'none',
-      system: 'none'
+      system: 'none',
+      canEditDesignerOnlineNote: false,
+      canEditDesignerOnlineUrls: false
   };
 
   const [formData, setFormData] = useState({
@@ -134,6 +136,7 @@ const UserManagement: React.FC = () => {
           finance: user.permissions?.finance || 'none',
           system: user.permissions?.system || 'none',
           canEditDesignerOnlineNote: user.permissions?.canEditDesignerOnlineNote || false,
+          canEditDesignerOnlineUrls: user.permissions?.canEditDesignerOnlineUrls || false,
           allowedDesignerOnlineChecks: user.permissions?.allowedDesignerOnlineChecks || '',
       });
       setIsPermModalOpen(true);
@@ -459,6 +462,19 @@ const UserManagement: React.FC = () => {
                                     onChange={() => setEditPerms({...editPerms, canEditDesignerOnlineNote: !editPerms.canEditDesignerOnlineNote})} 
                                 />
                                 <span className="text-sm font-black text-gray-800 uppercase tracking-widest">Nhập Note Designer Online</span>
+                            </label>
+
+                            <label className="flex items-center gap-4 cursor-pointer group">
+                                <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${editPerms.canEditDesignerOnlineUrls ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'bg-white border-gray-300'}`}>
+                                    {editPerms.canEditDesignerOnlineUrls && <Check size={14} strokeWidth={4} />}
+                                </div>
+                                <input 
+                                    type="checkbox" 
+                                    className="hidden" 
+                                    checked={editPerms.canEditDesignerOnlineUrls} 
+                                    onChange={() => setEditPerms({...editPerms, canEditDesignerOnlineUrls: !editPerms.canEditDesignerOnlineUrls})} 
+                                />
+                                <span className="text-sm font-black text-gray-800 uppercase tracking-widest">Nhập URL Artwork/Mockup</span>
                             </label>
                         </div>
                       </div>
