@@ -147,7 +147,24 @@ const UserManagement: React.FC = () => {
       setIsSubmitting(true);
       try {
           await sheetService.updateUser(selectedUser.username, undefined, undefined, editPerms);
+          
+          // Update local list
           setUsers(prev => prev.map(u => u.username === selectedUser.username ? { ...u, permissions: editPerms } : u));
+          
+          // Update current session if editing self
+          const savedUser = localStorage.getItem('oms_user_session');
+          if (savedUser) {
+              const currentUser = JSON.parse(savedUser);
+              if (currentUser.username === selectedUser.username) {
+                  const updatedSession = { ...currentUser, permissions: editPerms };
+                  localStorage.setItem('oms_user_session', JSON.stringify(updatedSession));
+                  // Note: App.tsx state won't update immediately without a refresh or prop callback, 
+                  // but the next time they visit a page that uses the session it might be updated.
+                  // For immediate effect, we'd need a refresh or a global state update.
+                  window.location.reload(); // Simplest way to ensure all components get the new permissions
+              }
+          }
+          
           setIsPermModalOpen(false);
       } catch (e) { alert("Lỗi cập nhật quyền."); } 
       finally { setIsSubmitting(false); }
