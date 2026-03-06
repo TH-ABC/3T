@@ -35,6 +35,34 @@ function App() {
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const [unreadTaskCount, setUnreadTaskCount] = useState(0);
 
+  // --- REFRESH USER DATA ON MOUNT ---
+  useEffect(() => {
+    if (!user) return;
+    
+    const refreshUserData = async () => {
+      try {
+        const users = await sheetService.getUsers();
+        const currentUser = users.find(u => u.username === user.username);
+        if (currentUser) {
+          // Update local state and storage if data changed
+          const updatedUser = { ...currentUser };
+          delete updatedUser.password; // Don't store password in session if possible
+          
+          if (JSON.stringify(updatedUser.permissions) !== JSON.stringify(user.permissions) || 
+              updatedUser.role !== user.role) {
+            console.log("Refreshing user session data...");
+            localStorage.setItem('oms_user_session', JSON.stringify(updatedUser));
+            setUser(updatedUser);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to refresh user data:", e);
+      }
+    };
+    
+    refreshUserData();
+  }, []);
+
   // --- LOGIC THÔNG BÁO NGOÀI ICON WEB (FAVICON BADGE) ---
   useEffect(() => {
     if (!user) {
@@ -277,7 +305,7 @@ function App() {
           <span className="font-bold text-gray-700 uppercase tracking-wider">OMS Team 3T</span>
           <div className="w-8"></div>
         </div>
-        <main className="flex-1 overflow-y-auto custom-scrollbar">{renderContent()}</main>
+        <main className="flex-1 overflow-y-auto custom-scrollbar min-w-0">{renderContent()}</main>
         <footer className="bg-white border-t border-gray-200 py-4 text-center text-[10px] text-gray-400 font-bold uppercase tracking-widest">© OMS v5.0 | Team 3T</footer>
         <Planner user={user} />
       </div>
