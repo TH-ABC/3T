@@ -338,10 +338,10 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
     if (!currentFileId) return;
     
     const isAdmin = user.role?.toLowerCase() === 'admin' || user.role?.toLowerCase() === 'ceo' || user.role?.toLowerCase() === 'leader';
-    const canEditUrls = isAdmin || user.permissions?.canEditDesignerOnlineUrls;
+    const canEditUrls = isAdmin || user.permissions?.canEditDesignerOnlineUrls === true;
     
     if (!canEditUrls) {
-      alert('Bạn không có quyền chỉnh sửa URL Artwork.');
+      alert(`Bạn không có quyền chỉnh sửa URL Artwork. (Quyền: ${user.permissions?.canEditDesignerOnlineUrls ? 'Đã bật' : 'Chưa bật'})`);
       return;
     }
 
@@ -378,10 +378,10 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
     if (!currentFileId) return;
 
     const isAdmin = user.role?.toLowerCase() === 'admin' || user.role?.toLowerCase() === 'ceo' || user.role?.toLowerCase() === 'leader';
-    const canEditUrls = isAdmin || user.permissions?.canEditDesignerOnlineUrls;
+    const canEditUrls = isAdmin || user.permissions?.canEditDesignerOnlineUrls === true;
     
     if (!canEditUrls) {
-      alert('Bạn không có quyền chỉnh sửa URL Mockup.');
+      alert(`Bạn không có quyền chỉnh sửa URL Mockup. (Quyền: ${user.permissions?.canEditDesignerOnlineUrls ? 'Đã bật' : 'Chưa bật'})`);
       return;
     }
 
@@ -650,7 +650,16 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
 
         <div className="p-4 border-b border-gray-200 flex flex-col xl:flex-row justify-between items-center gap-4 bg-white z-20">
           <div className="flex flex-col md:flex-row items-center gap-4 w-full xl:w-auto">
-            <h2 className="text-xl font-bold text-gray-800 whitespace-nowrap flex items-center gap-2">DESIGNER ONLINE <span className="text-orange-600 uppercase text-sm border border-orange-200 bg-orange-50 px-2 py-0.5 rounded">Tháng {currentMonthStr}/{currentYearStr}</span><button onClick={() => loadData(selectedMonth)} className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 transition-colors" title="Làm mới"><RefreshCw size={16} className={loading ? "animate-spin" : ""} /></button></h2>
+            <h2 className="text-xl font-bold text-gray-800 whitespace-nowrap flex items-center gap-2">DESIGNER ONLINE <span className="text-orange-600 uppercase text-sm border border-orange-200 bg-orange-50 px-2 py-0.5 rounded">Tháng {currentMonthStr}/{currentYearStr}</span><button onClick={() => loadData(selectedMonth)} className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 transition-colors" title="Làm mới"><RefreshCw size={16} className={loading ? "animate-spin" : ""} /></button>
+            <button 
+              onClick={() => window.location.reload()} 
+              className="flex items-center gap-1 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-bold transition-all border border-gray-200"
+              title="Làm mới phiên làm việc để cập nhật quyền hạn mới nhất"
+            >
+              <Shield size={14} className="text-indigo-600" />
+              <span>Đồng bộ quyền</span>
+            </button>
+            </h2>
             <div className="flex items-center gap-2 w-full md:w-auto justify-center">
                 <div className="flex items-center bg-white rounded-lg border border-gray-300 shadow-sm p-1">
                     <button 
@@ -967,9 +976,9 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                                           <a href={order.urlArtworkFront} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-[10px] truncate max-w-[100px]" title={order.urlArtworkFront}>URL_artwork_front</a>
                                           <button onClick={() => {
                                               const isAdmin = user.role?.toLowerCase() === 'admin' || user.role?.toLowerCase() === 'ceo' || user.role?.toLowerCase() === 'leader';
-                                              const canEditUrls = isAdmin || user.permissions?.canEditDesignerOnlineUrls;
+                                              const canEditUrls = isAdmin || user.permissions?.canEditDesignerOnlineUrls === true;
                                               if (!canEditUrls) {
-                                                  alert('Bạn không có quyền chỉnh sửa URL Artwork.');
+                                                  alert(`Bạn không có quyền chỉnh sửa URL Artwork. (Quyền: ${user.permissions?.canEditDesignerOnlineUrls ? 'Đã bật' : 'Chưa bật'})`);
                                                   return;
                                               }
                                               setEditingUrlArtworkFront(prev => ({ ...prev, [order.id]: order.urlArtworkFront || '' }));
@@ -1003,9 +1012,9 @@ export const DesignerOnlineList: React.FC<DesignerOnlineListProps> = ({ user, on
                                           <a href={order.urlMockup} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-[10px] truncate max-w-[100px]" title={order.urlMockup}>URL_mockup</a>
                                           <button onClick={() => {
                                               const isAdmin = user.role?.toLowerCase() === 'admin' || user.role?.toLowerCase() === 'ceo' || user.role?.toLowerCase() === 'leader';
-                                              const canEditUrls = isAdmin || user.permissions?.canEditDesignerOnlineUrls;
+                                              const canEditUrls = isAdmin || user.permissions?.canEditDesignerOnlineUrls === true;
                                               if (!canEditUrls) {
-                                                  alert('Bạn không có quyền chỉnh sửa URL Mockup.');
+                                                  alert(`Bạn không có quyền chỉnh sửa URL Mockup. (Quyền: ${user.permissions?.canEditDesignerOnlineUrls ? 'Đã bật' : 'Chưa bật'})`);
                                                   return;
                                               }
                                               setEditingUrlMockup(prev => ({ ...prev, [order.id]: order.urlMockup || '' }));
