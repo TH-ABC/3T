@@ -3,7 +3,7 @@ import { Order, Store, User, DashboardMetrics, DailyStat, StoreHistoryItem, SkuM
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbyw4ZdfirgKUHyXMH8Ro7UZ6-VWCdf1hgqU37ilLvNt2RwzusSPG_HUc_mi8z-9tInR/exec'; 
 
-async function callAPI(action: string, method: string = 'POST', data: any = {}): Promise<any> {
+async function callAPI(action: string, method: string = 'POST', data: any = {}, retries: number = 3): Promise<any> {
   if (!API_URL) return { success: false, error: 'API URL not configured' };
 
   let fetchUrl = API_URL;
@@ -12,17 +12,51 @@ async function callAPI(action: string, method: string = 'POST', data: any = {}):
      fetchUrl = `${fetchUrl}${separator}month=${encodeURIComponent(data.month)}`;
   }
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
   try {
     const response = await fetch(fetchUrl, {
       method: 'POST',
       mode: 'cors',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ action, ...data }),
+      signal: controller.signal
     });
-    return await response.json();
-  } catch (error) {
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const text = await response.text();
+    try {
+        return JSON.parse(text);
+    } catch (parseError) {
+        console.error(`JSON Parse Error for action ${action}:`, text.substring(0, 200));
+        throw new Error('Invalid JSON response from server');
+    }
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    
+    const isRetryable = retries > 0 && (
+        error.name === 'AbortError' || 
+        error.message.includes('Failed to fetch') || 
+        error.message.includes('NetworkError') ||
+        error.message.includes('Invalid JSON response') ||
+        error.message.includes('Unexpected token')
+    );
+
+    if (isRetryable) {
+        console.warn(`Retrying API ${action} (${retries} attempts left) due to: ${error.message}`);
+        // Exponential backoff: 1s, 2s, 4s
+        await new Promise(resolve => setTimeout(resolve, (4 - retries) * 1000));
+        return callAPI(action, method, data, retries - 1);
+    }
+    
     console.error(`Error calling API ${action}:`, error);
-    return { success: false, error: 'Network or API error' };
+    return { success: false, error: error.message || 'Network or API error' };
   }
 }
 

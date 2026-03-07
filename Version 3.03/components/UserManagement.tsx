@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { sheetService } from '../services/sheetService';
+import { supabase } from '../lib/supabase';
 import { User, Role, UserPermissions, ViewScope, FinanceScope } from '../types';
 import { 
   UserPlus, Plus, Save, CheckCircle, AlertCircle, Loader2, 
@@ -56,11 +57,23 @@ const UserManagement: React.FC = () => {
     setLoading(true);
     try {
         const [userData, roleData] = await Promise.all([
-            sheetService.getUsers(),
-            sheetService.getRoles()
+            supabase.from('profiles').select('*').order('username'),
+            supabase.from('roles').select('*').order('level')
         ]);
-        setUsers(Array.isArray(userData) ? userData : []);
-        setRoles(Array.isArray(roleData) ? roleData : []);
+        
+        const transformedUsers: User[] = (userData.data || []).map(u => ({
+            username: u.username,
+            password: u.password,
+            fullName: u.full_name,
+            role: u.role,
+            email: u.email,
+            phone: u.phone,
+            status: u.status,
+            permissions: u.permissions
+        }));
+
+        setUsers(transformedUsers);
+        setRoles(roleData.data || []);
     } catch (e) { console.error(e); } 
     finally { setLoading(false); }
   };
@@ -73,10 +86,30 @@ const UserManagement: React.FC = () => {
 
   const handleRoleChange = async (username: string, newRole: string) => {
     try {
-        await sheetService.updateUser(username, newRole);
+        const { error } = await supabase
+            .from('profiles')
+            .update({ role: newRole })
+            .eq('username', username);
+            
+        if (error) throw error;
         setUsers(prev => prev.map(u => u.username === username ? { ...u, role: newRole } : u));
     } catch (e) {
         alert("Lỗi khi cập nhật vai trò.");
+    }
+  };
+
+  const handleToggleStatus = async (username: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'Active' ? 'Locked' : 'Active';
+    try {
+        const { error } = await supabase
+            .from('profiles')
+            .update({ status: newStatus })
+            .eq('username', username);
+            
+        if (error) throw error;
+        setUsers(prev => prev.map(u => u.username === username ? { ...u, status: newStatus } : u));
+    } catch (e) {
+        alert("Lỗi khi cập nhật trạng thái.");
     }
   };
 
@@ -96,16 +129,30 @@ const UserManagement: React.FC = () => {
     }
     setIsSubmitting(true);
     try {
-      const response = await sheetService.createUser({ ...formData });
-      if (response.success) {
-        setStatus({ type: 'success', message: 'Tạo tài khoản thành công!' });
+      const { error } = await supabase
+        .from('profiles')
+        .insert({
+          username: formData.username,
+          password: formData.password,
+          full_name: formData.fullName,
+          email: formData.email,
+          phone: formData.phone,
+          role: formData.role,
+          permissions: formData.permissions,
+          status: 'Active'
+        });
+
+      if (!error) {
+        setStatus({ type: 'success', message: 'Tạo tài khoản thành công! Lưu ý: Bạn cần tạo tài khoản tương ứng trong Supabase Auth để đăng nhập.' });
         setFormData({ username: '', password: '', fullName: '', email: '', phone: '', role: 'support', permissions: { ...defaultPermissions } });
         loadData();
         setTimeout(() => {
             setIsCreateModalOpen(false);
             setStatus({ type: null, message: '' });
-        }, 1500);
-      } else setStatus({ type: 'error', message: response.error || 'Có lỗi xảy ra.' });
+        }, 3000);
+      } else {
+        setStatus({ type: 'error', message: error.message || 'Có lỗi xảy ra.' });
+      }
     } catch (error) { setStatus({ type: 'error', message: 'Lỗi kết nối.' }); } 
     finally { setIsSubmitting(false); }
   };
@@ -114,7 +161,13 @@ const UserManagement: React.FC = () => {
     if (!newRoleData.name) return;
     setIsSubmitting(true);
     try {
-        await sheetService.addRole(newRoleData.name, newRoleData.level);
+        const { error } = await supabase
+            .from('roles')
+            .insert({
+                name: newRoleData.name,
+                level: newRoleData.level
+            });
+        if (error) throw error;
         await loadData();
         setIsAddRoleModalOpen(false);
         setNewRoleData({ name: '', level: 5 });
@@ -146,7 +199,12 @@ const UserManagement: React.FC = () => {
       if (!selectedUser) return;
       setIsSubmitting(true);
       try {
-          await sheetService.updateUser(selectedUser.username, undefined, undefined, editPerms);
+          const { error } = await supabase
+              .from('profiles')
+              .update({ permissions: editPerms })
+              .eq('username', selectedUser.username);
+              
+          if (error) throw error;
           
           // Update local list
           setUsers(prev => prev.map(u => u.username === selectedUser.username ? { ...u, permissions: editPerms } : u));
@@ -158,10 +216,7 @@ const UserManagement: React.FC = () => {
               if (currentUser.username === selectedUser.username) {
                   const updatedSession = { ...currentUser, permissions: editPerms };
                   localStorage.setItem('oms_user_session', JSON.stringify(updatedSession));
-                  // Note: App.tsx state won't update immediately without a refresh or prop callback, 
-                  // but the next time they visit a page that uses the session it might be updated.
-                  // For immediate effect, we'd need a refresh or a global state update.
-                  window.location.reload(); // Simplest way to ensure all components get the new permissions
+                  window.location.reload(); 
               }
           }
           
@@ -292,9 +347,17 @@ const UserManagement: React.FC = () => {
                                         </select>
                                     </td>
                                     <td className="px-8 py-5 text-center">
-                                        <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full border ${u.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
+                                        <button 
+                                            onClick={() => handleToggleStatus(u.username, u.status || 'Active')}
+                                            className={`text-[10px] font-black uppercase px-3 py-1 rounded-full border transition-all active:scale-95 ${
+                                                (u.status || 'Active') === 'Active' 
+                                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' 
+                                                : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                                            }`}
+                                            title="Nhấn để thay đổi trạng thái"
+                                        >
                                             {u.status || 'Active'}
-                                        </span>
+                                        </button>
                                     </td>
                                     <td className="px-8 py-5 text-center">
                                         <button onClick={() => openPermModal(u)} className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-white text-indigo-600 hover:bg-indigo-700 hover:text-white transition-all mx-auto text-[10px] font-black uppercase tracking-widest border-2 border-indigo-100">

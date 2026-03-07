@@ -16,8 +16,9 @@ import ChangePasswordModal from './components/ChangePasswordModal';
 import ScheduleManagement from './components/ScheduleManagement';
 import DailyHandover from './components/DailyHandover';
 import { Planner } from './components/Planner';
-import { User, Store, UserPermissions, HandoverItem } from './types';
+import { User, Store, UserPermissions } from './types';
 import { sheetService } from './services/sheetService';
+import { supabase } from './lib/supabase';
 
 function App() {
   const [user, setUser] = useState<User | null>(() => {
@@ -26,6 +27,45 @@ function App() {
       return savedUser ? JSON.parse(savedUser) : null;
     } catch (error) { return null; }
   });
+
+  // --- CHECK SUPABASE SESSION ON MOUNT ---
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user && !user) {
+        // If Supabase has session but local state doesn't, fetch profile
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+        
+        if (profile) {
+          const userData: User = {
+            username: profile.username || session.user.email?.split('@')[0] || 'user',
+            fullName: profile.full_name || 'User',
+            role: profile.role || 'staff',
+            permissions: profile.permissions || {},
+            status: profile.status || 'Active',
+            email: session.user.email,
+            phone: profile.phone || '',
+          };
+          localStorage.setItem('oms_user_session', JSON.stringify(userData));
+          setUser(userData);
+        }
+      }
+    };
+    checkSession();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) {
+        // Handle logout if needed, but we have handleLogout
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isDesktopCollapsed, setIsDesktopCollapsed] = useState(false); 
@@ -41,16 +81,44 @@ function App() {
     
     const refreshUserData = async () => {
       try {
+        // Ưu tiên fetch từ Supabase profiles nếu có email
+        if (user.email) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('email', user.email)
+            .single();
+
+          if (profile) {
+            const updatedUser = {
+              ...user,
+              fullName: profile.full_name || user.fullName,
+              role: profile.role || user.role,
+              permissions: profile.permissions || user.permissions,
+              status: profile.status || user.status,
+              phone: profile.phone || user.phone
+            };
+            
+            if (JSON.stringify(updatedUser.permissions) !== JSON.stringify(user.permissions) || 
+                updatedUser.role !== user.role) {
+              console.log("Refreshing user session data from Supabase...");
+              localStorage.setItem('oms_user_session', JSON.stringify(updatedUser));
+              setUser(updatedUser);
+            }
+            return; // Done if found in Supabase
+          }
+        }
+
+        // Fallback to Google Sheets if not found or no email
         const users = await sheetService.getUsers();
         const currentUser = users.find(u => u.username === user.username);
         if (currentUser) {
-          // Update local state and storage if data changed
           const updatedUser = { ...currentUser };
-          delete updatedUser.password; // Don't store password in session if possible
+          delete updatedUser.password;
           
           if (JSON.stringify(updatedUser.permissions) !== JSON.stringify(user.permissions) || 
               updatedUser.role !== user.role) {
-            console.log("Refreshing user session data...");
+            console.log("Refreshing user session data from Sheets...");
             localStorage.setItem('oms_user_session', JSON.stringify(updatedUser));
             setUser(updatedUser);
           }
@@ -208,11 +276,12 @@ function App() {
     setCurrentTab('home');
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     if (pendingUpdates > 0) {
         alert("Vui lòng chờ hoàn tất cập nhật trước khi đăng xuất.");
         return;
     }
+    await supabase.auth.signOut();
     localStorage.removeItem('oms_user_session');
     setUser(null);
     setCurrentTab('home');

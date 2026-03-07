@@ -1,62 +1,78 @@
 
 import React, { useState } from 'react';
 import { User } from '../types';
-import { sheetService } from '../services/sheetService';
-import { Lock, User as UserIcon, Loader2, AlertCircle, ShoppingBag, Settings } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import { Lock, Mail, Loader2, AlertCircle, ShoppingBag } from 'lucide-react';
 
 interface LoginProps {
   onLogin: (user: User) => void;
 }
 
 const Login: React.FC<LoginProps> = ({ onLogin }) => {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [showConfigHelp, setShowConfigHelp] = useState(false);
-
-  const getClientIP = async (): Promise<string> => {
-    try {
-      const response = await fetch('https://api.ipify.org?format=json');
-      const data = await response.json();
-      return data.ip || '';
-    } catch (e) {
-      console.warn("Could not fetch IP address:", e);
-      return '';
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username || !password) {
-      setError('Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu');
+    if (!email || !password) {
+      setError('Vui lòng nhập đầy đủ email và mật khẩu');
       return;
     }
 
     setLoading(true);
     setError('');
-    setShowConfigHelp(false);
 
     try {
-      // 1. Lấy IP người dùng trước khi login
-      const ip = await getClientIP();
-      
-      // 2. Gửi request login kèm IP
-      const response = await sheetService.login(username, password, ip);
-      
-      if (response.success && response.user) {
-        onLogin(response.user);
-      } else {
-        const errorMsg = response.error || 'Đăng nhập thất bại.';
-        setError(errorMsg);
-        
-        // Detect Backend Config Error
-        if (errorMsg.includes('Chưa cấu hình MASTER_SS_ID')) {
-            setShowConfigHelp(true);
+      // 1. Đăng nhập qua Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (authError) throw authError;
+
+      if (authData.user) {
+        // 2. Lấy thông tin profile từ bảng 'profiles'
+        // Thử tìm theo ID trước (chuẩn Supabase Auth)
+        let { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', authData.user.id)
+          .single();
+
+        // Nếu không tìm thấy theo ID, thử tìm theo email (cho các profile tạo thủ công)
+        if (!profile && authData.user.email) {
+          const { data: profileByEmail } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('email', authData.user.email)
+            .single();
+          
+          if (profileByEmail) {
+            profile = profileByEmail;
+            // Cập nhật ID của profile để khớp với Auth ID cho lần sau
+            await supabase.from('profiles').update({ id: authData.user.id }).eq('email', authData.user.email);
+          }
         }
+
+        // 3. Chuyển đổi sang định dạng User của ứng dụng
+        const userData: User = {
+          username: profile?.username || authData.user.email?.split('@')[0] || 'user',
+          fullName: profile?.full_name || 'Người dùng mới',
+          role: profile?.role || 'staff',
+          permissions: profile?.permissions || {},
+          status: profile?.status || 'Active',
+          email: authData.user.email,
+          phone: profile?.phone || '',
+        };
+
+        onLogin(userData);
       }
-    } catch (err) {
-      setError('Lỗi kết nối đến hệ thống.');
+    } catch (err: any) {
+      console.error('Login error:', err);
+      setError(err.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.');
     } finally {
       setLoading(false);
     }
@@ -68,7 +84,6 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       <div 
         className="absolute inset-0 z-0"
         style={{
-          // Hình ảnh quần áo/thời trang hiện đại, phù hợp chủ đề POD
           backgroundImage: "url('https://images.unsplash.com/photo-1523381210434-271e8be1f52b?q=80&w=2670&auto=format&fit=crop')",
           backgroundSize: 'cover',
           backgroundPosition: 'center',
@@ -78,16 +93,11 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       {/* Dark Overlay & Blur Effect */}
       <div className="absolute inset-0 z-0 bg-gradient-to-br from-gray-900/90 via-black/70 to-gray-900/90 backdrop-blur-[3px]"></div>
 
-      {/* Decorative Circles (Optional for aesthetic) */}
-      <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-orange-500/20 rounded-full blur-3xl z-0"></div>
-      <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-blue-500/20 rounded-full blur-3xl z-0"></div>
-
       {/* Login Card */}
       <div className="max-w-md w-full bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl overflow-hidden relative z-10 border border-white/20 animate-[fadeIn_0.5s_ease-out]">
         
         {/* Header Section */}
         <div className="bg-[#1e293b] p-8 text-center relative overflow-hidden">
-          {/* Decorative pattern inside header */}
           <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:16px_16px]"></div>
           
           <div className="relative z-10 flex flex-col items-center">
@@ -95,47 +105,34 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 <ShoppingBag className="text-white" size={32} />
              </div>
              <h2 className="text-3xl font-bold text-white mb-1 tracking-tight">Team 3T</h2>
-             <p className="text-gray-300 text-sm font-light">Hệ thống Quản lý Order Online</p>
+             <p className="text-gray-300 text-sm font-light">Hệ thống Quản lý Order (Supabase Auth)</p>
           </div>
         </div>
         
         {/* Form Section */}
         <form onSubmit={handleSubmit} className="p-8 space-y-6">
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl flex flex-col gap-2 text-sm animate-[shake_0.5s_ease-in-out]">
-              <div className="flex items-center gap-3">
-                  <AlertCircle size={18} className="flex-shrink-0" />
-                  <span>{error}</span>
-              </div>
-              {showConfigHelp && (
-                  <div className="ml-7 text-xs text-gray-600 bg-white p-3 rounded border border-red-100">
-                      <strong>Hướng dẫn khắc phục:</strong>
-                      <ol className="list-decimal ml-4 mt-1 space-y-1">
-                          <li>Mở file Google Sheet của bạn.</li>
-                          <li>Vào <strong>Extensions</strong> &gt; <strong>Apps Script</strong>.</li>
-                          <li>Tìm dòng <code>const MASTER_SS_ID = ...</code></li>
-                          <li>Thay bằng ID của file Sheet hiện tại.</li>
-                          <li>Lưu và nhấn <strong>Deploy</strong> lại.</li>
-                      </ol>
-                  </div>
-              )}
+            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl flex items-center gap-3 text-sm animate-[shake_0.5s_ease-in-out]">
+              <AlertCircle size={18} className="flex-shrink-0" />
+              <span>{error}</span>
             </div>
           )}
 
           <div className="space-y-2 group">
             <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block group-focus-within:text-orange-600 transition-colors">
-              Tên đăng nhập
+              Email đăng nhập
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <UserIcon size={18} className="text-gray-400 group-focus-within:text-orange-500 transition-colors" />
+                <Mail size={18} className="text-gray-400 group-focus-within:text-orange-500 transition-colors" />
               </div>
               <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="block w-full pl-10 pr-3 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 text-sm transition-all bg-gray-50 focus:bg-white text-gray-900 font-medium placeholder-gray-400"
-                placeholder="Nhập username..."
+                placeholder="email@example.com"
+                required
               />
             </div>
           </div>
@@ -154,6 +151,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 onChange={(e) => setPassword(e.target.value)}
                 className="block w-full pl-10 pr-3 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 text-sm transition-all bg-gray-50 focus:bg-white text-gray-900 font-medium placeholder-gray-400"
                 placeholder="••••••••"
+                required
               />
             </div>
           </div>
@@ -177,7 +175,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         {/* Footer Section */}
         <div className="bg-gray-50/50 px-8 py-4 border-t border-gray-100 text-center">
           <p className="text-xs text-gray-400">
-            Powered by Google Sheets & Gemini AI
+            Powered by Supabase & Team 3T
           </p>
         </div>
       </div>

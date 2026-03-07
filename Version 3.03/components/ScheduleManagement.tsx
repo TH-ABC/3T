@@ -9,6 +9,7 @@ import {
   Check, AlertTriangle, Edit2, FileSpreadsheet, Info
 } from 'lucide-react';
 import { sheetService } from '../services/sheetService';
+import { supabase } from '../lib/supabase';
 import { User, ScheduleStaff, AttendanceRecord, OTRecord } from '../types';
 
 interface ScheduleManagementProps {
@@ -58,19 +59,50 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
     try {
       const monthStr = getSelectedMonthStr();
       const [staffRes, attRes, otRes, holiRes, usersRes, manualRes] = await Promise.all([
-        sheetService.getScheduleStaff(),
-        sheetService.getAttendance(monthStr),
-        sheetService.getOTAttendance(monthStr),
-        sheetService.getHolidays(monthStr),
-        sheetService.getUsers(),
-        sheetService.getManualTimekeeping(monthStr)
+        supabase.from('schedule_staff').select('*'),
+        supabase.from('attendance').select('*').gte('date', `${monthStr}-01`).lte('date', `${monthStr}-31`),
+        supabase.from('ot_attendance').select('*').gte('date', `${monthStr}-01`).lte('date', `${monthStr}-31`),
+        supabase.from('holidays').select('*').gte('date', `${monthStr}-01`).lte('date', `${monthStr}-31`),
+        supabase.from('profiles').select('*'),
+        supabase.from('manual_timekeeping').select('*').eq('month', monthStr)
       ]);
-      setStaffList(Array.isArray(staffRes) ? staffRes : []);
-      setAttendance(Array.isArray(attRes) ? attRes : []);
-      setOtAttendance(Array.isArray(otRes) ? otRes : []);
-      setHolidays(Array.isArray(holiRes) ? holiRes : []);
-      setSystemUsers(Array.isArray(usersRes) ? usersRes : []);
-      setManualTimekeeping(manualRes || {});
+
+      setStaffList(staffRes.data || []);
+      
+      setAttendance((attRes.data || []).map(a => ({
+        username: a.username,
+        name: a.name,
+        date: a.date,
+        checkIn: new Date(a.check_in).toLocaleTimeString('vi-VN', { hour12: false, hour: '2-digit', minute: '2-digit' }),
+        checkOut: a.check_out ? new Date(a.check_out).toLocaleTimeString('vi-VN', { hour12: false, hour: '2-digit', minute: '2-digit' }) : undefined,
+        totalHours: a.total_hours
+      })));
+
+      setOtAttendance((otRes.data || []).map(a => ({
+        username: a.username,
+        name: a.name,
+        date: a.date,
+        checkIn: new Date(a.check_in).toLocaleTimeString('vi-VN', { hour12: false, hour: '2-digit', minute: '2-digit' }),
+        checkOut: a.check_out ? new Date(a.check_out).toLocaleTimeString('vi-VN', { hour12: false, hour: '2-digit', minute: '2-digit' }) : undefined,
+        totalHours: a.total_hours,
+        type: a.type
+      })));
+
+      setHolidays((holiRes.data || []).map(h => h.date));
+      
+      setSystemUsers((usersRes.data || []).map(u => ({
+        username: u.username,
+        fullName: u.full_name,
+        role: u.role
+      })));
+
+      const manualMap: Record<string, Record<number, string>> = {};
+      (manualRes.data || []).forEach(m => {
+        if (!manualMap[m.username]) manualMap[m.username] = {};
+        manualMap[m.username][m.day] = m.value;
+      });
+      setManualTimekeeping(manualMap);
+
     } catch (e) {
       console.error(e);
     } finally {
@@ -93,12 +125,16 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
 
   const executeActualRemove = async () => {
     if (!deleteStaffConfirm) return;
-    const { username, name } = deleteStaffConfirm;
+    const { username } = deleteStaffConfirm;
     setIsSaving(true);
     try {
-        const res = await (sheetService as any).deleteScheduleStaffMember(username, name);
-        if (res.success) {
-            setStaffList(prev => prev.filter(s => s.username !== username && s.name !== name));
+        const { error } = await supabase
+            .from('schedule_staff')
+            .delete()
+            .eq('username', username);
+            
+        if (!error) {
+            setStaffList(prev => prev.filter(s => s.username !== username));
             setDeleteStaffConfirm(null);
         }
     } finally { setIsSaving(false); }
@@ -120,9 +156,17 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
   const handleSaveSchedule = async () => {
     setIsSaving(true);
     try {
-      const res = await sheetService.saveScheduleStaff(staffList);
-      if (res && res.success) alert("Lưu danh sách nhân sự thành công!");
-      else alert("Lỗi: " + (res?.error || "Không thể lưu"));
+      // Upsert staff list
+      const { error } = await supabase
+        .from('schedule_staff')
+        .upsert(staffList.map(s => ({
+          username: s.username,
+          name: s.name,
+          role: s.role
+        })), { onConflict: 'username' });
+        
+      if (!error) alert("Lưu danh sách nhân sự thành công!");
+      else alert("Lỗi: " + error.message);
     } catch (e) { alert("Lỗi khi lưu!"); } finally { setIsSaving(false); }
   };
 
@@ -131,12 +175,15 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
     const dateStr = `${getSelectedMonthStr()}-${day.toString().padStart(2, '0')}`;
     setIsSaving(true);
     try {
-        const res = await sheetService.toggleHoliday(dateStr);
-        if (res.success) {
-            if (res.isHoliday) setHolidays([...holidays, dateStr]);
-            else setHolidays(holidays.filter(h => h !== dateStr));
-            await fetchData(); // Cập nhật lại toàn bộ để reset loại OT
+        const isCurrentlyHoliday = holidays.includes(dateStr);
+        if (isCurrentlyHoliday) {
+            await supabase.from('holidays').delete().eq('date', dateStr);
+            setHolidays(holidays.filter(h => h !== dateStr));
+        } else {
+            await supabase.from('holidays').insert({ date: dateStr });
+            setHolidays([...holidays, dateStr]);
         }
+        await fetchData();
     } catch (e) {
         alert("Lỗi khi cập nhật ngày lễ");
     } finally {
@@ -192,9 +239,16 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
             };
         });
 
-        const res = await (sheetService as any).saveFullMonthlyTable(monthStr, matrix);
-        if (res.success && showSuccess) {
-            alert("Đã đồng bộ hóa dữ liệu hiển thị về Google Sheet thành công!");
+        const { error } = await supabase
+            .from('monthly_timekeeping_matrix')
+            .upsert({
+                month: monthStr,
+                matrix: matrix,
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'month' });
+
+        if (!error && showSuccess) {
+            alert("Đã đồng bộ hóa dữ liệu hiển thị về Supabase thành công!");
         }
     } catch (e) {
         console.error("Sync Error:", e);
@@ -206,19 +260,60 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
   const handleAttendance = async (type: 'in' | 'out', isOT: boolean = false) => {
     setIsSaving(true);
     try {
-      let res;
-      if (isOT) {
-        res = type === 'in' ? await sheetService.checkInOT(user.username, user.fullName) : await sheetService.checkOutOT(user.username, user.fullName);
+      const today = getTodayGMT7();
+      const now = new Date().toISOString();
+      const table = isOT ? 'ot_attendance' : 'attendance';
+      
+      if (type === 'in') {
+        const { error } = await supabase
+          .from(table)
+          .insert({
+            username: user.username,
+            name: user.fullName,
+            date: today,
+            check_in: now,
+            type: isOT ? (holidays.includes(today) ? 'Holiday' : (new Date().getDay() === 0 || new Date().getDay() === 6 ? 'Weekend' : 'Normal')) : undefined
+          });
+        if (error) throw error;
+        alert(`Bắt đầu ${isOT ? 'OT' : 'ca'} thành công!`);
       } else {
-        res = type === 'in' ? await sheetService.checkIn(user.username, user.fullName) : await sheetService.checkOut(user.username, user.fullName);
+        // Find current record
+        const { data: current } = await supabase
+          .from(table)
+          .select('*')
+          .eq('username', user.username)
+          .eq('date', today)
+          .is('check_out', null)
+          .order('check_in', { ascending: false })
+          .limit(1)
+          .single();
+          
+        if (!current) throw new Error("Không tìm thấy ca trực đang mở.");
+        
+        const checkInTime = new Date(current.check_in);
+        const checkOutTime = new Date(now);
+        const diffMs = checkOutTime.getTime() - checkInTime.getTime();
+        const hours = Math.round((diffMs / (1000 * 60 * 60)) * 100) / 100;
+        
+        const { error } = await supabase
+          .from(table)
+          .update({
+            check_out: now,
+            total_hours: hours
+          })
+          .eq('id', current.id);
+          
+        if (error) throw error;
+        alert(`Kết thúc ${isOT ? 'OT' : 'ca'} thành công! Tổng cộng: ${hours}h`);
       }
-      if (res && res.success) {
-          if (res.message) alert(res.message); 
-          await fetchData();
-          handleSaveFullTable(false);
-      }
-      else alert(res?.error || "Lỗi xử lý điểm danh");
-    } catch (e) { alert("Lỗi kết nối điểm danh!"); } finally { setIsSaving(false); }
+      
+      await fetchData();
+      handleSaveFullTable(false);
+    } catch (e: any) { 
+      alert("Lỗi: " + (e.message || "Không thể thực hiện")); 
+    } finally { 
+      setIsSaving(false); 
+    }
   };
 
   const handleOpenManualModal = (username: string, day: number, currentVal: string) => {
@@ -235,8 +330,17 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
     
     setIsSaving(true);
     try {
-        const res = await sheetService.saveManualTimekeeping(monthStr, username, day, newVal);
-        if (res.success) {
+        const { error } = await supabase
+            .from('manual_timekeeping')
+            .upsert({
+                username: username,
+                month: monthStr,
+                day: day,
+                value: newVal,
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'username,month,day' });
+            
+        if (!error) {
             setManualTimekeeping(prev => ({
                 ...prev,
                 [username]: { ...(prev[username] || {}), [day]: newVal }
@@ -301,59 +405,63 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
   );
 
   return (
-    <div className="p-4 sm:p-8 bg-[#f8fafc] min-h-screen space-y-8 animate-fade-in pb-24 overflow-x-hidden">
+    <div className="p-4 sm:p-8 bg-[#f8fafc] min-h-screen space-y-8 animate-fade-in pb-24 w-full max-w-[100vw] overflow-x-hidden">
       
       {/* HEADER */}
-      <div className="relative bg-white rounded-[2.5rem] p-6 sm:p-8 shadow-[0_20px_60px_rgba(0,0,0,0.05)] border border-slate-200/60 overflow-hidden group">
+      <div className="relative bg-white rounded-[2.5rem] p-4 sm:p-8 shadow-[0_20px_60px_rgba(0,0,0,0.05)] border border-slate-200/60 overflow-hidden group w-full">
         <div className="absolute -top-24 -right-24 w-64 h-64 bg-indigo-50 rounded-full blur-3xl opacity-50"></div>
-        <div className="relative z-10 flex flex-col xl:flex-row justify-between items-center gap-8">
-            <div className="flex items-center gap-6">
-                <div className="p-4 bg-indigo-600 text-white rounded-[1.5rem] shadow-xl"><Calendar size={30} strokeWidth={2.5} /></div>
-                <div>
-                    <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter flex items-center gap-3">Điểm danh ca trực & OT</h2>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-1 flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Live Attendance v32.0</p>
+        <div className="relative z-10 flex flex-col lg:flex-row justify-between items-center gap-6">
+            <div className="flex items-center gap-4 sm:gap-6 w-full lg:w-auto">
+                <div className="p-3 sm:p-4 bg-indigo-600 text-white rounded-[1.2rem] sm:rounded-[1.5rem] shadow-xl flex-shrink-0">
+                  <Calendar size={24} className="sm:w-[30px] sm:h-[30px]" strokeWidth={2.5} />
+                </div>
+                <div className="min-w-0">
+                    <h2 className="text-lg sm:text-2xl font-black text-slate-900 uppercase tracking-tighter truncate">Điểm danh & OT</h2>
+                    <p className="text-[9px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-[0.1em] sm:tracking-[0.2em] mt-0.5 flex items-center gap-1.5 truncate">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0"></span> Live Attendance v32.1
+                    </p>
                 </div>
             </div>
             
-            <div className="flex flex-wrap items-center justify-center gap-4 bg-slate-50/80 p-2.5 rounded-[2rem] border border-slate-100">
-                <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-4 py-2.5 shadow-sm">
-                    <select value={selectedMonth} onChange={(e) => setSelectedMonth(Number(e.target.value))} className="bg-transparent text-sm font-black text-slate-700 outline-none uppercase tracking-tighter">
-                        {Array.from({length: 12}, (_, i) => <option key={i+1} value={i+1}>Tháng {i+1}</option>)}
+            <div className="flex flex-wrap items-center justify-center lg:justify-end gap-3 bg-slate-50/80 p-2 rounded-[1.5rem] sm:rounded-[2rem] border border-slate-100 w-full lg:w-auto">
+                <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm">
+                    <select value={selectedMonth} onChange={(e) => setSelectedMonth(Number(e.target.value))} className="bg-transparent text-[11px] sm:text-sm font-black text-slate-700 outline-none uppercase tracking-tighter cursor-pointer">
+                        {Array.from({length: 12}, (_, i) => <option key={i+1} value={i+1}>T{i+1}</option>)}
                     </select>
-                    <div className="w-px h-4 bg-slate-200 mx-2"></div>
-                    <select value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} className="bg-transparent text-sm font-black text-slate-700 outline-none tracking-tighter">
+                    <div className="w-px h-3 bg-slate-200 mx-1"></div>
+                    <select value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} className="bg-transparent text-[11px] sm:text-sm font-black text-slate-700 outline-none tracking-tighter cursor-pointer">
                         {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
                     </select>
                 </div>
 
-                <div className="flex items-center gap-2 border-l border-slate-200 pl-4">
+                <div className="flex items-center gap-2">
                     {!todayRecord || !todayRecord.checkIn ? (
-                        <button onClick={() => handleAttendance('in')} disabled={isSaving} className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase shadow-lg hover:bg-indigo-700 active:scale-95 transition-all">
-                           {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Timer size={14} />} Bắt đầu ca
+                        <button onClick={() => handleAttendance('in')} disabled={isSaving} className="flex items-center gap-1.5 px-3 sm:px-5 py-2 sm:py-2.5 bg-indigo-600 text-white rounded-xl text-[9px] sm:text-[10px] font-black uppercase shadow-lg hover:bg-indigo-700 active:scale-95 transition-all whitespace-nowrap">
+                           {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Timer size={12} />} Vào ca
                         </button>
                     ) : !todayRecord.checkOut ? (
-                        <button onClick={() => handleAttendance('out')} disabled={isSaving} className="flex items-center gap-2 px-5 py-2.5 bg-rose-600 text-white rounded-xl text-[10px] font-black uppercase animate-pulse shadow-lg hover:bg-rose-700 active:scale-95 transition-all">
-                           {isSaving ? <Loader2 size={14} className="animate-spin" /> : <LogOut size={14} />} Kết thúc ca
+                        <button onClick={() => handleAttendance('out')} disabled={isSaving} className="flex items-center gap-1.5 px-3 sm:px-5 py-2 sm:py-2.5 bg-rose-600 text-white rounded-xl text-[9px] sm:text-[10px] font-black uppercase animate-pulse shadow-lg hover:bg-rose-700 active:scale-95 transition-all whitespace-nowrap">
+                           {isSaving ? <Loader2 size={12} className="animate-spin" /> : <LogOut size={12} />} Ra ca
                         </button>
                     ) : (
-                        <div className="px-5 py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase flex items-center gap-2 shadow-sm">
-                            <CheckCircle size={14} className="text-emerald-400" /> Done {todayRecord.totalHours?.toFixed(2)}h
+                        <div className="px-3 sm:px-5 py-2 sm:py-2.5 bg-slate-900 text-white rounded-xl text-[9px] sm:text-[10px] font-black uppercase flex items-center gap-1.5 shadow-sm whitespace-nowrap">
+                            <CheckCircle size={12} className="text-emerald-400" /> {todayRecord.totalHours?.toFixed(1)}h
                         </div>
                     )}
                 </div>
 
-                <div className="flex items-center gap-2 border-l border-slate-200 pl-4">
+                <div className="flex items-center gap-2">
                     {!todayOTRecord || !todayOTRecord.checkIn ? (
-                        <button onClick={() => handleAttendance('in', true)} disabled={isSaving} className="flex items-center gap-2 px-5 py-2.5 bg-amber-500 text-white rounded-xl text-[10px] font-black uppercase shadow-lg hover:bg-amber-600 active:scale-95 transition-all">
-                           {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Star size={14} />} Bắt đầu OT
+                        <button onClick={() => handleAttendance('in', true)} disabled={isSaving} className="flex items-center gap-1.5 px-3 sm:px-5 py-2 sm:py-2.5 bg-amber-500 text-white rounded-xl text-[9px] sm:text-[10px] font-black uppercase shadow-lg hover:bg-amber-600 active:scale-95 transition-all whitespace-nowrap">
+                           {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Star size={12} />} Vào OT
                         </button>
                     ) : !todayOTRecord.checkOut ? (
-                        <button onClick={() => handleAttendance('out', true)} disabled={isSaving} className="flex items-center gap-2 px-5 py-2.5 bg-orange-600 text-white rounded-xl text-[10px] font-black uppercase animate-pulse shadow-lg hover:bg-orange-700 active:scale-95 transition-all">
-                           {isSaving ? <Loader2 size={14} className="animate-spin" /> : <LogOut size={14} />} Kết thúc OT
+                        <button onClick={() => handleAttendance('out', true)} disabled={isSaving} className="flex items-center gap-1.5 px-3 sm:px-5 py-2 sm:py-2.5 bg-orange-600 text-white rounded-xl text-[9px] sm:text-[10px] font-black uppercase animate-pulse shadow-lg hover:bg-orange-700 active:scale-95 transition-all whitespace-nowrap">
+                           {isSaving ? <Loader2 size={12} className="animate-spin" /> : <LogOut size={12} />} Ra OT
                         </button>
                     ) : (
-                        <div className="px-5 py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase flex items-center gap-2 shadow-sm">
-                            <CheckCircle size={14} className="text-amber-400" /> OT {todayOTRecord.totalHours?.toFixed(2)}h
+                        <div className="px-3 sm:px-5 py-2 sm:py-2.5 bg-slate-900 text-white rounded-xl text-[9px] sm:text-[10px] font-black uppercase flex items-center gap-1.5 shadow-sm whitespace-nowrap">
+                            <CheckCircle size={12} className="text-amber-400" /> OT {todayOTRecord.totalHours?.toFixed(1)}h
                         </div>
                     )}
                 </div>
@@ -368,9 +476,9 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
       </div>
 
       {activeMainTab === 'attendance' ? (
-        <div className="space-y-8 animate-fade-in">
-            <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200/50 overflow-hidden">
-                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/30">
+        <div className="space-y-8 animate-fade-in w-full max-w-full">
+            <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200/50 overflow-hidden w-full max-w-full">
+                <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row justify-between items-center bg-slate-50/30 gap-4">
                     <div className="flex items-center gap-3">
                         <div className="w-1.5 h-6 bg-indigo-600 rounded-full"></div>
                         <h3 className="font-black text-slate-800 uppercase text-xs tracking-[0.2em]">Bảng chi tiết điểm danh {isAdmin && "(Admin View)"}</h3>
@@ -388,11 +496,11 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
                     )}
                 </div>
 
-                <div className="overflow-x-auto w-full custom-scrollbar">
-                    <table className="w-full text-left border-collapse table-fixed min-w-[1300px]">
+                <div className="w-full overflow-x-auto custom-scrollbar relative border border-slate-100 rounded-[1.5rem] bg-white">
+                    <table className="w-full text-left border-separate border-spacing-0 min-w-[3000px]">
                         <thead className="bg-slate-50 text-[10px] uppercase text-slate-400 font-black tracking-widest border-b border-slate-100">
                             <tr>
-                                <th className="px-8 py-5 w-64 sticky left-0 bg-white z-20 border-r border-slate-100 shadow-[10px_0_15px_-10px_rgba(0,0,0,0.08)]">Nhân sự</th>
+                                <th className="px-8 py-5 w-80 sticky left-0 bg-slate-50 z-40 border-r border-slate-200 shadow-[2px_0_5px_rgba(0,0,0,0.05)]" style={{ position: 'sticky', left: 0, backgroundColor: '#f8fafc' }}>Nhân sự</th>
                                 {days.map(d => {
                                     const dateStr = `${getSelectedMonthStr()}-${d.toString().padStart(2, '0')}`;
                                     const isHoli = holidays.includes(dateStr);
@@ -400,7 +508,7 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
                                         <th 
                                             key={d} 
                                             onClick={() => handleToggleHoliday(d)}
-                                            className={`py-5 text-center border-l border-slate-50 w-24 font-black transition-colors ${isAdmin ? 'cursor-pointer hover:bg-indigo-100' : ''} ${isHoli ? 'bg-rose-100 text-rose-700 shadow-inner' : ''}`}
+                                            className={`py-5 text-center border-b border-slate-100 w-28 font-black transition-colors ${isAdmin ? 'cursor-pointer hover:bg-indigo-100' : ''} ${isHoli ? 'bg-rose-100 text-rose-700 shadow-inner' : ''}`}
                                             title={isAdmin ? "Nhấn để bật/tắt Ngày Lễ" : ""}
                                         >
                                             <div className="flex flex-col items-center gap-1">
@@ -415,7 +523,7 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
                         <tbody className="divide-y divide-slate-50">
                             {filteredStaffList.map((staff, idx) => (
                                 <tr key={idx} className="hover:bg-indigo-50/10 transition-colors group">
-                                    <td className="px-8 py-4 sticky left-0 bg-white z-20 border-r border-slate-100 shadow-[10px_0_15px_-10px_rgba(0,0,0,0.08)]">
+                                    <td className="px-8 py-4 sticky left-0 bg-white z-30 border-r border-slate-200 shadow-[2px_0_5px_rgba(0,0,0,0.05)]" style={{ position: 'sticky', left: 0, backgroundColor: 'white', width: '320px' }}>
                                         <div className="flex items-center justify-between">
                                             <div className="flex-1">
                                                 {isAdmin ? (
@@ -434,7 +542,7 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
                                         const dateStr = `${getSelectedMonthStr()}-${d.toString().padStart(2, '0')}`;
                                         const isHoli = holidays.includes(dateStr);
                                         return (
-                                            <td key={d} className={`p-1.5 text-center border-l border-slate-50 ${isHoli ? 'bg-rose-50/30' : ''}`}>
+                                            <td key={d} className={`p-1.5 text-center border-b border-slate-50 ${isHoli ? 'bg-rose-50/30' : ''}`}>
                                                 <div className="flex flex-col gap-1">
                                                     {data && <div className={`p-1 rounded-lg border text-[8px] font-black ${data.checkOut ? 'bg-indigo-50/50 border-indigo-100 text-indigo-700' : 'bg-amber-50 border-amber-200 animate-pulse text-amber-700'}`}>{data.checkIn?.slice(0,5)} - {data.checkOut?.slice(0,5) || "..."}</div>}
                                                     {ot && <div className="p-1 rounded-lg border bg-orange-50 border-orange-100 text-orange-700 text-[8px] font-black">OT: {ot.totalHours?.toFixed(2)}h</div>}
@@ -449,23 +557,33 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
                 </div>
             </div>
 
-            <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200/50 overflow-hidden">
+            <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200/50 overflow-hidden w-full max-w-full">
                 <div className="p-6 border-b border-slate-100 bg-slate-50/30 flex items-center gap-3">
                     <div className="w-1.5 h-6 bg-amber-500 rounded-full"></div>
                     <h3 className="font-black text-slate-800 uppercase text-xs tracking-[0.2em]">Tổng kết giờ OT trong tháng</h3>
                 </div>
-                <div className="p-6">
-                    <table className="w-full text-left text-xs">
-                        <thead><tr className="text-[10px] text-slate-400 font-black uppercase border-b border-slate-100"><th className="py-4">Nhân sự</th><th className="text-center">Thường</th><th className="text-center">Cuối tuần</th><th className="text-center">Lễ</th><th className="text-center font-black text-slate-800">Tổng OT</th></tr></thead>
+                <div className="w-full overflow-x-auto custom-scrollbar relative border border-slate-100 rounded-[1.5rem] bg-white">
+                    <table className="w-full text-left text-xs border-separate border-spacing-0 min-w-[1500px]">
+                        <thead>
+                            <tr className="text-[10px] text-slate-400 font-black uppercase">
+                                <th className="py-4 px-8 sticky left-0 bg-slate-50 z-30 border-b border-slate-100 border-r border-slate-200 shadow-[2px_0_5px_rgba(0,0,0,0.05)] w-80 text-left" style={{ position: 'sticky', left: 0, backgroundColor: '#f8fafc' }}>Nhân sự</th>
+                                <th className="text-center py-4 border-b border-slate-100">Thường</th>
+                                <th className="text-center py-4 border-b border-slate-100">Cuối tuần</th>
+                                <th className="text-center py-4 border-b border-slate-100">Lễ</th>
+                                <th className="text-center py-4 border-b border-slate-100 font-black text-slate-800">Tổng OT</th>
+                            </tr>
+                        </thead>
                         <tbody className="divide-y divide-slate-50">
                             {filteredStaffList.map(staff => {
                                 const summary = calculateOTSummary(staff.username || staff.name);
                                 const total = Math.round((summary.normal + summary.weekend + summary.holiday) * 100) / 100;
                                 return (
                                     <tr key={staff.username || staff.name} className="hover:bg-slate-50 transition-colors font-bold text-slate-700">
-                                        <td className="py-4">{staff.name}</td>
-                                        <td className="text-center">{summary.normal}h</td><td className="text-center text-orange-600">{summary.weekend}h</td><td className="text-center text-rose-600">{summary.holiday}h</td>
-                                        <td className="text-center font-black text-indigo-600">{total}h</td>
+                                        <td className="py-4 px-8 sticky left-0 bg-white z-20 border-r border-slate-200 shadow-[2px_0_5px_rgba(0,0,0,0.05)]" style={{ position: 'sticky', left: 0, backgroundColor: 'white', width: '320px' }}>{staff.name}</td>
+                                        <td className="text-center py-4">{summary.normal}h</td>
+                                        <td className="text-center py-4 text-orange-600">{summary.weekend}h</td>
+                                        <td className="text-center py-4 text-rose-600">{summary.holiday}h</td>
+                                        <td className="text-center py-4 font-black text-indigo-600">{total}h</td>
                                     </tr>
                                 );
                             })}
@@ -476,8 +594,8 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
         </div>
       ) : (
         /* TAB CHẤM CÔNG V32.0 */
-        <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200/50 overflow-hidden animate-fade-in">
-             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/30">
+        <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200/50 overflow-hidden animate-fade-in w-full max-w-full">
+             <div className="p-6 border-b border-slate-100 flex flex-col lg:flex-row justify-between items-center bg-slate-50/30 gap-4">
                 <div className="flex items-center gap-3">
                     <div className="w-1.5 h-6 bg-emerald-600 rounded-full"></div>
                     <h3 className="font-black text-slate-800 uppercase text-xs tracking-[0.2em]">Bảng chấm công ký hiệu (S / C / HC / RC)</h3>
@@ -501,11 +619,11 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
                 </div>
              </div>
              
-             <div className="overflow-x-auto custom-scrollbar">
-                <table className="w-full text-left border-collapse table-fixed min-w-[1300px]">
+             <div className="w-full overflow-x-auto custom-scrollbar relative border border-slate-100 rounded-[1.5rem] bg-white">
+                <table className="w-full text-left border-separate border-spacing-0 min-w-[2000px]">
                     <thead className="bg-slate-50 text-[10px] uppercase text-slate-400 font-black tracking-widest border-b border-slate-100">
                         <tr>
-                            <th className="px-8 py-5 w-64 sticky left-0 bg-white z-20 border-r border-slate-100 shadow-[10px_0_15px_-10px_rgba(0,0,0,0.08)]">Nhân sự</th>
+                            <th className="px-8 py-5 w-80 sticky left-0 bg-slate-50 z-40 border-r border-slate-200 shadow-[2px_0_5px_rgba(0,0,0,0.05)]" style={{ position: 'sticky', left: 0, backgroundColor: '#f8fafc' }}>Nhân sự</th>
                             {days.map(d => {
                                 const dateStr = `${getSelectedMonthStr()}-${d.toString().padStart(2, '0')}`;
                                 const isHoli = holidays.includes(dateStr);
@@ -513,7 +631,7 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
                                     <th 
                                         key={d} 
                                         onClick={() => handleToggleHoliday(d)}
-                                        className={`py-5 text-center border-l border-slate-50 w-12 font-black transition-colors ${isAdmin ? 'cursor-pointer hover:bg-indigo-100' : ''} ${isHoli ? 'bg-rose-100 text-rose-700' : ''}`}
+                                        className={`py-5 text-center border-b border-slate-100 w-10 font-black transition-colors ${isAdmin ? 'cursor-pointer hover:bg-indigo-100' : ''} ${isHoli ? 'bg-rose-100 text-rose-700' : ''}`}
                                         title={isAdmin ? "Nhấn để bật/tắt Ngày Lễ" : ""}
                                     >
                                         <div className="flex flex-col items-center gap-1">
@@ -528,7 +646,7 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
                     <tbody className="divide-y divide-slate-50">
                         {filteredStaffList.map((staff, idx) => (
                             <tr key={idx} className="hover:bg-indigo-50/10 transition-colors group">
-                                <td className="px-8 py-6 sticky left-0 bg-white z-20 border-r border-slate-100 shadow-[10px_0_15px_-10px_rgba(0,0,0,0.08)]">
+                                <td className="px-8 py-6 sticky left-0 bg-white z-30 border-r border-slate-200 shadow-[2px_0_5px_rgba(0,0,0,0.05)]" style={{ position: 'sticky', left: 0, backgroundColor: 'white', width: '320px' }}>
                                     <p className="text-xs font-black text-slate-800">{staff.name}</p>
                                     <p className="text-[9px] text-slate-400 font-bold uppercase">{staff.role}</p>
                                 </td>
@@ -543,7 +661,7 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
                                         <td 
                                           key={d} 
                                           onDoubleClick={() => handleOpenManualModal(staff.username || staff.name || '', d, val)}
-                                          className={`py-6 text-center border-l border-slate-50 font-black text-xs transition-all ${isAdmin ? 'cursor-pointer hover:bg-indigo-50/50' : ''} ${isWeekend ? 'bg-orange-50/10' : ''} ${isHoli ? 'bg-rose-50' : ''}`}
+                                          className={`py-6 text-center border-b border-slate-50 font-black text-xs transition-all ${isAdmin ? 'cursor-pointer hover:bg-indigo-50/50' : ''} ${isWeekend ? 'bg-orange-50/10' : ''} ${isHoli ? 'bg-rose-50' : ''}`}
                                           title={isAdmin ? "Bấm đúp để chấm thủ công" : ""}
                                         >
                                             <span className={`${

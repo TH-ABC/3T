@@ -12,6 +12,7 @@ import {
   Eye, Monitor, AlertTriangle
 } from 'lucide-react';
 import { sheetService } from '../services/sheetService';
+import { supabase } from '../lib/supabase';
 import { User as UserType, NewsItem, NewsComment } from '../types';
 
 // Lazy load ReactQuill to prevent React 19 suspension errors
@@ -35,6 +36,7 @@ const Home: React.FC<HomeProps> = ({ user, onTabChange }) => {
   
   const [commentingId, setCommentingId] = useState<string | null>(null);
   const [commentText, setCommentText] = useState('');
+  const [submittingComment, setSubmittingComment] = useState(false);
   
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -149,14 +151,48 @@ const Home: React.FC<HomeProps> = ({ user, onTabChange }) => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [newsRes, usersRes] = await Promise.all([
-        sheetService.getNews(user.username),
-        sheetService.getUsers()
-      ]);
-      setNews(newsRes.news);
+      // 1. Fetch news from Supabase
+      const { data: newsData, error: newsError } = await supabase
+        .from('news')
+        .select(`
+          *,
+          news_likes (username),
+          news_comments (*)
+        `)
+        .order('created_at', { ascending: false });
+
+      if (newsError) throw newsError;
+
+      // 2. Fetch users from Sheet (or Supabase profiles if you prefer)
+      const usersRes = await sheetService.getUsers();
       setSystemUsers(Array.isArray(usersRes) ? usersRes : []);
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
+
+      // 3. Transform Supabase data to NewsItem format
+      const transformedNews: NewsItem[] = (newsData || []).map(item => ({
+        id: item.id,
+        title: item.title,
+        content: item.content,
+        imageUrl: item.image_url,
+        author: item.author,
+        timestamp: new Date(item.created_at).toLocaleString('vi-VN'),
+        isLocked: item.is_locked,
+        likesCount: item.news_likes?.length || 0,
+        isLiked: item.news_likes?.some((l: any) => l.username === user.username),
+        comments: (item.news_comments || []).map((c: any) => ({
+          id: c.id,
+          newsId: c.news_id,
+          username: c.username,
+          text: c.text,
+          timestamp: new Date(c.created_at).toLocaleString('vi-VN')
+        })).sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+      }));
+
+      setNews(transformedNews);
+    } catch (e) { 
+      console.error('Error fetching news from Supabase:', e); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   useEffect(() => {
@@ -172,6 +208,12 @@ const Home: React.FC<HomeProps> = ({ user, onTabChange }) => {
   }, [confirmDeleteId]);
 
   const handleLike = async (newsId: string) => {
+    const item = news.find(n => n.id === newsId);
+    if (!item) return;
+
+    const isCurrentlyLiked = item.isLiked;
+    
+    // Optimistic Update
     setNews(prev => prev.map(n => n.id === newsId ? { 
       ...n, isLiked: !n.isLiked, likesCount: n.isLiked ? n.likesCount - 1 : n.likesCount + 1 
     } : n));
@@ -183,29 +225,70 @@ const Home: React.FC<HomeProps> = ({ user, onTabChange }) => {
             likesCount: prev.isLiked ? prev.likesCount - 1 : prev.likesCount + 1
         } : null);
     }
-    await sheetService.toggleLike(newsId, user.username);
+
+    try {
+      if (isCurrentlyLiked) {
+        // Unlike: Delete from news_likes
+        await supabase
+          .from('news_likes')
+          .delete()
+          .match({ news_id: newsId, username: user.username });
+      } else {
+        // Like: Insert into news_likes
+        await supabase
+          .from('news_likes')
+          .insert({ news_id: newsId, username: user.username });
+      }
+    } catch (err) {
+      console.error('Error toggling like:', err);
+      // Revert on error
+      fetchData();
+    }
   };
 
   const handleAddComment = async (newsId: string) => {
-    if (!commentText.trim()) return;
-    const newComment: NewsComment = {
-      id: 'temp-' + Date.now(),
-      newsId, username: user.username,
-      text: commentText, timestamp: new Date().toLocaleString('vi-VN')
-    };
+    if (!commentText.trim() || submittingComment) return;
     
-    setNews(prev => prev.map(n => n.id === newsId ? { ...n, comments: [...(n.comments || []), newComment] } : n));
-    
-    if (selectedNews && selectedNews.id === newsId) {
-        setSelectedNews(prev => prev ? {
-            ...prev,
-            comments: [...(prev.comments || []), newComment]
-        } : null);
-    }
-    
+    setSubmittingComment(true);
     const textToSave = commentText;
     setCommentText('');
-    await sheetService.addComment({ newsId, username: user.username, text: textToSave });
+
+    try {
+      const { data, error } = await supabase
+        .from('news_comments')
+        .insert({
+          news_id: newsId,
+          username: user.username,
+          text: textToSave
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const newComment: NewsComment = {
+        id: data.id,
+        newsId, 
+        username: user.username,
+        text: textToSave, 
+        timestamp: new Date(data.created_at).toLocaleString('vi-VN')
+      };
+      
+      setNews(prev => prev.map(n => n.id === newsId ? { ...n, comments: [...(n.comments || []), newComment] } : n));
+      
+      if (selectedNews && selectedNews.id === newsId) {
+          setSelectedNews(prev => prev ? {
+              ...prev,
+              comments: [...(prev.comments || []), newComment]
+          } : null);
+      }
+    } catch (err) {
+      console.error('Error adding comment:', err);
+      alert('Không thể thêm bình luận. Vui lòng thử lại.');
+      setCommentText(textToSave);
+    } finally {
+      setSubmittingComment(false);
+    }
   };
 
   const handleDeleteNews = (id: string) => {
@@ -215,31 +298,46 @@ const Home: React.FC<HomeProps> = ({ user, onTabChange }) => {
   const executeActualDelete = async (id: string) => {
     setActionLoadingId(id);
     try {
-      const res = await sheetService.deleteNews(id);
-      if (res.success) {
-        setNews(prev => prev.filter(n => n.id !== id));
-        setConfirmDeleteId(null);
-      } else {
-        alert(res.error || "Lỗi xóa bài");
-      }
+      const { error } = await supabase
+        .from('news')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setNews(prev => prev.filter(n => n.id !== id));
+      setConfirmDeleteId(null);
+      if (selectedNews?.id === id) setSelectedNews(null);
     } catch (err) {
-      alert("Lỗi kết nối khi xóa bài tin.");
+      console.error('Error deleting news:', err);
+      alert("Lỗi xóa bài tin.");
     } finally { 
       setActionLoadingId(null); 
     }
   };
 
   const handleToggleLock = async (id: string) => {
+    const item = news.find(n => n.id === id);
+    if (!item) return;
+
     setActionLoadingId(id);
     try {
-      const res = await sheetService.toggleLockNews(id);
-      if (res.success) {
-          setNews(prev => prev.map(n => n.id === id ? { ...n, isLocked: !n.isLocked } : n));
-          if (selectedNews && selectedNews.id === id) {
-              setSelectedNews(prev => prev ? { ...prev, isLocked: !prev.isLocked } : null);
-          }
+      const { error } = await supabase
+        .from('news')
+        .update({ is_locked: !item.isLocked })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setNews(prev => prev.map(n => n.id === id ? { ...n, isLocked: !n.isLocked } : n));
+      if (selectedNews && selectedNews.id === id) {
+          setSelectedNews(prev => prev ? { ...prev, isLocked: !prev.isLocked } : null);
       }
-    } finally { setActionLoadingId(null); }
+    } catch (err) {
+      console.error('Error toggling lock:', err);
+    } finally { 
+      setActionLoadingId(null); 
+    }
   };
 
   const handleOpenEdit = (item: NewsItem) => {
@@ -261,20 +359,37 @@ const Home: React.FC<HomeProps> = ({ user, onTabChange }) => {
     if (!newPost.title || !newPost.content) return;
     setPosting(true);
     try {
-      let res;
-      if (isEditing) res = await sheetService.updateNews({ ...newPost });
-      else res = await sheetService.addNews({ ...newPost, author: user.fullName });
-      
-      if (res && (res.success === true || String(res.success).toUpperCase() === "TRUE")) {
-        setIsPostModalOpen(false);
-        setIsEditing(false);
-        setNewPost({ id: '', title: '', content: '', imageUrl: '' });
-        await fetchData();
+      if (isEditing) {
+        const { error } = await supabase
+          .from('news')
+          .update({
+            title: newPost.title,
+            content: newPost.content,
+            image_url: newPost.imageUrl
+          })
+          .eq('id', newPost.id);
+
+        if (error) throw error;
       } else {
-        alert(res?.error || "Cập nhật thất bại. Vui lòng thử lại.");
+        const { error } = await supabase
+          .from('news')
+          .insert({
+            title: newPost.title,
+            content: newPost.content,
+            image_url: newPost.imageUrl,
+            author: user.fullName
+          });
+
+        if (error) throw error;
       }
-    } catch (err) { 
-        alert("Lỗi kết nối hệ thống: " + err);
+      
+      setIsPostModalOpen(false);
+      setIsEditing(false);
+      setNewPost({ id: '', title: '', content: '', imageUrl: '' });
+      await fetchData();
+    } catch (err: any) { 
+        console.error('Error saving post:', err);
+        alert("Lỗi kết nối hệ thống: " + err.message);
     } finally { setPosting(false); }
   };
 
@@ -395,8 +510,21 @@ const Home: React.FC<HomeProps> = ({ user, onTabChange }) => {
                             ))}
                          </div>
                          <div className="flex gap-2 p-1.5 bg-white border-2 border-slate-100 rounded-2xl shadow-sm focus-within:border-indigo-200 transition-all">
-                            <input value={commentText} onChange={e => setCommentText(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddComment(item.id)} className="flex-1 px-4 text-xs font-bold outline-none placeholder:text-slate-300" placeholder="Viết phản hồi..." />
-                            <button onClick={() => handleAddComment(item.id)} className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all"><Send size={14}/></button>
+                            <input 
+                              value={commentText} 
+                              onChange={e => setCommentText(e.target.value)} 
+                              onKeyDown={e => e.key === 'Enter' && !submittingComment && handleAddComment(item.id)} 
+                              className="flex-1 px-4 text-xs font-bold outline-none placeholder:text-slate-300 disabled:bg-slate-50" 
+                              placeholder={submittingComment ? "Đang gửi..." : "Viết phản hồi..."}
+                              disabled={submittingComment}
+                            />
+                            <button 
+                              onClick={() => handleAddComment(item.id)} 
+                              disabled={submittingComment || !commentText.trim()}
+                              className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {submittingComment ? <Loader2 size={14} className="animate-spin" /> : <Send size={14}/>}
+                            </button>
                          </div>
                       </div>
                     )}
@@ -496,12 +624,13 @@ const Home: React.FC<HomeProps> = ({ user, onTabChange }) => {
                          <input 
                            value={commentText} 
                            onChange={e => setCommentText(e.target.value)} 
-                           onKeyDown={e => e.key === 'Enter' && handleAddComment(selectedNews!.id)} 
+                           onKeyDown={e => e.key === 'Enter' && !submittingComment && handleAddComment(selectedNews!.id)} 
                            className="flex-1 px-5 text-sm font-bold outline-none placeholder:text-slate-300 bg-transparent" 
                            placeholder="Tham gia thảo luận..." 
                          />
                          <button 
                            onClick={() => handleAddComment(selectedNews!.id)} 
+                            disabled={submittingComment || !commentText.trim()} 
                            className="p-3.5 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all"
                          >
                            <Send size={18}/>

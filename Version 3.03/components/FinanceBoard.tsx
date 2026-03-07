@@ -371,9 +371,16 @@ export const FinanceBoard: React.FC<FinanceBoardProps> = ({ user }) => {
           const cols = jsonData[i];
           if (!cols || !cols[0]) continue; 
           rawParsed.push({
-            invoiceId: String(cols[0] || '').trim(), type: String(cols[1] || 'Payment').trim(), loai: String(cols[1] || 'Payment').trim(), status: String(cols[2] || 'Completed').trim(),    
-            date: cols[3] instanceof Date ? cols[3].toLocaleString('vi-VN') : String(cols[3] || ''), method: String(cols[4] || 'Wallet').trim(), amountUsd: robustParseNumber(cols[5]),   
-            fee: robustParseNumber(cols[6]), totalAmount: robustParseNumber(cols[7] || cols[5]), note: String(cols[8] || '').trim(),
+            invoiceId: String(cols[0] || '').trim(), 
+            type: String(cols[1] || 'Payment').trim(), 
+            loai: String(cols[1] || 'Payment').trim(), 
+            status: String(cols[2] || 'Completed').trim(),    
+            date: cols[3] instanceof Date ? cols[3].toISOString() : String(cols[3] || ''), 
+            method: String(cols[4] || 'Wallet').trim(), 
+            amountUsd: robustParseNumber(cols[5]),   
+            fee: robustParseNumber(cols[6]), 
+            totalAmount: robustParseNumber(cols[7] || cols[5]), 
+            note: String(cols[8] || '').trim(),
           });
         }
         setUploadData(rawParsed);

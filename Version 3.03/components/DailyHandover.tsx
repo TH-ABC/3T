@@ -12,6 +12,7 @@ import {
   Activity, AlertOctagon, Eye, ChevronLeft, Layers, EyeOff
 } from 'lucide-react';
 import { sheetService } from '../services/sheetService';
+import { supabase } from '../lib/supabase';
 import { User as UserType, HandoverItem, UserNote, DailyNoteItem } from '../types';
 
 interface DailyHandoverProps {
@@ -67,20 +68,58 @@ const DailyHandover: React.FC<DailyHandoverProps> = ({ user }) => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      let dateParam = "";
-      if (filterMode === 'day') dateParam = selectedDate;
-      else if (filterMode === 'month') dateParam = selectedMonth;
-      else dateParam = "all";
+      let query = supabase.from('handovers').select('*');
+      
+      if (filterMode === 'day') {
+        query = query.eq('date', selectedDate);
+      } else if (filterMode === 'month') {
+        const startOfMonth = `${selectedMonth}-01`;
+        const nextMonth = new Date(selectedMonth);
+        nextMonth.setMonth(nextMonth.getMonth() + 1);
+        const endOfMonth = nextMonth.toISOString().split('T')[0];
+        query = query.gte('date', startOfMonth).lt('date', endOfMonth);
+      }
+
+      // Role-based filtering
+      if (user.role.toLowerCase() !== 'admin' && user.role.toLowerCase() !== 'leader' && user.role.toLowerCase() !== 'ceo') {
+        query = query.eq('assignee', user.fullName);
+      }
 
       const [handoverRes, usersRes, noteRes] = await Promise.all([
-        sheetService.getHandover(dateParam, user.fullName, user.role),
+        query.order('created_at', { ascending: false }),
         sheetService.getUsers(),
-        sheetService.getUserNote(user.username, new Date().toISOString().split('T')[0])
+        supabase.from('user_notes').select('*').eq('username', user.username).eq('date', new Date().toISOString().split('T')[0]).single()
       ]);
-      setHandovers(Array.isArray(handoverRes) ? handoverRes : []);
+
+      if (handoverRes.error && handoverRes.error.code !== 'PGRST116') console.error('Error fetching handovers:', handoverRes.error);
+      
+      const transformedHandovers: HandoverItem[] = (handoverRes.data || []).map(h => ({
+        id: h.id,
+        date: h.date,
+        task: h.task,
+        assignee: h.assignee,
+        deadlineAt: h.deadline_at,
+        status: h.status,
+        startTime: h.start_time,
+        endTime: h.end_time,
+        report: h.report,
+        fileLink: h.file_link,
+        resultLink: h.result_link,
+        imageLink: h.image_link,
+        createdBy: h.created_by,
+        isSeen: h.is_seen
+      }));
+
+      setHandovers(transformedHandovers);
       setUsers(Array.isArray(usersRes) ? usersRes : []);
-      setNoteItems(noteRes?.items || []);
-      setShowPlanner(noteRes?.showPlanner !== undefined ? noteRes.showPlanner : true);
+      
+      if (noteRes.data) {
+        setNoteItems(noteRes.data.items || []);
+        setShowPlanner(noteRes.data.show_planner !== undefined ? noteRes.data.show_planner : true);
+      } else {
+        setNoteItems([]);
+        setShowPlanner(true);
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -172,12 +211,20 @@ const DailyHandover: React.FC<DailyHandoverProps> = ({ user }) => {
   const autoSaveNote = async (items: DailyNoteItem[], currentShowState: boolean = showPlanner) => {
     setSavingNote(true);
     try {
-      await sheetService.saveUserNote({
-        username: user.username,
-        date: new Date().toISOString().split('T')[0],
-        items: items,
-        showPlanner: currentShowState
-      });
+      const today = new Date().toISOString().split('T')[0];
+      const { error } = await supabase
+        .from('user_notes')
+        .upsert({
+          username: user.username,
+          date: today,
+          items: items,
+          show_planner: currentShowState,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'username,date' });
+      
+      if (error) throw error;
+    } catch (err) {
+      console.error('Error saving note:', err);
     } finally {
       setSavingNote(false);
     }
@@ -221,7 +268,10 @@ const DailyHandover: React.FC<DailyHandoverProps> = ({ user }) => {
     setViewFullTask(item);
     if (!item.isSeen) {
       try {
-        await sheetService.markHandoverAsSeen(item.id);
+        await supabase
+          .from('handovers')
+          .update({ is_seen: true })
+          .eq('id', item.id);
         setHandovers(prev => prev.map(h => h.id === item.id ? { ...h, isSeen: true } : h));
       } catch (err) {
         console.error("Mark as seen error:", err);
@@ -233,11 +283,15 @@ const DailyHandover: React.FC<DailyHandoverProps> = ({ user }) => {
     setProcessingId(id);
     setConfirmDeleteId(null);
     try {
-      const res = await sheetService.deleteHandover(id);
-      if (res && res.success) {
+      const { error } = await supabase
+        .from('handovers')
+        .delete()
+        .eq('id', id);
+        
+      if (!error) {
         setHandovers(prev => prev.filter(h => h.id !== id));
       } else {
-        alert(res?.error || "Lỗi xóa dữ liệu.");
+        alert(error.message || "Lỗi xóa dữ liệu.");
       }
     } catch (err) {
       alert("Lỗi kết nối.");
@@ -251,39 +305,63 @@ const DailyHandover: React.FC<DailyHandoverProps> = ({ user }) => {
     if (!newHandover.task || !newHandover.assignee || !newHandover.deadlineAt) return;
     setProcessingId('creating');
     try {
-      let res;
       if (editingId) {
-        res = await sheetService.updateHandover(editingId, { ...newHandover });
+        const { error } = await supabase
+          .from('handovers')
+          .update({
+            task: newHandover.task,
+            assignee: newHandover.assignee,
+            deadline_at: newHandover.deadlineAt,
+            image_link: newHandover.imageLink,
+            file_link: newHandover.fileLink
+          })
+          .eq('id', editingId);
+        if (error) throw error;
       } else {
-        res = await sheetService.addHandover({
-          ...newHandover,
-          date: new Date().toISOString().split('T')[0],
-          createdBy: `${user.fullName} (${user.role})`
-        });
+        const { error } = await supabase
+          .from('handovers')
+          .insert({
+            task: newHandover.task,
+            assignee: newHandover.assignee,
+            deadline_at: newHandover.deadlineAt,
+            image_link: newHandover.imageLink,
+            file_link: newHandover.fileLink,
+            date: new Date().toISOString().split('T')[0],
+            created_by: `${user.fullName} (${user.role})`,
+            status: 'Pending'
+          });
+        if (error) throw error;
       }
       
-      if (res.success) {
-        setIsAddModalOpen(false);
-        setEditingId(null);
-        setNewHandover({ task: '', assignee: '', deadlineAt: '', imageLink: '', fileLink: '' });
-        fetchData();
-      }
+      setIsAddModalOpen(false);
+      setEditingId(null);
+      setNewHandover({ task: '', assignee: '', deadlineAt: '', imageLink: '', fileLink: '' });
+      fetchData();
+    } catch (err: any) {
+      console.error('Error saving handover:', err);
+      alert('Lỗi: ' + (err.message || 'Không thể lưu dữ liệu'));
     } finally {
       setProcessingId(null);
     }
   };
 
-  const handleAcceptTask = (e: React.MouseEvent, id: string) => {
+  const handleAcceptTask = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     setProcessingId(id);
-    sheetService.updateHandover(id, { 
-      status: 'Processing',
-      startTime: new Date().toISOString()
-    }).then(() => {
+    try {
+      await supabase
+        .from('handovers')
+        .update({ 
+          status: 'Processing',
+          start_time: new Date().toISOString()
+        })
+        .eq('id', id);
       fetchData();
-    }).finally(() => {
+    } catch (err) {
+      console.error('Error accepting task:', err);
+    } finally {
       setProcessingId(null);
-    });
+    }
   };
 
   const handleCompleteTask = async (e: React.FormEvent) => {
@@ -291,15 +369,24 @@ const DailyHandover: React.FC<DailyHandoverProps> = ({ user }) => {
     if (!isReportModalOpen) return;
     setProcessingId('reporting');
     try {
-      await sheetService.updateHandover(isReportModalOpen, {
-        report: reportForm.report,
-        resultLink: reportForm.resultLink, // Lưu vào resultLink (mới)
-        status: 'Completed',
-        endTime: new Date().toISOString()
-      });
+      const { error } = await supabase
+        .from('handovers')
+        .update({
+          report: reportForm.report,
+          result_link: reportForm.resultLink,
+          status: 'Completed',
+          end_time: new Date().toISOString()
+        })
+        .eq('id', isReportModalOpen);
+        
+      if (error) throw error;
+      
       setIsReportModalOpen(null);
       setReportForm({ report: '', resultLink: '' });
       fetchData();
+    } catch (err: any) {
+      console.error('Error completing task:', err);
+      alert('Lỗi: ' + (err.message || 'Không thể cập nhật'));
     } finally {
       setProcessingId(null);
     }

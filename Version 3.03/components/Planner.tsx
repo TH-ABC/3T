@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { DailyNoteItem, PlannerColumn, User, UserNote } from '../types';
 import { sheetService } from '../services/sheetService';
+import { supabase } from '../lib/supabase';
 
 interface PlannerProps {
   user: User;
@@ -20,14 +21,8 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
   const [saving, setSaving] = useState(false);
   const [columns, setColumns] = useState<PlannerColumn[]>([]);
   const [items, setItems] = useState<DailyNoteItem[]>([]);
-  const [position, setPosition] = useState(() => {
-    const saved = localStorage.getItem('planner_position');
-    return saved ? JSON.parse(saved) : { x: 100, y: 100 };
-  });
-  const [size, setSize] = useState(() => {
-    const saved = localStorage.getItem('planner_size');
-    return saved ? JSON.parse(saved) : { width: 800, height: 500 };
-  });
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [size, setSize] = useState({ width: 1000, height: 650 });
   const [isMinimized, setIsMinimized] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   
@@ -43,16 +38,32 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const today = new Date().toISOString().split('T')[0];
-      const res = await sheetService.getUserNote(user.username, today);
-      if (res) {
-        setItems(res.items || []);
-        setColumns(res.columns || [
+      // Sử dụng múi giờ Việt Nam (GMT+7) để lấy ngày chính xác
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date());
+      const { data, error } = await supabase
+        .from('user_notes')
+        .select('*')
+        .eq('username', user.username)
+        .eq('date', today)
+        .single();
+        
+      if (error && error.code !== 'PGRST116') throw error;
+
+      if (data) {
+        setItems(data.items || []);
+        setColumns(data.columns || [
           { id: 'col-todo', title: 'To Do', order: 0 },
           { id: 'col-doing', title: 'Doing', order: 1 },
           { id: 'col-done', title: 'Done', order: 2 }
         ]);
-        // We no longer load position/size from BE as per user request
+      } else {
+        // Default columns if no data exists for today
+        setColumns([
+          { id: 'col-todo', title: 'To Do', order: 0 },
+          { id: 'col-doing', title: 'Doing', order: 1 },
+          { id: 'col-done', title: 'Done', order: 2 }
+        ]);
+        setItems([]);
       }
     } catch (error) {
       console.error('Error fetching planner data:', error);
@@ -79,15 +90,19 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
     setSaving(true);
     saveTimeoutRef.current = setTimeout(async () => {
       try {
-        const today = new Date().toISOString().split('T')[0];
-        await sheetService.saveUserNote({
-          username: user.username,
-          date: today,
-          items: updatedItems,
-          columns: updatedColumns,
-          // We no longer send position/size to BE
-          showPlanner: true
-        });
+        const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date());
+        const { error } = await supabase
+          .from('user_notes')
+          .upsert({
+            username: user.username,
+            date: today,
+            items: updatedItems,
+            columns: updatedColumns,
+            show_planner: true,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'username,date' });
+          
+        if (error) throw error;
       } catch (error) {
         console.error('Error saving planner:', error);
       } finally {
@@ -318,26 +333,19 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
             drag
             dragMomentum={false}
             dragListener={!isResizing}
-            initial={{ opacity: 0, scale: 0.9, left: position.x, top: position.y }}
+            initial={{ opacity: 0, scale: 0.9, x: '-50%', y: '-50%', left: '50%', top: '50%' }}
             animate={{ 
               opacity: 1, 
               scale: 1, 
-              left: position.x, 
-              top: position.y,
+              x: '-50%',
+              y: '-50%',
+              left: '50%', 
+              top: '50%',
               width: isMinimized ? 300 : size.width,
               height: isMinimized ? 60 : size.height
             }}
             exit={{ opacity: 0, scale: 0.9 }}
-            onDragEnd={(e, info) => {
-              const newPos = { 
-                x: position.x + info.offset.x, 
-                y: position.y + info.offset.y 
-              };
-              setPosition(newPos);
-              localStorage.setItem('planner_position', JSON.stringify(newPos));
-              // No longer saving position to BE
-            }}
-            className="fixed z-[110] bg-white rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.2)] border border-slate-200 overflow-hidden flex flex-col"
+            className="fixed z-[110] bg-white rounded-[2.5rem] shadow-[0_30px_100px_rgba(0,0,0,0.25)] border border-slate-200 overflow-hidden flex flex-col"
             style={{ touchAction: 'none' }}
           >
             {/* Header */}
