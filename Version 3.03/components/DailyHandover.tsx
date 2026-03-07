@@ -251,13 +251,27 @@ const DailyHandover: React.FC<DailyHandoverProps> = ({ user }) => {
     setNewHandover(prev => ({ ...prev, deadlineAt: `${year}-${month}-${day}T${time}` }));
   };
 
+  const formatForDateTimeLocal = (dateStr: string) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '';
+    
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
+
   const handleEditClick = (e: React.MouseEvent, item: HandoverItem) => {
     e.stopPropagation();
     setEditingId(item.id);
     setNewHandover({
       task: item.task,
       assignee: item.assignee,
-      deadlineAt: item.deadlineAt ? item.deadlineAt.replace(' ', 'T').slice(0, 16) : '',
+      deadlineAt: formatForDateTimeLocal(item.deadlineAt),
       imageLink: item.imageLink || '',
       fileLink: item.fileLink || ''
     });
@@ -305,13 +319,14 @@ const DailyHandover: React.FC<DailyHandoverProps> = ({ user }) => {
     if (!newHandover.task || !newHandover.assignee || !newHandover.deadlineAt) return;
     setProcessingId('creating');
     try {
+      const deadlineISO = new Date(newHandover.deadlineAt).toISOString();
       if (editingId) {
         const { error } = await supabase
           .from('handovers')
           .update({
             task: newHandover.task,
             assignee: newHandover.assignee,
-            deadline_at: newHandover.deadlineAt,
+            deadline_at: deadlineISO,
             image_link: newHandover.imageLink,
             file_link: newHandover.fileLink
           })
@@ -323,7 +338,7 @@ const DailyHandover: React.FC<DailyHandoverProps> = ({ user }) => {
           .insert({
             task: newHandover.task,
             assignee: newHandover.assignee,
-            deadline_at: newHandover.deadlineAt,
+            deadline_at: deadlineISO,
             image_link: newHandover.imageLink,
             file_link: newHandover.fileLink,
             date: new Date().toISOString().split('T')[0],
@@ -757,6 +772,22 @@ const DailyHandover: React.FC<DailyHandoverProps> = ({ user }) => {
                        {viewFullTask.task}
                     </p>
                  </div>
+
+                 {viewFullTask.status === 'Completed' && viewFullTask.report && (
+                   <div className="bg-emerald-50/50 p-8 rounded-[2rem] border border-emerald-100 shadow-inner">
+                      <label className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em] mb-4 block flex items-center gap-2">
+                        <CheckCircle size={14} /> Báo cáo kết quả hoàn thành
+                      </label>
+                      <p className="text-sm font-bold text-slate-700 leading-relaxed whitespace-pre-wrap italic">
+                         {viewFullTask.report}
+                      </p>
+                      {viewFullTask.endTime && (
+                        <p className="text-[9px] font-black text-emerald-600 uppercase mt-4 text-right">
+                          Hoàn thành lúc: {formatDeadline(viewFullTask.endTime)}
+                        </p>
+                      )}
+                   </div>
+                 )}
 
                  <div className="grid grid-cols-2 gap-6">
                     <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
