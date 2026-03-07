@@ -258,6 +258,11 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
   };
 
   const handleAttendance = async (type: 'in' | 'out', isOT: boolean = false) => {
+    if (!user?.username) {
+      alert("Lỗi: Không tìm thấy thông tin tài khoản (username). Vui lòng đăng xuất và đăng nhập lại.");
+      return;
+    }
+
     setIsSaving(true);
     try {
       const today = getTodayGMT7();
@@ -274,11 +279,17 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
             check_in: now,
             type: isOT ? (holidays.includes(today) ? 'Holiday' : (new Date().getDay() === 0 || new Date().getDay() === 6 ? 'Weekend' : 'Normal')) : undefined
           });
-        if (error) throw error;
+        
+        if (error) {
+          if (error.code === '23503') {
+            throw new Error(`Tài khoản "${user.username}" chưa được cấu hình đúng trong hệ thống (Lỗi ràng buộc dữ liệu). Vui lòng liên hệ Admin.`);
+          }
+          throw error;
+        }
         alert(`Bắt đầu ${isOT ? 'OT' : 'ca'} thành công!`);
       } else {
         // Find current record
-        const { data: current } = await supabase
+        const { data: current, error: findError } = await supabase
           .from(table)
           .select('*')
           .eq('username', user.username)
@@ -286,16 +297,17 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
           .is('check_out', null)
           .order('check_in', { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
           
-        if (!current) throw new Error("Không tìm thấy ca trực đang mở.");
+        if (findError) throw findError;
+        if (!current) throw new Error("Không tìm thấy ca trực đang mở để kết thúc.");
         
         const checkInTime = new Date(current.check_in);
         const checkOutTime = new Date(now);
         const diffMs = checkOutTime.getTime() - checkInTime.getTime();
         const hours = Math.round((diffMs / (1000 * 60 * 60)) * 100) / 100;
         
-        const { error } = await supabase
+        const { error: updateError } = await supabase
           .from(table)
           .update({
             check_out: now,
@@ -303,14 +315,15 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
           })
           .eq('id', current.id);
           
-        if (error) throw error;
+        if (updateError) throw updateError;
         alert(`Kết thúc ${isOT ? 'OT' : 'ca'} thành công! Tổng cộng: ${hours}h`);
       }
       
       await fetchData();
       handleSaveFullTable(false);
     } catch (e: any) { 
-      alert("Lỗi: " + (e.message || "Không thể thực hiện")); 
+      console.error("Attendance Error:", e);
+      alert("Lỗi: " + (e.message || "Không thể thực hiện thao tác này.")); 
     } finally { 
       setIsSaving(false); 
     }
