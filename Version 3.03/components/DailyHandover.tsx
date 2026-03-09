@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { sheetService } from '../services/sheetService';
 import { supabase } from '../lib/supabase';
-import { User as UserType, HandoverItem, UserNote, DailyNoteItem } from '../types';
+import { User as UserType, HandoverItem, UserNote, DailyNoteItem, PlannerColumn } from '../types';
 
 interface DailyHandoverProps {
   user: UserType;
@@ -37,6 +37,7 @@ const DailyHandover: React.FC<DailyHandoverProps> = ({ user }) => {
 
   // Note State (Todo List)
   const [noteItems, setNoteItems] = useState<DailyNoteItem[]>([]);
+  const [noteColumns, setNoteColumns] = useState<PlannerColumn[]>([]);
   const [showPlanner, setShowPlanner] = useState(true); // Trạng thái ẩn hiện Planner
   const [newNoteInput, setNewNoteInput] = useState('');
   const [savingNote, setSavingNote] = useState(false);
@@ -86,11 +87,18 @@ const DailyHandover: React.FC<DailyHandoverProps> = ({ user }) => {
         query = query.eq('assignee', user.fullName);
       }
 
-      const [handoverRes, usersRes, noteRes] = await Promise.all([
+      const todayVN = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date());
+
+      const [handoverRes, usersRes] = await Promise.all([
         query.order('created_at', { ascending: false }),
-        sheetService.getUsers(),
-        supabase.from('user_notes').select('*').eq('username', user.username).eq('date', new Date().toISOString().split('T')[0]).single()
+        sheetService.getUsers()
       ]);
+
+      // Fetch note data: try today first, then latest available
+      let noteRes = await supabase.from('user_notes').select('*').eq('username', user.username).eq('date', todayVN).maybeSingle();
+      if (!noteRes.data && !noteRes.error) {
+        noteRes = await supabase.from('user_notes').select('*').eq('username', user.username).order('date', { ascending: false }).limit(1).maybeSingle();
+      }
 
       if (handoverRes.error && handoverRes.error.code !== 'PGRST116') console.error('Error fetching handovers:', handoverRes.error);
       
@@ -116,9 +124,11 @@ const DailyHandover: React.FC<DailyHandoverProps> = ({ user }) => {
       
       if (noteRes.data) {
         setNoteItems(noteRes.data.items || []);
+        setNoteColumns(noteRes.data.columns || []);
         setShowPlanner(noteRes.data.show_planner !== undefined ? noteRes.data.show_planner : true);
       } else {
         setNoteItems([]);
+        setNoteColumns([]);
         setShowPlanner(true);
       }
     } catch (e) {
@@ -212,20 +222,27 @@ const DailyHandover: React.FC<DailyHandoverProps> = ({ user }) => {
   const autoSaveNote = async (items: DailyNoteItem[], currentShowState: boolean = showPlanner) => {
     setSavingNote(true);
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const todayVN = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date());
       const { error } = await supabase
         .from('user_notes')
         .upsert({
           username: user.username,
-          date: today,
+          date: todayVN,
           items: items,
+          columns: noteColumns,
           show_planner: currentShowState,
           updated_at: new Date().toISOString()
         }, { onConflict: 'username,date' });
       
       if (error) throw error;
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error saving note:', err);
+      if (err.message?.includes("Refresh Token Not Found") || err.message?.includes("invalid_grant")) {
+        alert("Phiên làm việc đã hết hạn. Hệ thống sẽ tự động đăng xuất để bảo mật.");
+        localStorage.removeItem('oms_user_session');
+        window.location.reload();
+        return;
+      }
     } finally {
       setSavingNote(false);
     }
