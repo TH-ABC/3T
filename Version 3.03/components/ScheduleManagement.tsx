@@ -288,12 +288,11 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
         }
         alert(`Bắt đầu ${isOT ? 'OT' : 'ca'} thành công!`);
       } else {
-        // Find current record
+        // Find current record - Remove strict date filter to allow ending shifts across day boundaries
         const { data: current, error: findError } = await supabase
           .from(table)
           .select('*')
           .eq('username', user.username)
-          .eq('date', today)
           .is('check_out', null)
           .order('check_in', { ascending: false })
           .limit(1)
@@ -323,6 +322,12 @@ const ScheduleManagement: React.FC<ScheduleManagementProps> = ({ user }) => {
       handleSaveFullTable(false);
     } catch (e: any) { 
       console.error("Attendance Error:", e);
+      if (e.message?.includes("Refresh Token Not Found") || e.message?.includes("invalid_grant")) {
+        alert("Phiên làm việc đã hết hạn. Hệ thống sẽ tự động đăng xuất để bảo mật.");
+        localStorage.removeItem('oms_user_session');
+        window.location.reload(); // Force reload to trigger App.tsx session check
+        return;
+      }
       alert("Lỗi: " + (e.message || "Không thể thực hiện thao tác này.")); 
     } finally { 
       setIsSaving(false); 
