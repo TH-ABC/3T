@@ -64,6 +64,7 @@ const DailyHandover: React.FC<DailyHandoverProps> = ({ user }) => {
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isAdmin = user.role.toLowerCase() === 'admin' || user.role.toLowerCase() === 'leader' || user.role.toLowerCase() === 'ceo';
+  const canAssign = isAdmin || user.permissions?.canAssignHandover;
 
   const fetchData = async () => {
     setLoading(true);
@@ -512,7 +513,7 @@ const DailyHandover: React.FC<DailyHandoverProps> = ({ user }) => {
               </div>
             )}
 
-            {isAdmin && (
+            {canAssign && (
               <button onClick={() => { setEditingId(null); setNewHandover({task:'', assignee:'', deadlineAt:'', imageLink:'', fileLink: ''}); setIsAddModalOpen(true); }} className="bg-indigo-600 text-white px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 active:scale-95">
                 <Plus size={16} strokeWidth={3} /> Giao việc
               </button>
@@ -633,7 +634,7 @@ const DailyHandover: React.FC<DailyHandoverProps> = ({ user }) => {
                     <div className="flex items-center justify-between">
                       <span className="text-[8px] font-bold text-slate-400 uppercase">Giao bởi: {nameOnly}</span>
                       <div className="flex gap-2">
-                        {isAdmin && (
+                        {canAssign && (
                           <button 
                             onClick={(e) => handleEditClick(e, item)} 
                             className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
@@ -641,7 +642,7 @@ const DailyHandover: React.FC<DailyHandoverProps> = ({ user }) => {
                             <Edit2 size={14}/>
                           </button>
                         )}
-                        {(isAssignee || isAdmin) && (
+                        {(isAssignee || canAssign) && (
                           <>
                             {item.status === 'Pending' && (
                               <button 
@@ -854,7 +855,7 @@ const DailyHandover: React.FC<DailyHandoverProps> = ({ user }) => {
               </div>
 
               <div className="mt-8 pt-6 border-t border-slate-100 flex gap-4">
-                 {isAdmin && (
+                 {canAssign && (
                    <button 
                      onClick={(e) => { setViewFullTask(null); setConfirmDeleteId(viewFullTask.id); }}
                      className="px-6 py-4 bg-rose-50 text-rose-600 rounded-2xl font-black text-[11px] uppercase tracking-widest hover:bg-rose-600 hover:text-white transition-all active:scale-95"
