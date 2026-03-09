@@ -22,7 +22,14 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
   const [columns, setColumns] = useState<PlannerColumn[]>([]);
   const [items, setItems] = useState<DailyNoteItem[]>([]);
   const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [size, setSize] = useState({ width: 1000, height: 650 });
+  const [size, setSize] = useState(() => {
+    try {
+      const saved = localStorage.getItem('planner_size');
+      return saved ? JSON.parse(saved) : { width: 1000, height: 650 };
+    } catch {
+      return { width: 1000, height: 650 };
+    }
+  });
   const [isMinimized, setIsMinimized] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   
@@ -40,14 +47,30 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
     try {
       // Sử dụng múi giờ Việt Nam (GMT+7) để lấy ngày chính xác
       const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date());
-      const { data, error } = await supabase
+      
+      // Thử lấy dữ liệu ngày hôm nay trước
+      let { data, error } = await supabase
         .from('user_notes')
         .select('*')
         .eq('username', user.username)
         .eq('date', today)
-        .single();
+        .maybeSingle();
         
-      if (error && error.code !== 'PGRST116') throw error;
+      if (error) throw error;
+
+      // Nếu không có dữ liệu hôm nay, lấy dữ liệu gần nhất của các ngày trước
+      if (!data) {
+        const { data: latestData, error: latestError } = await supabase
+          .from('user_notes')
+          .select('*')
+          .eq('username', user.username)
+          .order('date', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        if (latestError) throw latestError;
+        data = latestData;
+      }
 
       if (data) {
         setItems(data.items || []);
@@ -57,7 +80,7 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
           { id: 'col-done', title: 'Done', order: 2 }
         ]);
       } else {
-        // Default columns if no data exists for today
+        // Default columns if no data exists at all
         setColumns([
           { id: 'col-todo', title: 'To Do', order: 0 },
           { id: 'col-doing', title: 'Doing', order: 1 },
@@ -103,8 +126,14 @@ export const Planner: React.FC<PlannerProps> = ({ user }) => {
           }, { onConflict: 'username,date' });
           
         if (error) throw error;
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error saving planner:', error);
+        if (error.message?.includes("Refresh Token Not Found") || error.message?.includes("invalid_grant")) {
+          alert("Phiên làm việc đã hết hạn. Hệ thống sẽ tự động đăng xuất để bảo mật.");
+          localStorage.removeItem('oms_user_session');
+          window.location.reload();
+          return;
+        }
       } finally {
         setSaving(false);
       }
