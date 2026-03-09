@@ -354,6 +354,12 @@ const DailyHandover: React.FC<DailyHandoverProps> = ({ user }) => {
       fetchData();
     } catch (err: any) {
       console.error('Error saving handover:', err);
+      if (err.message?.includes("Refresh Token Not Found") || err.message?.includes("invalid_grant")) {
+        alert("Phiên làm việc đã hết hạn. Hệ thống sẽ tự động đăng xuất để bảo mật.");
+        localStorage.removeItem('oms_user_session');
+        window.location.reload();
+        return;
+      }
       alert('Lỗi: ' + (err.message || 'Không thể lưu dữ liệu'));
     } finally {
       setProcessingId(null);
@@ -372,8 +378,14 @@ const DailyHandover: React.FC<DailyHandoverProps> = ({ user }) => {
         })
         .eq('id', id);
       fetchData();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error accepting task:', err);
+      if (err.message?.includes("Refresh Token Not Found") || err.message?.includes("invalid_grant")) {
+        alert("Phiên làm việc đã hết hạn. Hệ thống sẽ tự động đăng xuất để bảo mật.");
+        localStorage.removeItem('oms_user_session');
+        window.location.reload();
+        return;
+      }
     } finally {
       setProcessingId(null);
     }
@@ -401,6 +413,12 @@ const DailyHandover: React.FC<DailyHandoverProps> = ({ user }) => {
       fetchData();
     } catch (err: any) {
       console.error('Error completing task:', err);
+      if (err.message?.includes("Refresh Token Not Found") || err.message?.includes("invalid_grant")) {
+        alert("Phiên làm việc đã hết hạn. Hệ thống sẽ tự động đăng xuất để bảo mật.");
+        localStorage.removeItem('oms_user_session');
+        window.location.reload();
+        return;
+      }
       alert('Lỗi: ' + (err.message || 'Không thể cập nhật'));
     } finally {
       setProcessingId(null);
