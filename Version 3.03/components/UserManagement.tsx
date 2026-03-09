@@ -37,7 +37,8 @@ const UserManagement: React.FC = () => {
       finance: 'none',
       system: 'none',
       canEditDesignerOnlineNote: false,
-      canEditDesignerOnlineUrls: false
+      canEditDesignerOnlineUrls: false,
+      canAssignHandover: false
   };
 
   const [formData, setFormData] = useState({
@@ -190,6 +191,7 @@ const UserManagement: React.FC = () => {
           system: user.permissions?.system || 'none',
           canEditDesignerOnlineNote: user.permissions?.canEditDesignerOnlineNote || false,
           canEditDesignerOnlineUrls: user.permissions?.canEditDesignerOnlineUrls || false,
+          canAssignHandover: user.permissions?.canAssignHandover || false,
           allowedDesignerOnlineChecks: user.permissions?.allowedDesignerOnlineChecks || '',
       });
       setIsPermModalOpen(true);
@@ -555,6 +557,19 @@ const UserManagement: React.FC = () => {
                                     onChange={() => setEditPerms({...editPerms, canEditDesignerOnlineUrls: !editPerms.canEditDesignerOnlineUrls})} 
                                 />
                                 <span className="text-sm font-black text-gray-800 uppercase tracking-widest">Nhập URL Artwork/Mockup</span>
+                            </label>
+
+                            <label className="flex items-center gap-4 cursor-pointer group">
+                                <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${editPerms.canAssignHandover ? 'bg-rose-600 border-rose-600 text-white shadow-lg' : 'bg-white border-gray-300'}`}>
+                                    {editPerms.canAssignHandover && <Check size={14} strokeWidth={4} />}
+                                </div>
+                                <input 
+                                    type="checkbox" 
+                                    className="hidden" 
+                                    checked={editPerms.canAssignHandover} 
+                                    onChange={() => setEditPerms({...editPerms, canAssignHandover: !editPerms.canAssignHandover})} 
+                                />
+                                <span className="text-sm font-black text-gray-800 uppercase tracking-widest">Quyền Giao Việc (Daily Handover)</span>
                             </label>
                         </div>
                       </div>
