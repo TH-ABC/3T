@@ -165,6 +165,7 @@ export interface UserPermissions {
   system?: ViewScope;         
   canEditDesignerOnlineNote?: boolean;
   canEditDesignerOnlineUrls?: boolean;
+  canAssignHandover?: boolean;
   allowedDesignerOnlineChecks?: string; // Comma separated list of allowed options
 }
 
