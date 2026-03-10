@@ -36,6 +36,9 @@ const UserManagement: React.FC = () => {
       customers: 'none',
       finance: 'none',
       system: 'none',
+      handover: 'none',
+      attendance: 'none',
+      news: 'none',
       canEditDesignerOnlineNote: false,
       canEditDesignerOnlineUrls: false,
       canAssignHandover: false
@@ -202,6 +205,8 @@ const UserManagement: React.FC = () => {
           customers: user.permissions?.customers || 'none',
           finance: user.permissions?.finance || 'none',
           system: user.permissions?.system || 'none',
+          attendance: user.permissions?.attendance || 'none',
+          news: user.permissions?.news || 'none',
           canEditDesignerOnlineNote: user.permissions?.canEditDesignerOnlineNote || false,
           canEditDesignerOnlineUrls: user.permissions?.canEditDesignerOnlineUrls || false,
           canAssignHandover: user.permissions?.canAssignHandover || false,
@@ -281,6 +286,9 @@ const UserManagement: React.FC = () => {
       { key: 'designer', label: 'Designer' },
       { key: 'macrame', label: 'Nghiệp vụ Macrame' },
       { key: 'customers', label: 'Khách Hàng' },
+      { key: 'handover', label: 'Daily Handover' },
+      { key: 'attendance', label: 'Điểm danh ca trực' },
+      { key: 'news', label: 'Bản Tin Nội Bộ' },
       { key: 'system', label: 'Hệ Thống' }
   ];
 

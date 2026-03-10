@@ -164,6 +164,8 @@ export interface UserPermissions {
   finance?: FinanceScope;        
   macrame?: ViewScope;
   system?: ViewScope;         
+  attendance?: ViewScope;
+  news?: ViewScope;
   canEditDesignerOnlineNote?: boolean;
   canEditDesignerOnlineUrls?: boolean;
   canAssignHandover?: boolean;

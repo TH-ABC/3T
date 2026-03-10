@@ -347,18 +347,21 @@ function App() {
   const handleProcessStart = () => setPendingUpdates(prev => prev + 1);
   const handleProcessEnd = () => setPendingUpdates(prev => Math.max(0, prev - 1));
 
-  const canAccess = (module: keyof UserPermissions | 'users' | 'home' | 'schedule' | 'handover' | 'macrame') => {
+  const canAccess = (module: keyof UserPermissions | 'users' | 'home' | 'schedule' | 'handover' | 'macrame' | 'news') => {
       if (module === 'home') return true;
-      if (module === 'schedule') return true;
       if (user.role === 'admin') return true;
       if (module === 'users') return false; 
+      
       const perm = user.permissions?.[module as keyof UserPermissions];
       if (perm) return perm !== 'none';
+
       const role = (user.role || '').toLowerCase();
       if (module === 'dashboard') return true;
       if (module === 'orders') return !role.includes('designer');
       if (module === 'macrame') return !role.includes('designer');
       if (module === 'handover') return true; 
+      if (module === 'attendance' || module === 'schedule') return true;
+      if (module === 'news') return true;
       if (module === 'designer') return role.includes('designer') || role === 'leader';
       if (module === 'designerOnline') return role === 'designer online' || role === 'leader';
       if (module === 'customers') return true;
@@ -379,8 +382,10 @@ function App() {
         if (!canAccess('orders')) return <div className="p-6">Không có quyền truy cập.</div>;
         return <OrderList user={user} onProcessStart={handleProcessStart} onProcessEnd={handleProcessEnd} />;
       case 'handover':
+        if (!canAccess('handover')) return <div className="p-6">Không có quyền truy cập.</div>;
         return <DailyHandover user={user} />;
       case 'macrame':
+        if (!canAccess('macrame')) return <div className="p-6">Không có quyền truy cập.</div>;
         return <MacrameManagement user={user} />;
       case 'designer_online':
         if (!canAccess('designerOnline')) return <div className="p-6">Không có quyền truy cập.</div>;
@@ -395,6 +400,7 @@ function App() {
         if (!canAccess('finance')) return <div className="p-6">Không có quyền truy cập.</div>;
         return <FinanceDataReport />;
       case 'schedule':
+        if (!canAccess('attendance')) return <div className="p-6">Không có quyền truy cập.</div>;
         return <ScheduleManagement user={user} />;
       case 'users':
         return user.role === 'admin' ? <UserManagement /> : <div className="p-6">Không có quyền truy cập.</div>;

@@ -394,10 +394,26 @@ const Home: React.FC<HomeProps> = ({ user, onTabChange }) => {
   };
 
   const isAdminSession = user.role.toLowerCase() === 'admin';
+  const canViewNews = isAdminSession || (user.permissions?.news !== 'none');
+
   const getIsAdminByName = (name: string) => {
     const foundUser = systemUsers.find(u => u.fullName === name || u.username === name);
     return foundUser?.role.toLowerCase() === 'admin' || name.toLowerCase().includes('admin');
   };
+
+  if (!canViewNews) {
+    return (
+      <div className="h-screen w-full bg-[#f8fafc] flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-20 h-20 bg-slate-100 rounded-3xl flex items-center justify-center text-slate-400 mb-6">
+          <Lock size={40} />
+        </div>
+        <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight mb-2">Truy cập bị hạn chế</h2>
+        <p className="text-sm font-bold text-slate-500 max-w-md leading-relaxed">
+          Bạn không có quyền xem Bản Tin Nội Bộ. Vui lòng liên hệ Quản trị viên để được cấp quyền truy cập.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen w-full bg-[#f8fafc] flex flex-col overflow-hidden font-sans selection:bg-indigo-100">

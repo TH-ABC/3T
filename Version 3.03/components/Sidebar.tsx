@@ -87,7 +87,6 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const hasAccess = (module: string): boolean => {
       if (user.role === 'admin') return true;
-      if (module === 'home') return true;
       const perms = user.permissions;
       if (!perms) return true;
       const p = perms[module as keyof UserPermissions];
@@ -118,7 +117,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     {
       title: 'HỆ THỐNG',
       items: [
-        { id: 'schedule', label: 'Điểm danh ca trực', icon: <CalendarDays size={20} />, visible: true },
+        { id: 'schedule', label: 'Điểm danh ca trực', icon: <CalendarDays size={20} />, visible: hasAccess('attendance') },
         { id: 'users', label: 'Nhân Sự', icon: <UserCheck size={20} />, visible: user.role === 'admin' },
         { id: 'settings', label: 'Cấu hình', icon: <Settings size={20} />, visible: user.role === 'admin' },
       ]
@@ -281,13 +280,15 @@ const Sidebar: React.FC<SidebarProps> = ({
 
         <div className="flex-1 overflow-y-auto py-4 custom-scrollbar">
           <div className="px-3 mb-6">
-            <button
-              onClick={() => setCurrentTab('home')}
-              className={`w-full flex items-center py-3 rounded-xl transition-all font-bold ${currentTab === 'home' ? 'bg-orange-600 text-white shadow-lg' : 'text-gray-400 hover:bg-slate-800 hover:text-white'} ${isDesktopCollapsed ? 'justify-center' : 'px-4'}`}
-            >
-              <Home size={22} className={isDesktopCollapsed ? '' : 'mr-3'} />
-              {!isDesktopCollapsed && <span className="uppercase tracking-widest text-sm">Trang chủ</span>}
-            </button>
+            {hasAccess('news') && (
+              <button
+                onClick={() => setCurrentTab('home')}
+                className={`w-full flex items-center py-3 rounded-xl transition-all font-bold ${currentTab === 'home' ? 'bg-orange-600 text-white shadow-lg' : 'text-gray-400 hover:bg-slate-800 hover:text-white'} ${isDesktopCollapsed ? 'justify-center' : 'px-4'}`}
+              >
+                <Home size={22} className={isDesktopCollapsed ? '' : 'mr-3'} />
+                {!isDesktopCollapsed && <span className="uppercase tracking-widest text-sm">Trang chủ</span>}
+              </button>
+            )}
           </div>
 
           {menuGroups.map((group, idx) => (
