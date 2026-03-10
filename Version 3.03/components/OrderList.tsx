@@ -171,20 +171,54 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
     setCurrentFileId(null); 
     setSelectedOrderIds(new Set());
     try {
-      const orderResult = await sheetService.getOrders(monthToFetch);
+      const orderResultRaw = await sheetService.getOrders(monthToFetch);
       if (selectedMonthRef.current !== monthToFetch) return;
+      
+      // Handle API Error
+      if (orderResultRaw && (orderResultRaw as any).success === false) {
+          console.error('API Error fetching orders:', (orderResultRaw as any).error);
+          setOrders([]);
+          setLoading(false);
+          return;
+      }
+
+      const orderResult = orderResultRaw as { orders: Order[], fileId: string };
       const rawOrders = orderResult.orders || [];
-      let filteredByPerm = rawOrders;
+      
+      // Robust date filtering logic
+      const [targetY, targetM] = monthToFetch.split('-').map(Number);
+      const validOrders = rawOrders.filter(o => {
+          if (!o.id || String(o.id).trim() === '' || !o.date) return false;
+          
+          const dateStr = String(o.date).trim();
+          if (!dateStr) return false;
+
+          // Try ISO format (YYYY-MM-DD)
+          const isoMatch = dateStr.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+          if (isoMatch) {
+              return parseInt(isoMatch[1]) === targetY && parseInt(isoMatch[2]) === targetM;
+          }
+          
+          // Try VN format (DD/MM/YYYY)
+          const vnMatch = dateStr.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+          if (vnMatch) {
+              return parseInt(vnMatch[3]) === targetY && parseInt(vnMatch[2]) === targetM;
+          }
+
+          // Fallback to simple startsWith if format is weird but starts with YYYY-MM
+          return dateStr.startsWith(monthToFetch);
+      });
+
+      let filteredByPerm = validOrders;
       if (user && user.role !== 'admin') {
           const scope = user.permissions?.orders;
           if (scope === 'none') filteredByPerm = [];
           else if (scope === 'own') {
               const username = (user.username || '').toLowerCase().trim();
-              filteredByPerm = rawOrders.filter(o => (o.handler || '').toLowerCase().trim() === username || (o.actionRole || '').toLowerCase().trim() === username);
+              filteredByPerm = validOrders.filter(o => (o.handler || '').toLowerCase().trim() === username || (o.actionRole || '').toLowerCase().trim() === username);
           }
       }
-      const validOrders = filteredByPerm.filter(o => o.id && String(o.id).trim() !== '' && o.date && String(o.date).trim().startsWith(monthToFetch));
-      setOrders(validOrders.length === 0 && filteredByPerm.length > 0 ? filteredByPerm.filter(o => o.id && String(o.id).trim() !== '') : validOrders);
+      setOrders(filteredByPerm);
       setCurrentFileId(orderResult.fileId); 
     } catch (e) { console.error(e); } 
     finally { if (selectedMonthRef.current === monthToFetch) setLoading(false); }
@@ -464,6 +498,34 @@ export const OrderList: React.FC<OrderListProps> = ({ user, onProcessStart, onPr
                 </div>
             </div>
         </div>
+
+        {showColumnSelector && (
+            <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+                <div className="absolute inset-0 bg-black/40" onClick={() => setShowColumnSelector(false)}></div>
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden relative animate-slide-in">
+                    <div className="px-4 py-3 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                        <h3 className="font-black text-slate-800 text-xs uppercase tracking-widest">Hiển thị cột</h3>
+                        <button onClick={() => setShowColumnSelector(false)} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+                    </div>
+                    <div className="p-4 grid grid-cols-1 gap-2">
+                        {Object.keys(visibleColumns).map(col => (
+                            <label key={col} className="flex items-center gap-3 px-2 py-1.5 hover:bg-gray-50 rounded-lg cursor-pointer transition-colors">
+                                <input 
+                                    type="checkbox" 
+                                    checked={visibleColumns[col]} 
+                                    onChange={() => setVisibleColumns(prev => ({ ...prev, [col]: !prev[col] }))}
+                                    className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                                />
+                                <span className="text-xs font-bold text-gray-700 capitalize">{col.replace(/([A-Z])/g, ' $1').trim()}</span>
+                            </label>
+                        ))}
+                    </div>
+                    <div className="p-3 bg-gray-50 border-t border-gray-100">
+                        <button onClick={() => setShowColumnSelector(false)} className="w-full py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest">Xong</button>
+                    </div>
+                </div>
+            </div>
+        )}
 
         {/* --- QUICK STATS BAR --- */}
         <div className="px-3 sm:px-4 py-2 bg-white border-b border-gray-200 flex flex-wrap items-center justify-between gap-3 overflow-x-auto no-scrollbar shadow-sm">

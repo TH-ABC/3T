@@ -162,6 +162,7 @@ export interface UserPermissions {
   handover?: ViewScope;
   customers?: ViewScope;      
   finance?: FinanceScope;        
+  macrame?: ViewScope;
   system?: ViewScope;         
   canEditDesignerOnlineNote?: boolean;
   canEditDesignerOnlineUrls?: boolean;
@@ -276,4 +277,34 @@ export interface Role {
 export interface SkuMapping {
   sku: string;
   category: string;
+}
+
+export interface MacrameProduct {
+  id: string;
+  order_id: string;
+  sku: string;
+  quantity: number;
+  product_name: string;
+  etsy_link: string;
+  size: string;
+  color: string;
+  unit_price: number;
+  total_amount: number;
+  order_date: string;
+  packaging_size: string;
+  note: string;
+  label_link: string;
+  shipping_cost?: number;
+  created_at?: string;
+  created_by?: string;
+}
+
+export interface MacramePayment {
+  id: string;
+  amount: number;
+  payment_date: string;
+  image_url?: string;
+  image_link?: string;
+  created_at?: string;
+  created_by?: string;
 }

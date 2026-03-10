@@ -103,6 +103,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { id: 'dashboard', label: 'Quản Lý', icon: <LayoutDashboard size={20} />, visible: hasAccess('dashboard') },
         { id: 'orders', label: 'Quản lý Đơn hàng', icon: <ShoppingCart size={20} />, visible: hasAccess('orders') },
         { id: 'handover', label: 'Daily Handover', icon: <ClipboardList size={20} />, visible: hasAccess('handover') },
+        { id: 'macrame', label: 'Macrame', icon: <Zap size={20} />, visible: hasAccess('macrame') },
         { id: 'designer_online', label: 'Designer Online', icon: <Palette size={20} />, visible: hasAccess('designerOnline') },
         { id: 'designer', label: 'Designer', icon: <PenTool size={20} />, visible: hasAccess('designer') },
       ]

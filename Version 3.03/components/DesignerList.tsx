@@ -1,37 +1,59 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Search, RefreshCw, Copy, ArrowUp, ArrowDown, Calendar, UserCircle, ChevronLeft, ChevronRight, Settings, Save, Loader2, CheckCircle, AlertCircle, AlertTriangle, Info, FileSpreadsheet, PenTool, CheckSquare, Square, Users, Layers, Filter, ArrowDownAZ, ArrowUpAZ, X } from 'lucide-react';
-import { sheetService } from '../services/sheetService';
+import { Search, RefreshCw, Copy, ArrowUp, ArrowDown, Calendar, UserCircle, ChevronLeft, ChevronRight, Settings, Save, X, Loader2, CheckCircle, AlertCircle, Filter, ArrowDownAZ, ArrowUpAZ, AlertTriangle, Info, FileSpreadsheet, DollarSign, CheckSquare, Square, Users, Layers, Code, PenTool, Edit, Shield } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 import { Order, Store, User } from '../types';
 
-const getCurrentLocalMonth = () => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    return `${year}-${month}`;
+const getCurrentLocalMonth = () => { 
+  const now = new Date(); 
+  const year = now.getFullYear(); 
+  const month = String(now.getMonth() + 1).padStart(2, '0'); 
+  return `${year}-${month}`; 
 };
 
-interface DesignerListProps { user: User; onProcessStart?: () => void; onProcessEnd?: () => void; }
+interface DesignerListProps { 
+  user: User; 
+  onProcessStart?: () => void; 
+  onProcessEnd?: () => void; 
+}
 
 export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart, onProcessEnd }) => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [skuMap, setSkuMap] = useState<Record<string, string>>({}); 
+  const [priceMap, setPriceMap] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
-  const [dataError, setDataError] = useState<{ message: string, detail?: string, fileId?: string } | null>(null);
+  const [dataError, setDataError] = useState<{ message: string, detail?: string } | null>(null);
+  const [tableExists, setTableExists] = useState<boolean>(true);
+  const [isCreatingTable, setIsCreatingTable] = useState(false);
   
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortConfig, setSortConfig] = useState<{ key: keyof Order; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
+  const [sortConfig, setSortConfig] = useState<{ key: keyof Order; direction: 'asc' | 'desc' }>({ key: 'id', direction: 'desc' });
   const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>({});
   const [activeFilterColumn, setActiveFilterColumn] = useState<string | null>(null);
   const [filterSearchTerm, setFilterSearchTerm] = useState(''); 
-  const [filterPopupPos, setFilterPopupPos] = useState<{ top: number, left: number, alignRight: boolean } | null>(null);
+  const [filterPopupPos, setFilterPopupPos] = useState<{ top: number, left: number } | null>(null);
   const filterPopupRef = useRef<HTMLDivElement>(null);
 
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentLocalMonth());
   const selectedMonthRef = useRef<string>(selectedMonth);
-  const [currentFileId, setCurrentFileId] = useState<string | null>(null);
+  
   const [updatingIds, setUpdatingIds] = useState<Set<string>>(new Set());
+  const [updatingLinkDsIds, setUpdatingLinkDsIds] = useState<Set<string>>(new Set());
+  const [updatingCheckIds, setUpdatingCheckIds] = useState<Set<string>>(new Set());
+  const [updatingUrlArtworkFrontIds, setUpdatingUrlArtworkFrontIds] = useState<Set<string>>(new Set());
+  const [updatingUrlMockupIds, setUpdatingUrlMockupIds] = useState<Set<string>>(new Set());
+  
+  const [editingLinkDs, setEditingLinkDs] = useState<Record<string, string>>({});
+  const [editingUrlArtworkFront, setEditingUrlArtworkFront] = useState<Record<string, string>>({});
+  const [editingUrlMockup, setEditingUrlMockup] = useState<Record<string, string>>({});
+  const [editingDesignerNote, setEditingDesignerNote] = useState<Record<string, string>>({});
+  const [updatingDesignerNoteIds, setUpdatingDesignerNoteIds] = useState<Set<string>>(new Set());
+  
+  const [activeCheckDropdown, setActiveCheckDropdown] = useState<string | null>(null);
+  const [tempCheckSelections, setTempCheckSelections] = useState<Record<string, string>>({});
+  const [editingNoteIds, setEditingNoteIds] = useState<Set<string>>(new Set());
+  const checkDropdownRef = useRef<HTMLDivElement>(null);
 
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
@@ -41,353 +63,684 @@ export const DesignerList: React.FC<DesignerListProps> = ({ user, onProcessStart
   const [isSubmittingSku, setIsSubmittingSku] = useState(false);
   const [skuMessage, setSkuMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   
-  const currentYear = new Date().getFullYear();
-  const monthsList = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
-  const yearsList = Array.from({ length: 5 }, (_, i) => String(currentYear - 2 + i));
-  const PRICE_CATEGORIES = ['Loại 1', 'Loại 2', 'Loại 3', 'Loại 4'];
+  const [isPriceModalOpen, setIsPriceModalOpen] = useState(false);
+  const [tempPriceMap, setTempPriceMap] = useState<Record<string, number>>({});
+  const [isSavingPrices, setIsSavingPrices] = useState(false);
 
-  const getStoreName = (id: string) => { const store = stores.find(s => String(s.id) === String(id) || s.name === id); return store ? store.name : id; };
+  const PRICE_CATEGORIES = ['Loại 1', 'Loại 2', 'Loại 3', 'Loại 4'];
+  const allowedDesignerOnlineChecks = ['Done Oder', 'Done Mockup', 'Done Artwork', 'Done All'];
+
+  const getStoreName = (id: string) => { 
+    const store = stores.find(s => String(s.id) === String(id) || s.name === id); 
+    return store ? store.name : id; 
+  };
   
-  // FIX: Đảm bảo key luôn là string trước khi toLowerCase
   const normalizeKey = (key: any) => key !== undefined && key !== null ? String(key).toLowerCase().trim() : '';
+  const getTableName = (month: string) => `designer_orders_${month.replace('-', '_')}`;
 
   const loadData = async (monthToFetch: string) => {
-    setLoading(true); setOrders([]); setDataError(null); setCurrentFileId(null); setSelectedOrderIds(new Set());
+    setLoading(true); 
+    setOrders([]); 
+    setDataError(null); 
+    setSelectedOrderIds(new Set());
+    const tableName = getTableName(monthToFetch);
+    
     try {
-      const results = await Promise.allSettled([sheetService.getOrders(monthToFetch), sheetService.getStores(), sheetService.getUsers(), sheetService.getSkuMappings()]);
-      if (selectedMonthRef.current !== monthToFetch) return;
-      const orderResult = results[0].status === 'fulfilled' ? results[0].value : { orders: [], fileId: null };
-      const storeData = results[1].status === 'fulfilled' ? results[1].value : [];
-      const usersData = results[2].status === 'fulfilled' ? results[2].value : [];
-      const skuMappings = results[3].status === 'fulfilled' ? results[3].value : [];
-      setStores(Array.isArray(storeData) ? storeData : []); setUsers(Array.isArray(usersData) ? usersData : []); setCurrentFileId(orderResult.fileId);
-      const safeSkuMappings = Array.isArray(skuMappings) ? skuMappings : [];
-      const mappingObj: Record<string, string> = {};
-      safeSkuMappings.forEach(m => { if (m && m.sku) mappingObj[normalizeKey(m.sku)] = String(m.category); });
-      setSkuMap(mappingObj);
-      const rawOrders = orderResult.orders || [];
+      // 1. Kiểm tra bảng tồn tại
+      const { data: exists, error: checkError } = await supabase.rpc('check_table_exists', { target_table_name: tableName });
       
-      const ordersInMonth = rawOrders.filter(o => { 
-        if (!o.date) return false; 
-        const dateStr = String(o.date).trim();
-        const [targetY, targetM] = monthToFetch.split('-');
-        const isIsoMatch = dateStr.includes(`${targetY}-${targetM}`);
-        const isVnMatch = dateStr.includes(`/${targetM}/${targetY}`);
-        return isIsoMatch || isVnMatch || dateStr.startsWith(monthToFetch);
-      });
+      if (checkError) throw checkError;
+      setTableExists(!!exists);
 
-      if (rawOrders.length > 0 && ordersInMonth.length === 0) {
-          const sampleDate = rawOrders[0].date;
-          setDataError({ 
-            message: `Dữ liệu tháng ${monthToFetch} bị lệch.`, 
-            detail: `Đã tìm thấy file nhưng ngày tháng đơn hàng (${sampleDate}) không khớp bộ lọc.`, 
-            fileId: orderResult.fileId 
-          });
-          setCurrentFileId(orderResult.fileId);
+      if (!exists) {
+        setLoading(false);
+        return;
       }
+
+      // 2. Tải dữ liệu từ bảng động
+      const [ordersRes, storesRes, profilesRes, skuRes, priceRes] = await Promise.all([
+        supabase.from(tableName).select('*').ilike('date', `%${monthToFetch}%`),
+        supabase.from('stores').select('*'),
+        supabase.from('profiles').select('*'),
+        supabase.from('sku_mappings').select('*'),
+        supabase.from('price_mappings').select('*')
+      ]);
+
+      if (selectedMonthRef.current !== monthToFetch) return;
+
+      if (ordersRes.error) throw ordersRes.error;
       
+      setStores(storesRes.data || []);
+      setUsers(profilesRes.data || []);
+      
+      const mappingObj: Record<string, string> = {};
+      (skuRes.data || []).forEach(m => { mappingObj[normalizeKey(m.sku)] = String(m.category).trim(); });
+      setSkuMap(mappingObj);
+
+      const priceObj: Record<string, number> = {};
+      (priceRes.data || []).forEach(p => { priceObj[normalizeKey(p.category)] = Number(p.price) || 0; });
+      setPriceMap(priceObj);
+
+      const rawOrders: Order[] = (ordersRes.data || []).map(o => ({
+        id: o.id,
+        date: o.date,
+        storeId: o.store_id,
+        sku: o.sku,
+        linkDs: o.link_ds,
+        check: o.check,
+        designerNote: o.designer_note,
+        productUrl: o.product_url,
+        optionsText: o.options_text,
+        urlArtworkFront: o.url_artwork_front,
+        urlMockup: o.url_mockup,
+        handler: o.handler,
+        actionRole: o.action_role,
+        isDesignDone: o.is_design_done,
+        tracking: '',
+        status: 'Active'
+      }));
+
       const currentUsername = (user.username || '').toLowerCase().trim();
       const userRole = (user.role || '').toLowerCase().trim();
       
-      let filteredOrdersList = ordersInMonth;
+      let filtered = rawOrders;
       if (userRole !== 'admin') {
           const scope = user.permissions?.designer;
-          if (!scope) {
-              filteredOrdersList = ordersInMonth.filter(o => {
-                  const actionRoleRaw = (o.actionRole || '').toLowerCase().trim();
-                  if (actionRoleRaw === 'designer') return true;
-                  const assignedUser = (usersData as any).find((u: User) => u.username.toLowerCase() === actionRoleRaw);
-                  if (assignedUser && (assignedUser.role || '').toLowerCase() === 'designer') return true;
-                  if (userRole === 'designer' && actionRoleRaw === currentUsername) return true;
-                  if (userRole.includes('leader')) return true;
-                  return false;
-              });
-          } else if (scope === 'none') {
-              filteredOrdersList = [];
+          if (scope === 'none') {
+              filtered = [];
           } else if (scope === 'own') {
-              filteredOrdersList = ordersInMonth.filter(o => (o.actionRole || '').toLowerCase().trim() === currentUsername);
-          } else {
-              filteredOrdersList = ordersInMonth.filter(o => {
-                  const actionRoleRaw = (o.actionRole || '').toLowerCase().trim();
-                  if (actionRoleRaw === 'designer') return true;
-                  const assignedUser = (usersData as any).find((u: User) => u.username.toLowerCase() === actionRoleRaw);
-                  if (assignedUser && (assignedUser.role || '').toLowerCase() === 'designer') return true;
-                  return false;
-              });
+              filtered = rawOrders.filter(o => (o.actionRole || '').toLowerCase().trim() === currentUsername);
           }
-      } else {
-           filteredOrdersList = ordersInMonth.filter(o => {
-              const actionRoleRaw = (o.actionRole || '').toLowerCase().trim();
-              if (actionRoleRaw === 'designer') return true;
-              const assignedUser = (usersData as any).find((u: User) => u.username.toLowerCase() === actionRoleRaw);
-              if (assignedUser && (assignedUser.role || '').toLowerCase() === 'designer') return true;
-              return false;
-          });
       }
-
-      setOrders(filteredOrdersList);
-    } catch (e) { console.error(e); } finally { if (selectedMonthRef.current === monthToFetch) setLoading(false); }
+      
+      setOrders(filtered);
+    } catch (e: any) { 
+      console.error("Load Data Error:", e);
+      setDataError({ message: "Lỗi tải dữ liệu từ Supabase", detail: e.message });
+    } finally { 
+      if (selectedMonthRef.current === monthToFetch) setLoading(false); 
+    }
   };
 
-  useEffect(() => { selectedMonthRef.current = selectedMonth; loadData(selectedMonth); }, [selectedMonth, user.username]);
+  const handleCreateTable = async () => {
+    const tableName = getTableName(selectedMonth);
+    setIsCreatingTable(true);
+    try {
+      const { error } = await supabase.rpc('create_monthly_designer_table', { target_table_name: tableName });
+      if (error) throw error;
+      alert(`Đã tạo bảng ${tableName} thành công!`);
+      loadData(selectedMonth);
+    } catch (e: any) {
+      alert("Lỗi tạo bảng: " + e.message);
+    } finally {
+      setIsCreatingTable(false);
+    }
+  };
 
-  useEffect(() => { const handleClickOutside = (event: MouseEvent) => { if (filterPopupRef.current && !filterPopupRef.current.contains(event.target as Node)) { setActiveFilterColumn(null); setFilterSearchTerm(''); setFilterPopupPos(null); } }; document.addEventListener('mousedown', handleClickOutside); window.addEventListener('scroll', () => { if (activeFilterColumn) setActiveFilterColumn(null); }, true); return () => { document.removeEventListener('mousedown', handleClickOutside); window.removeEventListener('scroll', () => {}, true); }; }, [activeFilterColumn]);
+  useEffect(() => { 
+    selectedMonthRef.current = selectedMonth; 
+    loadData(selectedMonth); 
+  }, [selectedMonth, user.username]);
 
-  const getUniqueValues = (key: string): string[] => { 
-    const values = new Set<string>(); 
-    orders.forEach(order => { 
-      let val = ''; 
-      if (key === 'storeName') val = getStoreName(order.storeId); 
-      else if (key === 'category') val = skuMap[normalizeKey(order.sku)] || '(Chưa phân loại)'; 
-      else if (key === 'isDesignDone') val = order.isDesignDone ? "Đã xong" : "Chưa xong"; 
-      else {
-        const v = order[key as keyof Order];
-        val = v !== undefined && v !== null ? String(v) : '';
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (filterPopupRef.current && !filterPopupRef.current.contains(event.target as Node)) {
+        setActiveFilterColumn(null);
+        setFilterPopupPos(null);
       }
-      if (val) values.add(val); 
-    }); 
-    return Array.from(values).sort(); 
+      if (checkDropdownRef.current && !checkDropdownRef.current.contains(event.target as Node)) {
+        if (activeCheckDropdown) {
+          const order = orders.find(o => o.id === activeCheckDropdown);
+          if (order) {
+            const finalValue = tempCheckSelections[order.id] ?? order.check ?? '';
+            if (finalValue !== (order.check || '')) {
+              handleUpdateCheck(order, finalValue);
+            }
+          }
+          setActiveCheckDropdown(null);
+        }
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [activeCheckDropdown, tempCheckSelections, orders]);
+
+  const getPriceForCategory = (categoryName: string) => { 
+    if (!categoryName) return 0; 
+    return priceMap[normalizeKey(categoryName)] || 0; 
   };
   
-  const handleFilterClick = (e: React.MouseEvent, columnKey: string) => { e.stopPropagation(); if (activeFilterColumn === columnKey) { setActiveFilterColumn(null); setFilterPopupPos(null); } else { const rect = e.currentTarget.getBoundingClientRect(); let top = rect.bottom + 5; let left = rect.left; const POPUP_WIDTH = 288; if (left + POPUP_WIDTH > window.innerWidth - 10) { left = rect.right - POPUP_WIDTH; } setFilterPopupPos({ top, left, alignRight: false }); setActiveFilterColumn(columnKey); setFilterSearchTerm(''); } };
-  const handleFilterValueChange = (columnKey: string, value: string) => { 
-      setColumnFilters(prev => {
-          const currentFilters = (prev[columnKey] || []) as string[]; 
-          const newFilters = currentFilters.includes(value) ? currentFilters.filter(v => v !== value) : [...currentFilters, value]; 
-          return { ...prev, [columnKey]: newFilters };
+  const handleUpdateCheck = async (order: Order, newValue: string) => {
+    const isAdmin = user.role?.toLowerCase() === 'admin' || user.role?.toLowerCase() === 'ceo' || user.role?.toLowerCase() === 'leader';
+    const allowedChecks = (user.permissions?.allowedDesignerOnlineChecks || '').split(',').map(s => s.trim()).filter(s => s !== '');
+    
+    const currentValues = (order.check || '').split(',').map(s => s.trim()).filter(s => s !== '');
+    const newValues = newValue.split(',').map(s => s.trim()).filter(s => s !== '');
+    
+    if (!isAdmin) {
+        const isSettingDoneOder = newValue === 'Done Oder';
+        if (!isSettingDoneOder) {
+            const addedValues = newValues.filter(v => !currentValues.includes(v));
+            const isAddingAllowed = addedValues.every(v => v === 'Done Oder' || allowedChecks.includes(v));
+            const removedValues = currentValues.filter(v => !newValues.includes(v));
+            const isRemovingAllowed = removedValues.every(v => v === 'Done Oder' || allowedChecks.includes(v));
+
+            if (!isAddingAllowed || !isRemovingAllowed) {
+                alert('Bạn không có quyền thực hiện thay đổi này.');
+                return;
+            }
+        }
+    }
+
+    const finalValue = newValue === 'Done Oder' ? 'Done Oder' : newValue;
+
+    if (onProcessStart) onProcessStart();
+    setUpdatingCheckIds(prev => new Set(prev).add(order.id));
+    const tableName = getTableName(selectedMonth);
+    try {
+      const { error } = await supabase
+        .from(tableName)
+        .update({ check: finalValue })
+        .eq('id', order.id);
+      
+      if (error) throw error;
+      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, check: finalValue } : o));
+    } catch (e: any) {
+      alert("Lỗi cập nhật Check: " + e.message);
+    } finally {
+      setUpdatingCheckIds(prev => {
+        const next = new Set(prev);
+        next.delete(order.id);
+        return next;
       });
-  };
-  const handleClearFilter = (columnKey: string) => setColumnFilters(prev => ({ ...prev, [columnKey]: [] }));
-  const handleSelectAllFilter = (columnKey: string, values: string[]) => setColumnFilters(prev => ({ ...prev, [columnKey]: values }));
-
-  const renderFilterPopup = () => { 
-    if (!activeFilterColumn || !filterPopupPos) return null; 
-    const columnKey = activeFilterColumn; 
-    const uniqueValues = getUniqueValues(columnKey); 
-    const displayValues = uniqueValues.filter(v => v.toLowerCase().includes(filterSearchTerm.toLowerCase())); 
-    const currentSelected = columnFilters[columnKey]; 
-    const isChecked = (val: string) => !currentSelected || currentSelected.includes(val); 
-    
-    return ( 
-      <div ref={filterPopupRef} className="fixed bg-white rounded-lg shadow-xl border border-gray-200 z-[100] flex flex-col w-72 animate-fade-in" style={{ top: filterPopupPos.top, left: filterPopupPos.left }}> 
-        <div className="p-2 border-b border-gray-100 space-y-1"> 
-          <button onClick={() => { setSortConfig({ key: columnKey as keyof Order, direction: 'asc' }); setActiveFilterColumn(null); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 rounded text-gray-700 font-medium"><ArrowDownAZ size={16} /> Sắp xếp A - Z</button> 
-          <button onClick={() => { setSortConfig({ key: columnKey as keyof Order, direction: 'desc' }); setActiveFilterColumn(null); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 rounded text-gray-700 font-medium"><ArrowUpAZ size={16} /> Sắp xếp Z - A</button> 
-        </div> 
-        <div className="p-2 border-b border-gray-100 bg-gray-50">
-          <div className="relative"><Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400"/><input type="text" placeholder="Tìm..." className="w-full pl-8 pr-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500 outline-none" value={filterSearchTerm} onChange={(e) => setFilterSearchTerm(e.target.value)} autoFocus /></div>
-        </div> 
-        <div className="flex-1 overflow-y-auto max-h-60 p-2 space-y-1 custom-scrollbar"> 
-          {displayValues.map((val, idx) => ( 
-            <label key={idx} className="flex items-center gap-2 px-2 py-1.5 hover:bg-indigo-50 rounded cursor-pointer text-sm select-none"> 
-              <input type="checkbox" className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" checked={isChecked(val)} onChange={() => handleFilterValueChange(columnKey, val)} /> 
-              <span className="truncate flex-1">{val || '(Trống)'}</span> 
-            </label> 
-          ))} 
-        </div> 
-        <div className="p-2 border-t border-gray-100 flex justify-between bg-gray-50 rounded-b-lg"> 
-          <button onClick={() => handleSelectAllFilter(columnKey, uniqueValues)} className="text-xs text-blue-600 font-bold px-2 py-1 hover:bg-blue-50 rounded">Chọn tất cả</button> 
-          <button onClick={() => handleClearFilter(columnKey)} className="text-xs text-red-500 font-bold px-2 py-1 hover:bg-red-50 rounded">Bỏ chọn</button> 
-        </div> 
-      </div> 
-    ); 
+      if (onProcessEnd) onProcessEnd();
+    }
   };
 
-  const stats = useMemo<{ totalOrders: number; categories: Record<string, { total: number; checked: number }>; designers: Record<string, { total: number; checked: number }>; }>(() => { 
-      const result = { 
-          totalOrders: 0, 
-          categories: { 'Loại 1': { total: 0, checked: 0 }, 'Loại 2': { total: 0, checked: 0 }, 'Loại 3': { total: 0, checked: 0 }, 'Loại 4': { total: 0, checked: 0 }, 'Khác': { total: 0, checked: 0 } } as Record<string, { total: number; checked: number }>, 
-          designers: {} as Record<string, { total: number; checked: number }> 
-      }; 
-      orders.forEach(o => { 
-          const category = skuMap[normalizeKey(o.sku)] || 'Khác'; 
-          const isChecked = o.isDesignDone === true; 
-          const designerName = o.actionRole ? o.actionRole.trim() : 'Chưa Giao'; 
-          let catKey = category; 
-          if (!result.categories[catKey]) catKey = 'Khác'; 
-          const target = result.categories[catKey]; 
-          target.total += 1; 
-          if (isChecked) target.checked += 1; 
-          if (!result.designers[designerName]) { 
-              result.designers[designerName] = { total: 0, checked: 0 }; 
-          } 
-          result.designers[designerName].total += 1; 
-          if (isChecked) result.designers[designerName].checked += 1; 
-          result.totalOrders += 1; 
-      }); 
-      return result; 
-  }, [orders, skuMap]);
+  const handleUpdateDesignerNote = async (order: Order) => {
+    const isAdmin = user.role?.toLowerCase() === 'admin' || user.role?.toLowerCase() === 'ceo' || user.role?.toLowerCase() === 'leader';
+    if (!isAdmin && !user.permissions?.canEditDesignerOnlineNote) {
+        alert('Bạn không có quyền chỉnh sửa cột Note.');
+        return;
+    }
 
-  const formatDateDisplay = (dateStr: string) => { if (!dateStr) return ''; try { const parts = dateStr.split(/[-T :]/); if (parts.length >= 5) { const y = parts[0]; const m = parts[1]; const d = parts[2]; const hh = parts[3] || '00'; const mm = parts[4] || '00'; if (y.length === 4) return `${d}/${m}/${y} ${hh}:${mm}`; } return dateStr; } catch (e) { return dateStr; } };
-  const handleMonthChange = (step: number) => { const [year, month] = selectedMonth.split('-').map(Number); const date = new Date(year, month - 1 + step, 1); const newYear = date.getFullYear(); const newMonth = String(date.getMonth() + 1).padStart(2, '0'); setSelectedMonth(`${newYear}-${newMonth}`); };
-  const handleUpdateSku = async (e: React.FormEvent) => { e.preventDefault(); if (!skuFormData.sku.trim()) { setSkuMessage({ type: 'error', text: 'Vui lòng nhập SKU' }); return; } setIsSubmittingSku(true); setSkuMessage(null); try { const result = await sheetService.updateSkuCategory(skuFormData.sku.trim(), skuFormData.category); if (result.success) { setSkuMessage({ type: 'success', text: 'Cập nhật phân loại thành công!' }); setSkuFormData(prev => ({ ...prev, sku: '' })); await loadData(selectedMonth); setTimeout(() => { setIsSkuModalOpen(false); setSkuMessage(null); }, 1500); } else { setSkuMessage({ type: 'error', text: result.error || 'Lỗi cập nhật.' }); } } catch (err) { setSkuMessage({ type: 'error', text: 'Lỗi kết nối hệ thống.' }); } finally { setIsSubmittingSku(false); } };
-  const handleDesignerToggle = async (order: Order) => { if (!currentFileId) return; if (updatingIds.has(order.id)) return; const newValue = !order.isDesignDone; if (onProcessStart) onProcessStart(); setUpdatingIds(prev => new Set(prev).add(order.id)); try { await sheetService.updateDesignerStatus(currentFileId, order, "Designer", newValue); setOrders(prev => prev.map(o => o.id === order.id ? { ...o, isDesignDone: newValue } : o)); } catch (error) { alert('Lỗi cập nhật trạng thái'); } finally { setUpdatingIds(prev => { const newSet = new Set(prev); newSet.delete(order.id); return newSet; }); if (onProcessEnd) onProcessEnd(); } };
+    const newValue = editingDesignerNote[order.id] ?? order.designerNote ?? '';
+    setUpdatingDesignerNoteIds(prev => new Set(prev).add(order.id));
+    if (onProcessStart) onProcessStart();
+    const tableName = getTableName(selectedMonth);
+    try {
+      const { error } = await supabase
+        .from(tableName)
+        .update({ designer_note: newValue })
+        .eq('id', order.id);
+      
+      if (error) throw error;
+      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, designerNote: newValue } : o));
+      setEditingNoteIds(prev => {
+        const next = new Set(prev);
+        next.delete(order.id);
+        return next;
+      });
+    } catch (e: any) {
+      alert("Lỗi cập nhật Note: " + e.message);
+    } finally {
+      setUpdatingDesignerNoteIds(prev => {
+        const next = new Set(prev);
+        next.delete(order.id);
+        return next;
+      });
+      if (onProcessEnd) onProcessEnd();
+    }
+  };
 
-  const [currentYearStr, currentMonthStr] = selectedMonth.split('-');
-  const canManageSku = user.role === 'admin' || user.permissions?.canManageSku === true; 
-  const canCheckDesign = user.role === 'admin' || user.role === 'leader' || user.role === 'support' || (user.permissions?.designer !== 'none');
+  const handleUpdateLinkDs = async (order: Order) => {
+    const newValue = editingLinkDs[order.id] ?? order.linkDs ?? '';
+    setUpdatingLinkDsIds(prev => new Set(prev).add(order.id));
+    if (onProcessStart) onProcessStart();
+    const tableName = getTableName(selectedMonth);
+    try {
+      const { error } = await supabase
+        .from(tableName)
+        .update({ link_ds: newValue })
+        .eq('id', order.id);
+      
+      if (error) throw error;
+      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, linkDs: newValue } : o));
+      setEditingLinkDs(prev => {
+        const next = { ...prev };
+        delete next[order.id];
+        return next;
+      });
+    } catch (e: any) {
+      alert("Lỗi cập nhật Link DS: " + e.message);
+    } finally {
+      setUpdatingLinkDsIds(prev => {
+        const next = new Set(prev);
+        next.delete(order.id);
+        return next;
+      });
+      if (onProcessEnd) onProcessEnd();
+    }
+  };
 
-  const filteredOrdersList = orders.filter(o => { 
-    const matchesSearch = ((o.id ? String(o.id).toLowerCase() : '').includes(searchTerm.toLowerCase()) || (o.sku ? String(o.sku).toLowerCase() : '').includes(searchTerm.toLowerCase()) || (o.storeId ? getStoreName(o.storeId).toLowerCase() : '').includes(searchTerm.toLowerCase()) || (o.handler ? String(o.handler).toLowerCase() : '').includes(searchTerm.toLowerCase()) || (o.actionRole ? String(o.actionRole).toLowerCase() : '').includes(searchTerm.toLowerCase())); 
-    if (!matchesSearch) return false; 
-    
-    for (const [key, val] of Object.entries(columnFilters) as [string, string[]][]) { 
-        const selectedValues = val;
-        if (!selectedValues || selectedValues.length === 0) continue; 
-        let cellValue = ''; 
-        if (key === 'storeName') cellValue = getStoreName(o.storeId); 
-        else if (key === 'category') cellValue = skuMap[normalizeKey(o.sku)] || '(Chưa phân loại)'; 
-        else if (key === 'isDesignDone') cellValue = o.isDesignDone ? "Đã xong" : "Chưa xong"; 
-        else cellValue = String(o[key as keyof Order] || ''); 
-        if (!selectedValues.includes(cellValue)) return false; 
-    } 
-    return true; 
-  });
-  const sortedOrdersResult = filteredOrdersList.map((item, index) => ({ item, index })).sort((a, b) => { if (sortConfig.key === 'date') { const dateA = new Date(a.item.date || '').getTime(); const dateB = new Date(b.item.date || '').getTime(); const validA = !isNaN(dateA); const validB = !isNaN(dateB); if (!validA && !validB) return 0; if (!validA) return 1; if (!validB) return -1; if (dateA !== dateB) { return sortConfig.direction === 'asc' ? dateA - dateB : dateB - dateA; } return a.index - b.index; } const valA = String((a.item as any)[sortConfig.key] || ''); const valB = String((b.item as any)[sortConfig.key] || ''); if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1; if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1; return 0; }).map(x => x.item);
+  const handleDesignerToggle = async (order: Order) => {
+    const newValue = !order.isDesignDone;
+    setUpdatingIds(prev => new Set(prev).add(order.id));
+    if (onProcessStart) onProcessStart();
+    const tableName = getTableName(selectedMonth);
+    try {
+      const { error } = await supabase
+        .from(tableName)
+        .update({ is_design_done: newValue })
+        .eq('id', order.id);
+      
+      if (error) throw error;
+      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, isDesignDone: newValue } : o));
+    } catch (e: any) {
+      alert("Lỗi cập nhật trạng thái: " + e.message);
+    } finally {
+      setUpdatingIds(prev => {
+        const next = new Set(prev);
+        next.delete(order.id);
+        return next;
+      });
+      if (onProcessEnd) onProcessEnd();
+    }
+  };
 
-  const handleSelectAll = () => { if (selectedOrderIds.size === sortedOrdersResult.length && sortedOrdersResult.length > 0) setSelectedOrderIds(new Set()); else setSelectedOrderIds(new Set(sortedOrdersResult.map(o => o.id))); };
-  const handleSelectRow = (id: string) => { const newSelected = new Set(selectedOrderIds); if (newSelected.has(id)) newSelected.delete(id); else newSelected.add(id); setSelectedOrderIds(newSelected); };
   const handleBatchAction = async (actionType: 'design_done' | 'design_pending') => {
-      if (!currentFileId) return;
       if (selectedOrderIds.size === 0) return;
-      const idsToUpdate = Array.from(selectedOrderIds) as string[];
+      const idsToUpdate = Array.from(selectedOrderIds);
       const newValue = actionType === 'design_done';
       setIsBatchProcessing(true);
       if (onProcessStart) onProcessStart();
+      const tableName = getTableName(selectedMonth);
       try {
-          const result = await sheetService.batchUpdateDesigner(currentFileId, idsToUpdate, newValue);
-          if (result.success) {
-              setOrders(prev => prev.map(o => idsToUpdate.includes(o.id) ? { ...o, isDesignDone: newValue } : o));
-              alert(`Đã cập nhật ${idsToUpdate.length} đơn hàng.`);
-              setSelectedOrderIds(new Set());
-          } else throw new Error(result.error);
-      } catch (error) { alert('Có lỗi xảy ra khi cập nhật hàng loạt.'); } 
+          const { error } = await supabase
+              .from(tableName)
+              .update({ is_design_done: newValue })
+              .in('id', idsToUpdate);
+          
+          if (error) throw error;
+          setOrders(prev => prev.map(o => idsToUpdate.includes(o.id) ? { ...o, isDesignDone: newValue } : o));
+          alert(`Đã cập nhật ${idsToUpdate.length} đơn hàng.`);
+          setSelectedOrderIds(new Set());
+      } catch (error: any) { alert('Có lỗi xảy ra khi cập nhật hàng loạt: ' + error.message); } 
       finally { setIsBatchProcessing(false); if (onProcessEnd) onProcessEnd(); }
   };
+
+  const handleUpdateSku = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!skuFormData.sku.trim()) return;
+    setIsSubmittingSku(true);
+    try {
+      const { error } = await supabase
+        .from('sku_mappings')
+        .upsert({ sku: skuFormData.sku.trim(), category: skuFormData.category });
+      
+      if (error) throw error;
+      setSkuMessage({ type: 'success', text: 'Cập nhật thành công' });
+      loadData(selectedMonth);
+      setTimeout(() => setIsSkuModalOpen(false), 1000);
+    } catch (e: any) {
+      setSkuMessage({ type: 'error', text: e.message });
+    } finally {
+      setIsSubmittingSku(false);
+    }
+  };
+
+  const handleSavePrices = async () => {
+    setIsSavingPrices(true);
+    try {
+      for (const [cat, price] of Object.entries(tempPriceMap)) {
+        await supabase.from('price_mappings').upsert({ category: cat, price });
+      }
+      setIsPriceModalOpen(false);
+      loadData(selectedMonth);
+    } catch (e: any) {
+      alert("Lỗi lưu giá: " + e.message);
+    } finally {
+      setIsSavingPrices(false);
+    }
+  };
+
+  const stats = useMemo(() => {
+    const res = {
+      totalOrders: 0,
+      totalMoney: 0,
+      categories: {} as Record<string, { total: number, checked: number, money: number }>
+    };
+    PRICE_CATEGORIES.forEach(c => res.categories[c] = { total: 0, checked: 0, money: 0 });
+    res.categories['Khác'] = { total: 0, checked: 0, money: 0 };
+
+    orders.forEach(o => {
+      const cat = skuMap[normalizeKey(o.sku)] || 'Khác';
+      const price = getPriceForCategory(cat);
+      res.totalOrders++;
+      res.totalMoney += price;
+      if (res.categories[cat]) {
+        res.categories[cat].total++;
+        res.categories[cat].money += price;
+        if (o.isDesignDone) res.categories[cat].checked++;
+      }
+    });
+    return res;
+  }, [orders, skuMap, priceMap]);
+
+  const filteredOrders = orders.filter(o => 
+    o.id.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    o.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    getStoreName(o.storeId).toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const sortedOrdersResult = useMemo(() => {
+    return [...filteredOrders].sort((a, b) => {
+      const valA = String(a[sortConfig.key] || '');
+      const valB = String(b[sortConfig.key] || '');
+      if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [filteredOrders, sortConfig]);
+
+  const formatPrice = (price: number) => price.toLocaleString('vi-VN') + ' đ';
 
   return (
     <div className="p-4 bg-gray-100 min-h-screen relative pb-20">
       <div className="bg-white shadow-sm overflow-hidden rounded-lg flex flex-col h-full">
-        {dataError && (
-          <div className="m-4 p-5 bg-rose-50 border-2 border-rose-200 rounded-3xl animate-fade-in">
-             <div className="flex items-center gap-4">
-                <div className="p-3 bg-rose-600 text-white rounded-2xl shadow-lg shadow-rose-200">
-                   <AlertTriangle size={32} />
-                </div>
-                <div>
-                   <h3 className="text-xl font-black text-rose-900 uppercase tracking-tight">{dataError.message}</h3>
-                   <p className="text-xs font-bold text-rose-600 mt-1">{dataError.detail}</p>
-                </div>
-             </div>
-          </div>
-        )}
-
         <div className="bg-white border-b border-gray-200 p-4">
-            <h3 className="text-sm font-bold text-gray-800 uppercase mb-3 flex items-center gap-2"><PenTool size={16} className="text-indigo-600"/> Tổng Hợp Tháng {currentMonthStr}/{currentYearStr}</h3>
-            <div className="flex flex-col xl:flex-row gap-6">
-                <div className="flex-1"><div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-6 gap-3"><div className="bg-indigo-600 text-white rounded p-3 shadow-sm flex flex-col justify-center items-center text-center"><span className="text-xs opacity-80 uppercase tracking-wide">Tổng Đơn</span><span className="text-xl font-bold">{stats.totalOrders}</span></div>{PRICE_CATEGORIES.map(cat => { const data = (stats.categories[cat] as { total: number; checked: number } | undefined) || { total: 0, checked: 0 }; return (<div key={cat} className="bg-gray-50 border border-gray-200 rounded p-3 shadow-sm flex flex-col justify-between"><div className="flex justify-between items-start border-b border-gray-200 pb-1 mb-1"><span className="text-xs font-bold text-gray-800 uppercase">{cat}</span></div><div className="flex justify-between items-end"><div className="text-center"><div className="text-[10px] text-gray-400 uppercase">Đơn</div><div className="text-sm font-bold text-gray-800">{data.total}</div></div><div className="text-center"><div className="text-[10px] text-gray-400 uppercase">Check</div><div className="text-sm font-bold text-blue-600">{data.checked}</div></div></div></div>); })}</div></div>
-                <div className="flex-1 border-l border-gray-200 xl:pl-6 pt-4 xl:pt-0 border-t xl:border-t-0 mt-2 xl:mt-0">
-                    <h4 className="text-xs font-bold text-gray-800 uppercase mb-2 flex items-center gap-2"><Users size={14} /> Chi Tiết Theo Designer</h4>
-                    <div className="overflow-x-auto custom-scrollbar max-h-[140px]">
-                        <table className="w-full text-left text-xs border-collapse">
-                            <thead className="bg-gray-50 text-gray-900 font-black sticky top-0">
-                                <tr>
-                                    <th className="px-3 py-2 border-b">Designer</th>
-                                    <th className="px-3 py-2 border-b text-center">Số lượng</th>
-                                    <th className="px-3 py-2 border-b text-center">Đã Check</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                {Object.entries(stats.designers).map(([name, data]: [string, { total: number; checked: number }]) => (
-                                    <tr key={name} className="hover:bg-gray-50">
-                                        <td className={`px-3 py-2 font-black truncate max-w-[120px] ${name.toLowerCase().includes('admin') ? 'admin-red-gradient' : 'text-slate-900'}`} title={name}>{name}</td>
-                                        <td className="px-3 py-2 text-center text-gray-600">{data.total}</td>
-                                        <td className="px-3 py-2 text-center font-bold text-blue-600">{data.checked}</td>
-                                    </tr>
-                                ))}
-                                {Object.keys(stats.designers).length === 0 && (
-                                    <tr><td colSpan={3} className="px-3 py-4 text-center text-gray-400 italic">Chưa có dữ liệu designer.</td></tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
+          <div className="flex flex-col xl:flex-row gap-6">
+            <div className="flex-1">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+                <div className="bg-indigo-600 text-white rounded p-3 shadow-sm flex flex-col justify-center items-center text-center">
+                  <span className="text-xs opacity-80 uppercase">Tổng Đơn</span>
+                  <span className="text-xl font-bold">{stats.totalOrders}</span>
                 </div>
+                <div className="bg-emerald-600 text-white rounded p-3 shadow-sm flex flex-col justify-center items-center text-center">
+                  <span className="text-xs opacity-80 uppercase">Tổng Tiền</span>
+                  <span className="text-lg font-bold">{formatPrice(stats.totalMoney)}</span>
+                </div>
+                {PRICE_CATEGORIES.map(cat => (
+                  <div key={cat} className="bg-gray-50 border border-gray-200 rounded p-3 shadow-sm flex flex-col justify-between">
+                    <span className="text-xs font-bold text-gray-700 uppercase">{cat}</span>
+                    <div className="flex justify-between items-end mt-1">
+                      <span className="text-sm font-bold text-gray-800">{stats.categories[cat].total}</span>
+                      <span className="text-[10px] text-blue-600 font-bold">{stats.categories[cat].checked} Check</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
+          </div>
         </div>
 
         <div className="p-4 border-b border-gray-200 flex flex-col xl:flex-row justify-between items-center gap-4 bg-white z-20">
-          <div className="flex flex-col md:flex-row items-center gap-4 w-full xl:w-auto">
-            <h2 className="text-xl font-bold text-gray-800 whitespace-nowrap flex items-center gap-2">DESIGNER <span className="text-orange-600 uppercase text-sm border border-orange-200 bg-orange-50 px-2 py-0.5 rounded">Tháng {currentMonthStr}/{currentYearStr}</span><button onClick={() => loadData(selectedMonth)} className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 transition-colors" title="Làm mới"><RefreshCw size={16} className={loading ? "animate-spin" : ""} /></button></h2>
-            <div className="flex items-center gap-2 w-full md:w-auto justify-center">
-                <div className="flex items-center bg-white rounded-lg border border-gray-300 shadow-sm p-1"><button onClick={() => handleMonthChange(-1)} className="p-1.5 hover:bg-gray-100 rounded-md text-gray-500 transition-colors"><ChevronLeft size={18} /></button><div className="flex items-center px-2 border-l border-r border-gray-100 gap-1 min-w-[160px] justify-center"><Calendar size={14} className="text-orange-500 mr-1" /><select value={currentMonthStr} onChange={(e) => setSelectedMonth(`${currentYearStr}-${e.target.value}`)} className="font-bold text-gray-700 bg-transparent cursor-pointer outline-none appearance-none hover:bg-gray-50 rounded px-1 py-1 text-center text-sm">{monthsList.map(m => (<option key={m} value={m}>Tháng {parseInt(m)}</option>))}</select><span className="text-gray-400">/</span><select value={currentYearStr} onChange={(e) => setSelectedMonth(`${e.target.value}-${currentMonthStr}`)} className="font-bold text-gray-700 bg-transparent cursor-pointer outline-none appearance-none hover:bg-gray-50 rounded px-1 py-1 text-sm">{yearsList.map(y => (<option key={y} value={y}>{y}</option>))}</select></div><button onClick={() => handleMonthChange(1)} className="p-1.5 hover:bg-gray-100 rounded-md text-gray-500 transition-colors"><ChevronRight size={18} /></button></div>
-                {canManageSku && (<button onClick={() => setIsSkuModalOpen(true)} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm h-[42px] whitespace-nowrap ml-2"><Settings size={16} /> <span className="hidden sm:inline">Phân loại</span></button>)}
+          <div className="flex items-center gap-4 w-full xl:w-auto">
+            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+              DESIGNER <span className="text-orange-600 text-sm bg-orange-50 px-2 py-0.5 rounded border border-orange-100 uppercase">Supabase</span>
+              <button onClick={() => loadData(selectedMonth)} className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 transition-colors">
+                <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+              </button>
+            </h2>
+            <div className="flex items-center bg-white rounded-lg border border-gray-300 shadow-sm p-1">
+              <button onClick={() => handleMonthChange(-1)} className="p-1.5 hover:bg-gray-100 rounded-md text-gray-500"><ChevronLeft size={18} /></button>
+              <div className="px-4 font-bold text-sm text-gray-700 border-x border-gray-100">Tháng {selectedMonth}</div>
+              <button onClick={() => handleMonthChange(1)} className="p-1.5 hover:bg-gray-100 rounded-md text-gray-500"><ChevronRight size={18} /></button>
             </div>
+            <button onClick={() => setIsSkuModalOpen(true)} className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors"><Settings size={20}/></button>
+            <button onClick={() => setIsPriceModalOpen(true)} className="p-2 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-colors"><DollarSign size={20}/></button>
+            
+            {!tableExists && (
+              <button 
+                onClick={handleCreateTable} 
+                disabled={isCreatingTable}
+                className="flex items-center gap-2 px-4 py-2 bg-rose-600 text-white rounded-lg font-bold hover:bg-rose-700 transition-all shadow-lg shadow-rose-100 animate-pulse"
+              >
+                {isCreatingTable ? <Loader2 size={18} className="animate-spin" /> : <Layers size={18} />}
+                Tạo Bảng Tháng {selectedMonth}
+              </button>
+            )}
+
+            {selectedOrderIds.size > 0 && (
+              <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-1 animate-fade-in">
+                <span className="text-xs font-bold text-orange-700">{selectedOrderIds.size} đã chọn</span>
+                <div className="flex gap-1">
+                  <button onClick={() => handleBatchAction('design_done')} disabled={isBatchProcessing} className="p-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"><CheckCircle size={14}/></button>
+                  <button onClick={() => handleBatchAction('design_pending')} disabled={isBatchProcessing} className="p-1.5 bg-gray-500 text-white rounded hover:bg-gray-600 disabled:opacity-50"><X size={14}/></button>
+                </div>
+              </div>
+            )}
           </div>
-          <div className="relative flex-1 sm:flex-none sm:w-64"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} /><input type="text" placeholder="Tìm ID, SKU..." className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm w-full focus:ring-2 focus:ring-[#1a4019] focus:border-transparent outline-none shadow-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div>
+          <div className="relative w-full xl:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+            <input type="text" placeholder="Tìm ID, SKU..." className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm w-full focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+          </div>
         </div>
 
-        <div className="overflow-auto max-h-[calc(100vh-250px)] custom-scrollbar">
-          <table className="w-full text-left border-collapse text-xs relative">
-            <thead className="text-white font-bold text-center uppercase text-xs tracking-wider sticky top-0 z-20">
-              <tr>
-                <th className="px-2 py-2 bg-[#1a4019] border-r border-gray-600 sticky top-0 z-20 w-8">
-                    <input type="checkbox" className="w-3 h-3 rounded border-gray-400 text-orange-600 focus:ring-orange-500 cursor-pointer" checked={selectedOrderIds.size > 0 && selectedOrderIds.size === sortedOrdersResult.length} onChange={handleSelectAll} />
+        <div className="overflow-auto max-h-[calc(100vh-300px)] custom-scrollbar">
+          <table className="w-full text-left border-collapse text-[11px] relative">
+            <thead className="text-white font-bold text-center uppercase tracking-wider sticky top-0 z-20">
+              <tr className="bg-[#1a4019]">
+                <th className="px-2 py-3 border-r border-gray-600 w-10">
+                  <button onClick={() => {
+                    if (selectedOrderIds.size === sortedOrdersResult.length && sortedOrdersResult.length > 0) setSelectedOrderIds(new Set());
+                    else setSelectedOrderIds(new Set(sortedOrdersResult.map(o => o.id)));
+                  }} className="p-1 hover:bg-white/10 rounded">
+                    {selectedOrderIds.size === sortedOrdersResult.length && sortedOrdersResult.length > 0 ? <CheckSquare size={14}/> : <Square size={14}/>}
+                  </button>
                 </th>
-                <th className="px-2 py-2 border-r border-gray-600 w-24 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-center gap-1 group cursor-pointer" onClick={() => setSortConfig({ key: 'date', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' })}>Date {sortConfig.key === 'date' && (sortConfig.direction === 'asc' ? <ArrowUp size={14}/> : <ArrowDown size={14}/>)}</div></th>
-                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>ID Order</span><button onClick={(e) => handleFilterClick(e, 'id')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['id']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
-                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>STORE</span><button onClick={(e) => handleFilterClick(e, 'storeName')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['storeName']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
-                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>SKU</span><button onClick={(e) => handleFilterClick(e, 'sku')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['sku']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
-                <th className="px-2 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-24 text-yellow-300"><div className="flex items-center justify-between gap-1"><span>Phân Loại</span><button onClick={(e) => handleFilterClick(e, 'category')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['category']?.length ? 'text-white' : 'text-yellow-600'}`}><Filter size={14} /></button></div></th>
-                <th className="px-1 py-2 border-r border-gray-600 sticky top-0 bg-[#1a4019] z-20 w-10 text-center text-blue-300"><div className="flex flex-col items-center"><span className="mb-1">CHK</span><button onClick={(e) => handleFilterClick(e, 'isDesignDone')} className={`p-0.5 rounded hover:bg-[#235221] ${columnFilters['isDesignDone']?.length ? 'text-white' : 'text-blue-400'}`}><Filter size={12} /></button></div></th>
-                <th className="px-2 py-2 border-r border-gray-600 w-32 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>Người xử lý</span><button onClick={(e) => handleFilterClick(e, 'handler')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['handler']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
-                <th className="px-2 py-2 border-l border-gray-600 w-32 sticky top-0 bg-[#1a4019] z-20"><div className="flex items-center justify-between gap-1"><span>Action Role</span><button onClick={(e) => handleFilterClick(e, 'actionRole')} className={`p-1 rounded hover:bg-[#235221] ${columnFilters['actionRole']?.length ? 'text-yellow-300' : 'text-gray-300'}`}><Filter size={14} /></button></div></th>
+                <th className="px-2 py-3 border-r border-gray-600 w-24">ID Order</th>
+                <th className="px-2 py-3 border-r border-gray-600">Store</th>
+                <th className="px-2 py-3 border-r border-gray-600">SKU</th>
+                <th className="px-2 py-3 border-r border-gray-600 w-20">PL</th>
+                <th className="px-2 py-3 border-r border-gray-600 w-24">Link DS</th>
+                <th className="px-2 py-3 border-r border-gray-600 w-24">Check</th>
+                <th className="px-2 py-3 border-r border-gray-600 w-[75ch]">Note</th>
+                <th className="px-2 py-3 border-r border-gray-600 w-10">CHK</th>
+                <th className="px-2 py-3 border-r border-gray-600 w-20">NXL</th>
+                <th className="px-2 py-3 w-20">AR</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {loading ? <tr><td colSpan={9} className="text-center py-12 text-gray-500">Đang tải dữ liệu Tháng {currentMonthStr}...</td></tr> : (sortedOrdersResult.length === 0 ? <tr><td colSpan={9} className="text-center py-12 text-gray-500">{'Không có đơn hàng nào khớp với bộ lọc.'}</td></tr> : sortedOrdersResult.map((order, idx) => {
-                  const category = skuMap[normalizeKey(order.sku)] || '';
-                  const isUpdating = updatingIds.has(order.id);
-                  const isHandlerAdmin = (order.handler || '').toLowerCase().includes('admin');
-                  const isActionAdmin = (order.actionRole || '').toLowerCase().includes('admin');
-                  return (
-                      <tr key={order.id + idx} className={`hover:bg-gray-50 border-b border-gray-200 text-gray-800 transition-colors ${selectedOrderIds.has(order.id) ? 'bg-indigo-50' : ''}`}>
-                          <td className="px-2 py-2 border-r text-center align-middle"><input type="checkbox" className="w-3 h-3 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" checked={selectedOrderIds.has(order.id)} onChange={() => handleSelectRow(order.id)} /></td>
-                          <td className="px-2 py-2 border-r text-center whitespace-nowrap text-gray-600">{formatDateDisplay(order.date)}</td>
-                          <td className="px-2 py-2 border-r font-semibold text-gray-900 whitespace-nowrap"><div className="flex justify-between items-center group gap-1"><span>{order.id}</span><button className="text-gray-400 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => navigator.clipboard.writeText(order.id)} title="Copy ID"><Copy size={10} /></button></div></td>
-                          <td className="px-2 py-2 border-r text-gray-700">{getStoreName(order.storeId)}</td>
-                          <td className="px-2 py-2 border-r font-mono text-[10px] text-gray-600">{order.sku}</td>
-                          <td className="px-2 py-2 border-r text-center font-medium text-indigo-600 bg-indigo-50/50">{category}</td>
-                          <td className="px-1 py-1 border-r text-center align-middle bg-blue-50/30">{isUpdating ? (<div className="flex justify-center"><Loader2 size={14} className="animate-spin text-blue-500" /></div>) : (<button onClick={() => handleDesignerToggle(order)} disabled={!canCheckDesign} className={`p-1 rounded focus:outline-none transition-colors ${!canCheckDesign ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-100'}`} title={canCheckDesign ? "Check hoàn thành và Lưu sheet" : "Bạn không có quyền check"}>{order.isDesignDone ? <CheckSquare size={16} className="text-blue-600" /> : <Square size={16} className="text-gray-300" />}</button>)}</td>
-                          <td className={`px-2 py-2 border-r text-center text-[10px] font-black whitespace-nowrap bg-gray-50/50 ${isHandlerAdmin ? 'admin-red-gradient' : 'text-gray-800'}`}><div className="flex items-center justify-center gap-1.5"><UserCircle size={12} className={isHandlerAdmin ? 'text-red-500' : 'text-gray-400'}/>{order.handler}</div></td>
-                          <td className={`px-2 py-2 border-l text-center bg-gray-50/30 font-black ${isActionAdmin ? 'admin-red-gradient' : 'text-orange-600'}`}>{order.actionRole}</td>
-                      </tr>
-                  );
-              }))}
+              {loading ? (
+                <tr><td colSpan={11} className="text-center py-20 text-gray-400 font-medium">Đang tải dữ liệu từ Supabase...</td></tr>
+              ) : !tableExists ? (
+                <tr>
+                  <td colSpan={11} className="text-center py-32">
+                    <div className="flex flex-col items-center gap-4 max-w-md mx-auto">
+                      <div className="p-6 bg-rose-50 rounded-full text-rose-600">
+                        <AlertTriangle size={48} />
+                      </div>
+                      <h3 className="text-xl font-black text-gray-800 uppercase tracking-tight">Bảng dữ liệu chưa tồn tại</h3>
+                      <p className="text-sm text-gray-500 font-medium">Dữ liệu cho tháng <span className="text-rose-600 font-bold">{selectedMonth}</span> chưa được khởi tạo trong hệ thống Supabase.</p>
+                      <button 
+                        onClick={handleCreateTable}
+                        disabled={isCreatingTable}
+                        className="mt-2 flex items-center gap-2 px-8 py-3 bg-rose-600 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-rose-700 transition-all shadow-xl shadow-rose-200 disabled:opacity-50"
+                      >
+                        {isCreatingTable ? <Loader2 size={20} className="animate-spin" /> : <Layers size={20} />}
+                        Khởi tạo bảng ngay
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ) : sortedOrdersResult.length === 0 ? (
+                <tr><td colSpan={11} className="text-center py-20 text-gray-400 italic">Không tìm thấy đơn hàng nào.</td></tr>
+              ) : sortedOrdersResult.map((order) => {
+                const category = skuMap[normalizeKey(order.sku)] || 'Khác';
+                const isSelected = selectedOrderIds.has(order.id);
+                return (
+                  <tr key={order.id} className={`hover:bg-gray-50 transition-colors ${isSelected ? 'bg-indigo-50' : ''}`}>
+                    <td className="px-2 py-2 border-r text-center">
+                      <button onClick={() => {
+                        const next = new Set(selectedOrderIds);
+                        if (next.has(order.id)) next.delete(order.id);
+                        else next.add(order.id);
+                        setSelectedOrderIds(next);
+                      }} className={`p-1 rounded ${isSelected ? 'text-indigo-600' : 'text-gray-300'}`}>
+                        {isSelected ? <CheckSquare size={14}/> : <Square size={14}/>}
+                      </button>
+                    </td>
+                    <td className="px-2 py-2 border-r font-bold text-gray-900">{order.id}</td>
+                    <td className="px-2 py-2 border-r text-gray-600">{getStoreName(order.storeId)}</td>
+                    <td className="px-2 py-2 border-r font-mono text-gray-500">{order.sku}</td>
+                    <td className="px-2 py-2 border-r text-center font-bold text-indigo-600 bg-indigo-50/30">{category}</td>
+                    <td className="px-2 py-2 border-r">
+                      <div className="flex items-center gap-1">
+                        {order.linkDs && editingLinkDs[order.id] === undefined ? (
+                          <div className="flex items-center gap-1">
+                            <a href={order.linkDs} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline truncate max-w-[80px]">Link</a>
+                            <button onClick={() => setEditingLinkDs(prev => ({ ...prev, [order.id]: order.linkDs || '' }))} className="text-gray-400 hover:text-blue-500"><Edit size={10}/></button>
+                          </div>
+                        ) : (
+                          <div className="flex gap-1">
+                            <input type="text" className="w-full border border-gray-300 rounded px-1 py-0.5" value={editingLinkDs[order.id] ?? ''} onChange={e => setEditingLinkDs(prev => ({ ...prev, [order.id]: e.target.value }))} />
+                            <button onClick={() => handleUpdateLinkDs(order)} className="p-1 bg-blue-600 text-white rounded"><Save size={10}/></button>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-2 py-2 border-r text-center relative">
+                      <div className="flex flex-wrap gap-1 justify-center">
+                        {(order.check || '').split(',').filter(s => s.trim()).map(val => (
+                          <span key={val} className="bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full text-[8px] font-bold border border-orange-200">{val}</span>
+                        ))}
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveCheckDropdown(activeCheckDropdown === order.id ? null : order.id);
+                            setTempCheckSelections(prev => ({ ...prev, [order.id]: order.check || '' }));
+                          }}
+                          className="p-1 bg-gray-100 text-gray-500 rounded hover:bg-orange-100 hover:text-orange-600"
+                        >
+                          <Edit size={10}/>
+                        </button>
+                      </div>
+                      
+                      {activeCheckDropdown === order.id && (
+                        <div ref={checkDropdownRef} className="absolute top-full left-0 mt-1 w-40 bg-white border border-gray-200 shadow-xl rounded-lg z-50 p-2 text-left animate-slide-in">
+                          <div className="space-y-1">
+                            <button 
+                              onClick={() => {
+                                handleUpdateCheck(order, 'Done Oder');
+                                setActiveCheckDropdown(null);
+                              }}
+                              className="w-full text-left px-2 py-1.5 hover:bg-orange-50 text-orange-600 font-bold rounded flex items-center gap-2"
+                            >
+                              <CheckCircle size={12}/> Done Oder
+                            </button>
+                            <div className="h-px bg-gray-100 my-1"></div>
+                            {allowedDesignerOnlineChecks.filter(c => c !== 'Done Oder').map(checkVal => {
+                              const currentSelections = (tempCheckSelections[order.id] || '').split(',').map(s => s.trim()).filter(s => s !== '');
+                              const isChecked = currentSelections.includes(checkVal);
+                              return (
+                                <label key={checkVal} className="flex items-center gap-2 px-2 py-1 hover:bg-gray-50 rounded cursor-pointer">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={isChecked}
+                                    onChange={() => {
+                                      let next;
+                                      if (isChecked) next = currentSelections.filter(v => v !== checkVal);
+                                      else next = [...currentSelections, checkVal];
+                                      setTempCheckSelections(prev => ({ ...prev, [order.id]: next.join(', ') }));
+                                    }}
+                                    className="rounded text-indigo-600"
+                                  />
+                                  <span className="text-[10px] font-medium text-gray-700">{checkVal}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-2 py-2 border-r w-[75ch] min-w-[75ch] max-w-[75ch]">
+                      <div className="flex items-start gap-1">
+                        {editingNoteIds.has(order.id) ? (
+                          <div className="flex gap-1 w-full">
+                            <textarea className="w-full border rounded p-1 text-[10px] min-h-[60px] resize-y" value={editingDesignerNote[order.id] ?? ''} onChange={e => setEditingDesignerNote(prev => ({ ...prev, [order.id]: e.target.value }))} />
+                            <button onClick={() => handleUpdateDesignerNote(order)} className="p-1 bg-teal-600 text-white rounded self-start mt-1"><Save size={10}/></button>
+                          </div>
+                        ) : (
+                          <div className="flex justify-between w-full group items-start">
+                            <span className="whitespace-pre-wrap break-words overflow-hidden flex-1">{order.designerNote || '-'}</span>
+                            <button onClick={() => {
+                              setEditingDesignerNote(prev => ({ ...prev, [order.id]: order.designerNote || '' }));
+                              setEditingNoteIds(prev => new Set(prev).add(order.id));
+                            }} className="text-gray-300 group-hover:text-indigo-500 p-1"><Edit size={10}/></button>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-2 py-2 border-r text-center">
+                      <button onClick={() => handleDesignerToggle(order)} className={`p-1 rounded ${order.isDesignDone ? 'text-blue-600' : 'text-gray-300'}`}>
+                        {updatingIds.has(order.id) ? <Loader2 size={14} className="animate-spin" /> : (order.isDesignDone ? <CheckSquare size={16}/> : <Square size={16}/>)}
+                      </button>
+                    </td>
+                    <td className="px-2 py-2 border-r text-center font-bold text-gray-500 uppercase">{order.handler?.charAt(0) || '?'}</td>
+                    <td className="px-2 py-2 text-center font-bold text-orange-600 uppercase">{order.actionRole?.charAt(0) || '?'}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
-
-        {selectedOrderIds.size > 0 && canCheckDesign && (
-            <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-white rounded-full shadow-2xl border border-gray-200 px-6 py-3 flex items-center gap-4 z-50 animate-slide-in">
-                <span className="text-sm font-bold text-gray-700 whitespace-nowrap bg-gray-100 px-3 py-1 rounded-full">{selectedOrderIds.size} đã chọn</span>
-                <div className="h-6 w-px bg-gray-300"></div>
-                <div className="flex gap-2">
-                    <button onClick={() => handleBatchAction('design_done')} disabled={isBatchProcessing} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg hover:bg-indigo-100 transition-colors text-xs font-bold border border-indigo-200">
-                        {isBatchProcessing ? <Loader2 size={14} className="animate-spin" /> : <PenTool size={14} />} Design Xong
-                    </button>
-                    <button onClick={() => handleBatchAction('design_pending')} disabled={isBatchProcessing} className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 transition-colors text-xs font-bold border border-gray-200">
-                        <Square size={14} /> Chưa Design
-                    </button>
-                </div>
-                <button onClick={() => setSelectedOrderIds(new Set())} className="ml-2 text-gray-400 hover:text-red-500 transition-colors" title="Hủy chọn">
-                    <X size={20} />
-                </button>
-            </div>
-        )}
-
-        {renderFilterPopup()}
-        {isSkuModalOpen && (<div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fade-in"><div className="bg-white rounded-lg shadow-xl w-full max-w-sm overflow-hidden"><div className="px-5 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50"><h3 className="font-bold text-gray-800 text-lg flex items-center gap-2"><Settings className="text-indigo-500" size={20} /> Cập Nhật Phân Loại</h3><button onClick={() => setIsSkuModalOpen(false)} disabled={isSubmittingSku} className="text-gray-400 hover:text-gray-600">✕</button></div><form onSubmit={handleUpdateSku} className="p-5 space-y-4">{skuMessage && (<div className={`p-3 rounded-md flex items-center gap-2 text-sm ${skuMessage.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>{skuMessage.type === 'success' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}<span>{skuMessage.text}</span></div>)}<div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">SKU Sản Phẩm</label><input type="text" className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-gray-800 bg-white" placeholder="Nhập mã SKU..." value={skuFormData.sku} onChange={(e) => setSkuFormData({...skuFormData, sku: e.target.value})} autoFocus /></div><div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Chọn Phân Loại</label><select className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer text-gray-800 bg-white" value={skuFormData.category} onChange={(e) => setSkuFormData({...skuFormData, category: e.target.value})}><option value="Loại 1">Loại 1</option><option value="Loại 2">Loại 2</option><option value="Loại 3">Loại 3</option><option value="Loại 4">Loại 4</option></select></div><div className="pt-2 flex gap-3"><button type="button" onClick={() => setIsSkuModalOpen(false)} disabled={isSubmittingSku} className="flex-1 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md text-sm transition-colors font-medium">Hủy</button><button type="submit" disabled={isSubmittingSku} className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-bold transition-colors shadow-sm disabled:opacity-70">{isSubmittingSku ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />} Lưu</button></div></form></div></div>)}
       </div>
+
+      {isSkuModalOpen && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden animate-slide-in">
+            <div className="px-5 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+              <h3 className="font-bold text-gray-800 flex items-center gap-2"><Settings size={18} className="text-indigo-500"/> Phân Loại SKU</h3>
+              <button onClick={() => setIsSkuModalOpen(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            <form onSubmit={handleUpdateSku} className="p-5 space-y-4">
+              {skuMessage && <div className={`p-2 rounded text-xs ${skuMessage.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>{skuMessage.text}</div>}
+              <div>
+                <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">SKU</label>
+                <input type="text" className="w-full border rounded-lg px-3 py-2" value={skuFormData.sku} onChange={e => setSkuFormData({...skuFormData, sku: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Loại</label>
+                <select className="w-full border rounded-lg px-3 py-2" value={skuFormData.category} onChange={e => setSkuFormData({...skuFormData, category: e.target.value})}>
+                  {PRICE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <button type="submit" disabled={isSubmittingSku} className="w-full bg-indigo-600 text-white py-2 rounded-lg font-bold hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2">
+                {isSubmittingSku ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Lưu
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {isPriceModalOpen && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden animate-slide-in">
+            <div className="px-5 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+              <h3 className="font-bold text-gray-800 flex items-center gap-2"><DollarSign size={18} className="text-emerald-500"/> Cấu Hình Giá</h3>
+              <button onClick={() => setIsPriceModalOpen(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            <div className="p-5 space-y-4">
+              {PRICE_CATEGORIES.map(cat => (
+                <div key={cat} className="flex items-center justify-between gap-4">
+                  <span className="text-sm font-bold text-gray-700">{cat}</span>
+                  <input type="number" className="border rounded-lg px-3 py-1.5 text-right w-32" value={tempPriceMap[cat] || 0} onChange={e => setTempPriceMap({...tempPriceMap, [cat]: Number(e.target.value)})} />
+                </div>
+              ))}
+              <button onClick={handleSavePrices} disabled={isSavingPrices} className="w-full bg-emerald-600 text-white py-2 rounded-lg font-bold hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2">
+                {isSavingPrices ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Lưu Bảng Giá
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
+
+  function handleMonthChange(step: number) {
+    const [year, month] = selectedMonth.split('-').map(Number);
+    const date = new Date(year, month - 1 + step, 1);
+    setSelectedMonth(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`);
+  }
 };

@@ -373,10 +373,13 @@ export const sheetService = {
     try {
       const { data, error } = await supabase.from('sku_mappings').select('*');
       if (error) throw error;
-      return (data || []).map(m => ({
-        sku: m.sku,
-        category: m.category
-      }));
+      if (data && data.length > 0) {
+        return data.map(m => ({
+          sku: m.sku,
+          category: m.category
+        }));
+      }
+      return await callAPI('getSkuMappings', 'GET');
     } catch (error) {
       console.error('Error in getSkuMappings (Supabase):', error);
       return await callAPI('getSkuMappings', 'GET');
@@ -387,10 +390,13 @@ export const sheetService = {
     try {
       const { data, error } = await supabase.from('price_mappings').select('*');
       if (error) throw error;
-      return (data || []).map(p => ({
-        category: p.category,
-        price: Number(p.price) || 0
-      }));
+      if (data && data.length > 0) {
+        return data.map(p => ({
+          category: p.category,
+          price: Number(p.price) || 0
+        }));
+      }
+      return await callAPI('getPriceMappings', 'GET');
     } catch (error) {
       console.error('Error in getPriceMappings (Supabase):', error);
       return await callAPI('getPriceMappings', 'GET');

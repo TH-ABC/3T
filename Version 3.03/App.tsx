@@ -15,6 +15,7 @@ import FinanceDataReport from './components/FinanceDataReport';
 import ChangePasswordModal from './components/ChangePasswordModal';
 import ScheduleManagement from './components/ScheduleManagement';
 import DailyHandover from './components/DailyHandover';
+import MacrameManagement from './components/MacrameManagement';
 import { Planner } from './components/Planner';
 import { User, Store, UserPermissions } from './types';
 import { sheetService } from './services/sheetService';
@@ -31,36 +32,65 @@ function App() {
   // --- CHECK SUPABASE SESSION ON MOUNT ---
   useEffect(() => {
     const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user && !user) {
-        // If Supabase has session but local state doesn't, fetch profile
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
         
-        if (profile) {
-          const userData: User = {
-            username: profile.username || session.user.email?.split('@')[0] || 'user',
-            fullName: profile.full_name || 'User',
-            role: profile.role || 'staff',
-            permissions: profile.permissions || {},
-            status: profile.status || 'Active',
-            email: session.user.email,
-            phone: profile.phone || '',
-          };
-          localStorage.setItem('oms_user_session', JSON.stringify(userData));
-          setUser(userData);
+        if (error) {
+          console.warn("Session error detected:", error.message);
+          if (error.message.includes("Refresh Token Not Found") || 
+              error.message.includes("invalid_grant") || 
+              error.message.includes("session_not_found")) {
+            // Clear local session if refresh token is invalid
+            console.log("Invalid session detected, clearing local data...");
+            localStorage.removeItem('oms_user_session');
+            setUser(null);
+            try {
+              await supabase.auth.signOut();
+            } catch (signOutErr) {
+              // Ignore sign out errors when session is already invalid
+            }
+          }
+          return;
         }
+
+        if (session?.user && !user) {
+          // If Supabase has session but local state doesn't, fetch profile
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+          
+          if (profile) {
+            const userData: User = {
+              username: profile.username || session.user.email?.split('@')[0] || 'user',
+              fullName: profile.full_name || 'User',
+              role: profile.role || 'staff',
+              permissions: profile.permissions || {},
+              status: profile.status || 'Active',
+              email: session.user.email,
+              phone: profile.phone || '',
+            };
+            localStorage.setItem('oms_user_session', JSON.stringify(userData));
+            setUser(userData);
+          }
+        }
+      } catch (err) {
+        console.error("Unexpected session check error:", err);
       }
     };
     checkSession();
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
-        // Handle logout if needed, but we have handleLogout
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("Auth Event:", event);
+      if (event === 'SIGNED_OUT') {
+        localStorage.removeItem('oms_user_session');
+        setUser(null);
+      }
+      
+      if (event === 'TOKEN_REFRESHED') {
+        console.log("Token refreshed successfully");
       }
     });
 
@@ -83,11 +113,22 @@ function App() {
       try {
         // Ưu tiên fetch từ Supabase profiles nếu có email
         if (user.email) {
-          const { data: profile } = await supabase
+          const { data: profile, error: profileError } = await supabase
             .from('profiles')
             .select('*')
             .eq('email', user.email)
             .single();
+
+          if (profileError) {
+            if (profileError.message.includes("Refresh Token Not Found") || profileError.code === 'PGRST116') {
+               // PGRST116 is not found, but session errors should be handled
+               if (profileError.message.includes("Refresh Token")) {
+                 console.warn("Session expired during profile refresh");
+                 handleLogout();
+                 return;
+               }
+            }
+          }
 
           if (profile) {
             const updatedUser = {
@@ -281,7 +322,11 @@ function App() {
         alert("Vui lòng chờ hoàn tất cập nhật trước khi đăng xuất.");
         return;
     }
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.warn("Sign out error (likely session already invalid):", err);
+    }
     localStorage.removeItem('oms_user_session');
     setUser(null);
     setCurrentTab('home');
@@ -302,7 +347,7 @@ function App() {
   const handleProcessStart = () => setPendingUpdates(prev => prev + 1);
   const handleProcessEnd = () => setPendingUpdates(prev => Math.max(0, prev - 1));
 
-  const canAccess = (module: keyof UserPermissions | 'users' | 'home' | 'schedule' | 'handover') => {
+  const canAccess = (module: keyof UserPermissions | 'users' | 'home' | 'schedule' | 'handover' | 'macrame') => {
       if (module === 'home') return true;
       if (module === 'schedule') return true;
       if (user.role === 'admin') return true;
@@ -312,6 +357,7 @@ function App() {
       const role = (user.role || '').toLowerCase();
       if (module === 'dashboard') return true;
       if (module === 'orders') return !role.includes('designer');
+      if (module === 'macrame') return !role.includes('designer');
       if (module === 'handover') return true; 
       if (module === 'designer') return role.includes('designer') || role === 'leader';
       if (module === 'designerOnline') return role === 'designer online' || role === 'leader';
@@ -334,6 +380,8 @@ function App() {
         return <OrderList user={user} onProcessStart={handleProcessStart} onProcessEnd={handleProcessEnd} />;
       case 'handover':
         return <DailyHandover user={user} />;
+      case 'macrame':
+        return <MacrameManagement user={user} />;
       case 'designer_online':
         if (!canAccess('designerOnline')) return <div className="p-6">Không có quyền truy cập.</div>;
         return <DesignerOnlineList user={user} onProcessStart={handleProcessStart} onProcessEnd={handleProcessEnd} />;

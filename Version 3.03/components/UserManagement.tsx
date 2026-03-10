@@ -7,7 +7,7 @@ import {
   UserPlus, Plus, Save, CheckCircle, AlertCircle, Loader2, 
   Mail, Phone, User as UserIcon, Lock, Shield, List, 
   Settings, Eye, EyeOff, Check, X, UserCog, Key, Briefcase, Info,
-  Sparkles, Trash2, DollarSign
+  Sparkles, Trash2, DollarSign, Search, Filter
 } from 'lucide-react';
 
 const UserManagement: React.FC = () => {
@@ -53,6 +53,8 @@ const UserManagement: React.FC = () => {
 
   const [editPerms, setEditPerms] = useState<UserPermissions>({ ...defaultPermissions });
   const [newRoleData, setNewRoleData] = useState({ name: '', level: 5 });
+  const [searchTerm, setSearchTerm] = useState('');
+  const [roleFilter, setRoleFilter] = useState<string>('all');
 
   const loadData = async () => {
     setLoading(true);
@@ -80,6 +82,17 @@ const UserManagement: React.FC = () => {
   };
 
   useEffect(() => { loadData(); }, []);
+
+  const filteredUsers = users.filter(u => {
+    const matchesSearch = 
+        u.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        u.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (u.email || '').toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesRole = roleFilter === 'all' || u.role.toLowerCase() === roleFilter.toLowerCase();
+    
+    return matchesSearch && matchesRole;
+  });
 
   const togglePasswordVisibility = (username: string) => {
     setVisiblePasswords(prev => ({ ...prev, [username]: !prev[username] }));
@@ -266,6 +279,7 @@ const UserManagement: React.FC = () => {
       { key: 'orders', label: 'Đơn Hàng' },
       { key: 'designerOnline', label: 'Design Online' },
       { key: 'designer', label: 'Designer' },
+      { key: 'macrame', label: 'Nghiệp vụ Macrame' },
       { key: 'customers', label: 'Khách Hàng' },
       { key: 'system', label: 'Hệ Thống' }
   ];
@@ -299,6 +313,34 @@ const UserManagement: React.FC = () => {
         </div>
 
         {activeTab === 'users' && (
+            <div className="p-4 border-b border-gray-100 bg-white flex flex-col md:flex-row gap-4">
+                <div className="flex-1 relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                    <input 
+                        type="text" 
+                        placeholder="Tìm kiếm theo username, tên hoặc email..."
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                </div>
+                <div className="flex items-center gap-2">
+                    <Filter className="text-gray-400" size={18} />
+                    <select 
+                        className="border border-gray-300 rounded-xl px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none bg-white transition-all text-sm font-bold text-gray-700"
+                        value={roleFilter}
+                        onChange={(e) => setRoleFilter(e.target.value)}
+                    >
+                        <option value="all">Tất cả Role</option>
+                        {roleOptions.map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                    </select>
+                </div>
+            </div>
+        )}
+
+        {activeTab === 'users' && (
             <div className="overflow-x-auto custom-scrollbar">
                 <table className="w-full text-left border-collapse min-w-[1000px]">
                     <thead>
@@ -316,7 +358,7 @@ const UserManagement: React.FC = () => {
                         {loading ? (
                             <tr><td colSpan={7} className="p-12 text-center text-gray-400 italic">Đang tải...</td></tr>
                         ) : (
-                            users.map((u) => (
+                            filteredUsers.map((u) => (
                                 <tr key={u.username} className="hover:bg-indigo-50/20 transition-colors">
                                     <td className="px-8 py-5 font-mono font-bold text-indigo-600">{u.username}</td>
                                     <td className="px-8 py-5">
@@ -613,7 +655,10 @@ const UserManagement: React.FC = () => {
                                     {['all', 'own', 'none'].map((scope) => (
                                         <label key={scope} className={`cursor-pointer border-2 rounded-xl px-2 py-2.5 text-[10px] font-black uppercase tracking-widest text-center transition-all flex items-center justify-center ${editPerms[item.key as keyof UserPermissions] === scope ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg scale-105' : 'bg-white text-gray-400 border-gray-100 hover:border-indigo-200'}`}>
                                             <input type="radio" className="hidden" checked={editPerms[item.key as keyof UserPermissions] === scope} onChange={() => setEditPerms({...editPerms, [item.key]: scope})} />
-                                            {scope === 'all' ? 'Toàn bộ' : scope === 'own' ? 'Cá nhân' : 'Khóa'}
+                                            {item.key === 'macrame' 
+                                                ? (scope === 'all' ? 'Cấp 1 (Full)' : scope === 'own' ? 'Cấp 2 (Đơn giá & Ship)' : 'Khóa')
+                                                : (scope === 'all' ? 'Toàn bộ' : scope === 'own' ? 'Cá nhân' : 'Khóa')
+                                            }
                                         </label>
                                     ))}
                                 </div>

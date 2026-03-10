@@ -27,7 +27,7 @@ const DailyHandover: React.FC<DailyHandoverProps> = ({ user }) => {
   const [loading, setLoading] = useState(true);
   
   // Filter States
-  const [filterMode, setFilterMode] = useState<ViewFilterMode>('day');
+  const [filterMode, setFilterMode] = useState<ViewFilterMode>('all');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   
@@ -102,22 +102,33 @@ const DailyHandover: React.FC<DailyHandoverProps> = ({ user }) => {
 
       if (handoverRes.error && handoverRes.error.code !== 'PGRST116') console.error('Error fetching handovers:', handoverRes.error);
       
-      const transformedHandovers: HandoverItem[] = (handoverRes.data || []).map(h => ({
-        id: h.id,
-        date: h.date,
-        task: h.task,
-        assignee: h.assignee,
-        deadlineAt: h.deadline_at,
-        status: h.status,
-        startTime: h.start_time,
-        endTime: h.end_time,
-        report: h.report,
-        fileLink: h.file_link,
-        resultLink: h.result_link,
-        imageLink: h.image_link,
-        createdBy: h.created_by,
-        isSeen: h.is_seen
-      }));
+      const transformedHandovers: HandoverItem[] = (handoverRes.data || []).map(h => {
+        const now = new Date();
+        const deadline = h.deadline_at ? new Date(h.deadline_at) : null;
+        let currentStatus = h.status;
+
+        // Nếu DB chưa cập nhật Overdue nhưng thực tế đã quá hạn
+        if (currentStatus === 'Pending' && deadline && now > deadline) {
+          currentStatus = 'Overdue';
+        }
+
+        return {
+          id: h.id,
+          date: h.date,
+          task: h.task,
+          assignee: h.assignee,
+          deadlineAt: h.deadline_at,
+          status: currentStatus,
+          startTime: h.start_time,
+          endTime: h.end_time,
+          report: h.report,
+          fileLink: h.file_link,
+          resultLink: h.result_link,
+          imageLink: h.image_link,
+          createdBy: h.created_by,
+          isSeen: h.is_seen
+        };
+      });
 
       setHandovers(transformedHandovers);
       setUsers(Array.isArray(usersRes) ? usersRes : []);
@@ -163,12 +174,17 @@ const DailyHandover: React.FC<DailyHandoverProps> = ({ user }) => {
   }, [handovers, currentPage, itemsPerPage]);
 
   const statsTasks = useMemo(() => {
+    const now = new Date();
     return {
         total: handovers.length,
         pending: handovers.filter(h => h.status === 'Pending').length,
         processing: handovers.filter(h => h.status === 'Processing').length,
         completed: handovers.filter(h => h.status === 'Completed').length,
-        overdue: handovers.filter(h => h.status === 'Overdue').length
+        overdue: handovers.filter(h => {
+          const deadline = h.deadlineAt ? new Date(h.deadlineAt) : null;
+          const isLate = deadline && now > deadline;
+          return h.status === 'Overdue' || (h.status === 'Processing' && isLate);
+        }).length
     };
   }, [handovers]);
 
@@ -443,12 +459,24 @@ const DailyHandover: React.FC<DailyHandoverProps> = ({ user }) => {
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'Pending': return <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-[10px] font-black uppercase shadow-sm">Chưa nhận</span>;
-      case 'Processing': return <span className="px-3 py-1 rounded-full bg-amber-50 text-amber-600 text-[10px] font-black uppercase flex items-center gap-1.5 shadow-sm"><Clock size={10} className="animate-spin" /> Đang xử lý</span>;
-      case 'Completed': return <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-black uppercase flex items-center gap-1.5 shadow-sm"><CheckCircle size={10} /> Hoàn thành</span>;
-      case 'Overdue': return <span className="px-3 py-1 rounded-full bg-rose-50 text-rose-700 text-[10px] font-black uppercase flex items-center gap-1.5 shadow-sm border border-rose-100"><AlertCircle size={10} /> Quá hạn</span>;
+  const getStatusBadge = (item: HandoverItem) => {
+    const now = new Date();
+    const deadline = item.deadlineAt ? new Date(item.deadlineAt) : null;
+    const isOverdue = deadline && now > deadline;
+    const isCompletedLate = item.status === 'Completed' && item.endTime && deadline && new Date(item.endTime) > deadline;
+
+    switch (item.status) {
+      case 'Pending': 
+        if (isOverdue) return <span className="px-3 py-1 rounded-full bg-rose-50 text-rose-700 text-[10px] font-black uppercase flex items-center gap-1.5 shadow-sm border border-rose-100"><AlertCircle size={10} /> Quá hạn</span>;
+        return <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-[10px] font-black uppercase shadow-sm">Chưa nhận</span>;
+      case 'Processing': 
+        if (isOverdue) return <span className="px-3 py-1 rounded-full bg-rose-50 text-rose-700 text-[10px] font-black uppercase flex items-center gap-1.5 shadow-sm border border-rose-100 animate-pulse"><AlertTriangle size={10} /> Xử lý trễ</span>;
+        return <span className="px-3 py-1 rounded-full bg-amber-50 text-amber-600 text-[10px] font-black uppercase flex items-center gap-1.5 shadow-sm"><Clock size={10} className="animate-spin" /> Đang xử lý</span>;
+      case 'Completed': 
+        if (isCompletedLate) return <span className="px-3 py-1 rounded-full bg-orange-50 text-orange-700 text-[10px] font-black uppercase flex items-center gap-1.5 shadow-sm border border-orange-100"><CheckCircle size={10} /> Hoàn thành trễ</span>;
+        return <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-black uppercase flex items-center gap-1.5 shadow-sm"><CheckCircle size={10} /> Hoàn thành</span>;
+      case 'Overdue': 
+        return <span className="px-3 py-1 rounded-full bg-rose-50 text-rose-700 text-[10px] font-black uppercase flex items-center gap-1.5 shadow-sm border border-rose-100"><AlertCircle size={10} /> Quá hạn</span>;
       default: return null;
     }
   };
@@ -609,7 +637,7 @@ const DailyHandover: React.FC<DailyHandoverProps> = ({ user }) => {
                 >
                   {/* Status Badge */}
                   <div className="absolute top-4 right-4">
-                    {getStatusBadge(item.status)}
+                    {getStatusBadge(item)}
                   </div>
 
                   {/* Assignee Info */}
